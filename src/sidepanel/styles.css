@@ -1,0 +1,350 @@
+:root {
+  /* Dark theme (default). The light theme overrides these below. */
+  --bg: #0f1117;
+  --panel: #161922;
+  --panel-2: #1c2030;
+  --border: #262b3a;
+  --text: #e6e8ef;
+  --muted: #8a90a4;
+  --accent: #7c9cff;
+  --on-accent: #0b0e16;
+  --user: #2a3556;
+  --assistant: #1d2433;
+  --error: #ff6b6b;
+  --error-bg: #3a1f24;
+  --tool: #f0b870;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+:root[data-theme="light"] {
+  --bg: #ffffff;
+  --panel: #f5f7fb;
+  --panel-2: #e9edf6;
+  --border: #d8dde9;
+  --text: #1b2030;
+  --muted: #5c6478;
+  --accent: #4f63cf;
+  --on-accent: #ffffff;
+  --user: #dbe4ff;
+  --assistant: #eef1f8;
+  --error: #d23b3b;
+  --error-bg: #fdecec;
+  --tool: #b9772a;
+}
+
+* { box-sizing: border-box; }
+
+html, body, #root {
+  margin: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+}
+
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+/* Single merged control bar (status + translate + theme + settings). */
+.topbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--panel);
+  font-size: 12px;
+}
+
+.topbar .status {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  background: var(--panel-2);
+  color: var(--muted);
+}
+.topbar .status.online { color: #62d488; }
+.topbar .status.offline { color: var(--error); }
+
+/* Icon buttons (theme, settings) pushed to the right edge of the bar. */
+.icon-btn {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 4px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 12px;
+}
+.icon-btn:hover { background: var(--panel-2); }
+.icon-btn.settings { font-size: 19px; line-height: 1; padding: 3px 9px; }
+
+/* Language switcher (한 / EN / 中) — pushed to the right of the bar. */
+.lang-switch {
+  margin-left: auto;
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+.lang-switch .lang-btn {
+  background: transparent;
+  color: var(--muted);
+  border: 0;
+  padding: 4px 8px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.lang-switch .lang-btn:hover { background: var(--panel-2); color: var(--text); }
+.lang-switch .lang-btn.active { background: var(--accent); color: var(--on-accent); }
+
+.page-context {
+  border-bottom: 1px solid var(--border);
+  background: var(--panel);
+  padding: 8px 12px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 12px;
+}
+
+.page-context .toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  color: var(--text);
+  white-space: nowrap;
+}
+
+.page-context .ctx-preview {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+}
+.page-context .ctx-title {
+  color: var(--text);
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.page-context .ctx-meta {
+  color: var(--muted);
+  font-size: 11px;
+}
+.page-context .ctx-meta.err { color: var(--error); }
+
+.page-context .grant {
+  background: var(--accent);
+  border: 0;
+  color: var(--on-accent);
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.topbar .tx-label { color: var(--muted); white-space: nowrap; }
+.topbar select {
+  background: var(--panel-2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 3px 6px;
+  font: inherit;
+  font-size: 12px;
+}
+.topbar .tx-go {
+  background: var(--accent);
+  border: 0;
+  color: var(--on-accent);
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 12px;
+}
+.topbar .tx-restore {
+  background: var(--panel-2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  padding: 4px 10px;
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 12px;
+}
+.topbar button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.skills-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--panel);
+}
+.skills-bar .skill {
+  background: var(--panel-2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 4px 11px;
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 120ms ease, border-color 120ms ease;
+}
+.skills-bar .skill:hover:not(:disabled) {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--on-accent);
+}
+.skills-bar .skill:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.tx-status {
+  padding: 4px 12px;
+  font-size: 11px;
+  color: var(--muted);
+  border-bottom: 1px solid var(--border);
+  background: var(--panel);
+}
+.tx-status.err { color: var(--error); }
+
+.messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.bubble {
+  padding: 10px 12px;
+  border-radius: 10px;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  font-size: 13px;
+  line-height: 1.5;
+}
+/* Plain-text view while the assistant message is still streaming. */
+.bubble .md-stream { white-space: pre-wrap; word-break: break-word; }
+
+/* Rendered markdown inside assistant bubbles. */
+.bubble .md > :first-child { margin-top: 0; }
+.bubble .md > :last-child { margin-bottom: 0; }
+.bubble .md p { margin: 0 0 8px; }
+.bubble .md h1, .bubble .md h2, .bubble .md h3,
+.bubble .md h4, .bubble .md h5, .bubble .md h6 {
+  margin: 10px 0 6px;
+  font-size: 14px;
+  line-height: 1.3;
+}
+.bubble .md ul, .bubble .md ol { margin: 0 0 8px; padding-left: 20px; }
+.bubble .md li { margin: 2px 0; }
+.bubble .md a { color: var(--accent); }
+.bubble .md code {
+  background: var(--panel-2);
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+}
+.bubble .md pre {
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  padding: 10px;
+  border-radius: 8px;
+  overflow-x: auto;
+  margin: 0 0 8px;
+}
+.bubble .md pre code { background: none; padding: 0; font-size: 12px; }
+.bubble .md blockquote {
+  margin: 0 0 8px;
+  padding: 2px 10px;
+  border-left: 3px solid var(--accent);
+  color: var(--muted);
+}
+.bubble .md hr { border: 0; border-top: 1px solid var(--border); margin: 10px 0; }
+.bubble .md ul ul, .bubble .md ol ol,
+.bubble .md ul ol, .bubble .md ol ul { margin: 2px 0 2px; }
+.bubble .md table {
+  border-collapse: collapse;
+  margin: 0 0 8px;
+  font-size: 12px;
+  display: block;
+  overflow-x: auto;
+  max-width: 100%;
+}
+.bubble .md th, .bubble .md td {
+  border: 1px solid var(--border);
+  padding: 4px 8px;
+  text-align: left;
+}
+.bubble .md th { background: var(--panel-2); font-weight: 600; }
+
+.bubble.user { background: var(--user); align-self: flex-end; max-width: 85%; }
+.bubble.assistant { background: var(--assistant); align-self: flex-start; max-width: 95%; }
+.bubble.error { background: var(--error-bg); color: var(--error); align-self: stretch; }
+
+.tool-progress {
+  font-size: 12px;
+  color: var(--muted);
+  padding: 2px 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tool-progress.working {
+  color: var(--accent);
+  animation: tool-pulse 1.1s ease-in-out infinite;
+}
+@keyframes tool-pulse { 0%, 100% { opacity: 0.45; } 50% { opacity: 1; } }
+
+.empty {
+  margin: auto;
+  color: var(--muted);
+  text-align: center;
+  font-size: 12px;
+}
+
+.input-row {
+  border-top: 1px solid var(--border);
+  background: var(--panel);
+  padding: 8px;
+  display: flex;
+  gap: 6px;
+}
+
+.input-row textarea {
+  flex: 1;
+  background: var(--panel-2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px;
+  font: inherit;
+  font-size: 13px;
+  resize: none;
+  min-height: 36px;
+  max-height: 160px;
+}
+
+.input-row button {
+  background: var(--accent);
+  border: 0;
+  color: var(--on-accent);
+  font-weight: 600;
+  padding: 0 14px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.input-row button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.input-row button.stop { background: var(--error); color: white; }
