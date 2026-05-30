@@ -93,3 +93,63 @@ export function planSort(nodes: BookmarkNode[], key: "name" | "date"): Action[] 
   }
   return actions;
 }
+
+/** Max bookmarks sent to the model per categorize request (token bound). */
+export const MAX_CATEGORIZE = 300;
+
+/** Build the LLM request for categorization. Returns the sent/skipped counts. */
+export function buildCategorizePrompt(
+  nodes: BookmarkNode[],
+): { messages: ChatMessage[]; sent: number; skipped: number } {
+  const all = nodes.filter((n) => n.url);
+  const picked = all.slice(0, MAX_CATEGORIZE);
+  const list = picked.map((n) => ({ id: n.id, title: n.title, url: n.url }));
+  const system =
+    "You organize browser bookmarks into topic folders. Given a JSON array of " +
+    'bookmarks ({id, title, url}), reply with a JSON object {"assignments": ' +
+    '{"<bookmark id>": "<Folder Name>"}}. Use a small set of clear, single-level ' +
+    "folder names (no nesting, no slashes). Every input id must appear exactly " +
+    "once. Reply with JSON only.";
+  return {
+    messages: [
+      { role: "system", content: system },
+      { role: "user", content: JSON.stringify(list) },
+    ],
+    sent: picked.length,
+    skipped: all.length - picked.length,
+  };
+}
+
+/** First balanced-ish `{...}` JSON object found in `text` (handles fences). */
+function extractJsonObject(text: string): Record<string, unknown> | null {
+  const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  const candidate = fenced ? fenced[1] : text;
+  const start = candidate.indexOf("{");
+  const end = candidate.lastIndexOf("}");
+  if (start < 0 || end <= start) return null;
+  try {
+    return JSON.parse(candidate.slice(start, end + 1)) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+}
+
+/** Turn a model categorization response into `move` actions. */
+export function parseCategorization(text: string, nodes: BookmarkNode[]): Action[] {
+  const obj = extractJsonObject(text);
+  if (!obj) return [];
+  const raw = (obj.assignments ?? obj) as unknown;
+  if (!raw || typeof raw !== "object") return [];
+  const assignments = raw as Record<string, unknown>;
+  const byId = new Map(nodes.map((n) => [n.id, n]));
+  const actions: Action[] = [];
+  for (const [bmId, folder] of Object.entries(assignments)) {
+    if (typeof folder !== "string" || !folder.trim()) continue;
+    const node = byId.get(bmId);
+    if (!node || !node.url) continue;
+    const target = folder.trim();
+    if ((node.parentTitle ?? "") === target) continue;
+    actions.push({ id: `move-${bmId}`, kind: "move", bmId, title: node.title, url: node.url, toFolderPath: target });
+  }
+  return actions;
+}
