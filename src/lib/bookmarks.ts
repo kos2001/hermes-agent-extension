@@ -13,7 +13,12 @@ export interface BookmarkNode {
   index: number;
 }
 
-/** A proposed change, rendered in the preview and consumed by `applyActions`. */
+/**
+ * A proposed change, rendered in the preview and consumed by `applyActions`.
+ * `id` is derived from the Chrome bookmark/folder id (`remove-<id>`,
+ * `move-<id>`, `reorder-<id>`); Chrome ids are numeric strings, so these
+ * prefixes never collide with the underlying id.
+ */
 export type Action =
   | { id: string; kind: "remove"; bmId: string; title: string; url: string; reason: "duplicate" | "dead" }
   | { id: string; kind: "move"; bmId: string; title: string; url: string; toFolderPath: string }
@@ -23,6 +28,9 @@ export type Action =
  * Canonical form of a URL for duplicate detection: lowercase protocol+host,
  * no fragment, no trailing slash (except root), lone "?" dropped. Non-URLs
  * fall back to a trimmed lowercase string.
+ *
+ * NOTE: query-parameter ORDER is preserved as-is — two URLs that differ only
+ * in the order of their query params are NOT treated as duplicates.
  */
 export function normalizeUrl(raw: string): string {
   try {
@@ -49,7 +57,8 @@ export function findDuplicates(nodes: BookmarkNode[]): Action[] {
   const actions: Action[] = [];
   for (const arr of groups.values()) {
     if (arr.length < 2) continue;
-    const oldestFirst = [...arr].sort((a, b) => a.dateAdded - b.dateAdded);
+    // Tie-break on id so the kept bookmark is deterministic when timestamps match.
+    const oldestFirst = [...arr].sort((a, b) => a.dateAdded - b.dateAdded || a.id.localeCompare(b.id));
     for (const dup of oldestFirst.slice(1)) {
       actions.push({
         id: `remove-${dup.id}`,
@@ -77,7 +86,7 @@ export function planSort(nodes: BookmarkNode[], key: "name" | "date"): Action[] 
   for (const [folderId, arr] of byFolder) {
     const current = [...arr].sort((a, b) => a.index - b.index);
     const sorted = [...current].sort((a, b) =>
-      key === "name" ? a.title.localeCompare(b.title) : a.dateAdded - b.dateAdded,
+      key === "name" ? a.title.localeCompare(b.title, undefined, { sensitivity: "base" }) : a.dateAdded - b.dateAdded,
     );
     const currentIds = current.map((n) => n.id);
     const sortedIds = sorted.map((n) => n.id);
@@ -144,6 +153,9 @@ export function parseCategorization(text: string, nodes: BookmarkNode[]): Action
   const byId = new Map(nodes.map((n) => [n.id, n]));
   const actions: Action[] = [];
   for (const [bmId, folder] of Object.entries(assignments)) {
+    // Ignore inherited / prototype keys from the parsed JSON.
+    if (!Object.prototype.hasOwnProperty.call(assignments, bmId)) continue;
+    if (bmId === "__proto__" || bmId === "constructor" || bmId === "prototype") continue;
     if (typeof folder !== "string" || !folder.trim()) continue;
     const node = byId.get(bmId);
     if (!node || !node.url) continue;

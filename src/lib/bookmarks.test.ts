@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { normalizeUrl } from "./bookmarks";
+import {
+  buildCategorizePrompt,
+  findDuplicates,
+  normalizeUrl,
+  parseCategorization,
+  planSort,
+} from "./bookmarks";
 
 describe("normalizeUrl", () => {
   it("lowercases protocol and host but not the path", () => {
@@ -23,8 +29,6 @@ describe("normalizeUrl", () => {
     expect(normalizeUrl("  Not A URL ")).toBe("not a url");
   });
 });
-
-import { findDuplicates } from "./bookmarks";
 
 function bm(id: string, url: string | undefined, dateAdded: number, extra: Partial<import("./bookmarks").BookmarkNode> = {}) {
   return { id, title: id, url, dateAdded, index: 0, parentId: "1", parentTitle: "Bar", ...extra };
@@ -51,8 +55,6 @@ describe("findDuplicates", () => {
     expect(findDuplicates(nodes)).toEqual([]);
   });
 });
-
-import { planSort } from "./bookmarks";
 
 describe("planSort", () => {
   it("emits a reorder action only for folders whose order changes", () => {
@@ -85,8 +87,6 @@ describe("planSort", () => {
   });
 });
 
-import { buildCategorizePrompt, parseCategorization } from "./bookmarks";
-
 describe("buildCategorizePrompt", () => {
   it("sends only bookmarks, capped at 300, and reports the skipped count", () => {
     const nodes = Array.from({ length: 305 }, (_, i) => bm(`b${i}`, `https://s${i}.com/`, i));
@@ -110,6 +110,11 @@ describe("parseCategorization", () => {
     const actions = parseCategorization(text, nodes);
     expect(actions).toHaveLength(1);
     expect(actions[0]).toMatchObject({ id: "move-a", kind: "move", toFolderPath: "News" });
+  });
+
+  it("skips bookmarks already in the target folder", () => {
+    // b.parentTitle === "News", so assigning it to "News" yields no action.
+    expect(parseCategorization('{"assignments": {"b": "News"}}', nodes)).toEqual([]);
   });
 
   it("extracts JSON from a fenced code block", () => {
