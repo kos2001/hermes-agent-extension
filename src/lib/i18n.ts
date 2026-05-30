@@ -32,6 +32,8 @@ const STR: Record<string, Entry> = {
   toLight: { ko: "라이트 모드로 전환", en: "Switch to light mode", zh: "切换到浅色模式" },
   toDark: { ko: "다크 모드로 전환", en: "Switch to dark mode", zh: "切换到深色模式" },
   send: { ko: "전송", en: "Send", zh: "发送" },
+  newChat: { ko: "새 대화", en: "New chat", zh: "新对话" },
+  newChatTitle: { ko: "대화를 비우고 새로 시작", en: "Clear and start a new conversation", zh: "清空并开始新对话" },
   working: { ko: "● 작업 중…", en: "● Working…", zh: "● 处理中…" },
   inputPlaceholder: { ko: "메시지 입력…", en: "Message…", zh: "输入消息…" },
   noPageText: { ko: "페이지 내용을 읽을 수 없습니다.", en: "Could not read the page content.", zh: "无法读取页面内容。" },
