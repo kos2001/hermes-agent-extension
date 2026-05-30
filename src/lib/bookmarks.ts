@@ -35,3 +35,31 @@ export function normalizeUrl(raw: string): string {
     return raw.trim().toLowerCase();
   }
 }
+
+/** Group by normalized URL; keep the oldest, propose removing the rest. */
+export function findDuplicates(nodes: BookmarkNode[]): Action[] {
+  const groups = new Map<string, BookmarkNode[]>();
+  for (const n of nodes) {
+    if (!n.url) continue;
+    const key = normalizeUrl(n.url);
+    const arr = groups.get(key);
+    if (arr) arr.push(n);
+    else groups.set(key, [n]);
+  }
+  const actions: Action[] = [];
+  for (const arr of groups.values()) {
+    if (arr.length < 2) continue;
+    const oldestFirst = [...arr].sort((a, b) => a.dateAdded - b.dateAdded);
+    for (const dup of oldestFirst.slice(1)) {
+      actions.push({
+        id: `remove-${dup.id}`,
+        kind: "remove",
+        bmId: dup.id,
+        title: dup.title,
+        url: dup.url as string,
+        reason: "duplicate",
+      });
+    }
+  }
+  return actions;
+}
