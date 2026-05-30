@@ -12,6 +12,7 @@ import {
 import { restoreOriginals, translatePage } from "@/lib/translator";
 import { buildSkillMessages, PROMPT_SKILLS, type PromptSkill } from "@/lib/skills";
 import { isLang, LANG_KEY, LANGS, t, type Lang } from "@/lib/i18n";
+import { isEnterSubmit } from "@/lib/keyboard";
 
 /** Local skill (runs in the page): list unique http links as a Markdown list. */
 function extractLinksInPage(): string {
@@ -330,6 +331,14 @@ export default function App() {
     abortRef.current?.abort();
   }, []);
 
+  // Start a fresh conversation: abort any in-flight stream and clear the
+  // transcript + input box.
+  const newChat = useCallback(() => {
+    abortRef.current?.abort();
+    setMessages([]);
+    setInput("");
+  }, []);
+
   const runTranslate = useCallback(async () => {
     if (!config || translateBusy) return;
     setTranslateError(null);
@@ -369,7 +378,10 @@ export default function App() {
   }, []);
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === "Enter" && !e.shiftKey) {
+    // `isComposing` guards against IME (Korean/Japanese/Chinese) — pressing
+    // Enter to commit a composing character must not submit, or the last
+    // character gets duplicated.
+    if (isEnterSubmit({ key: e.key, shiftKey: e.shiftKey, isComposing: e.nativeEvent.isComposing, keyCode: e.keyCode })) {
       e.preventDefault();
       void send();
     }
@@ -379,10 +391,43 @@ export default function App() {
 
   return (
     <div className="app">
+      {/* Top row: online status + language selection + settings-related controls. */}
       <div className="topbar">
         <span className={`status ${health}`}>
           {health === "online" ? t(lang, "online") : health === "offline" ? t(lang, "offline") : "…"}
         </span>
+        <span className="lang-switch">
+          {LANGS.map((l) => (
+            <button
+              key={l.code}
+              className={`lang-btn${lang === l.code ? " active" : ""}`}
+              onClick={() => setLang(l.code)}
+              title={l.code}
+            >
+              {l.label}
+            </button>
+          ))}
+        </span>
+        <button
+          className="icon-btn theme"
+          onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+          title={theme === "dark" ? t(lang, "toLight") : t(lang, "toDark")}
+        >
+          {theme === "dark" ? "☀" : "🌙"}
+        </button>
+        <button
+          className="icon-btn new-chat"
+          onClick={newChat}
+          disabled={messages.length === 0 && !streaming}
+          title={t(lang, "newChatTitle")}
+        >
+          ✎
+        </button>
+        <button className="icon-btn settings" onClick={openOptions} title={t(lang, "settings")}>⚙</button>
+      </div>
+
+      {/* Second row: page translation controls. */}
+      <div className="translate-bar">
         <span className="tx-label">{t(lang, "translateTo")}</span>
         <select
           className="tx-lang"
@@ -415,26 +460,6 @@ export default function App() {
         >
           {t(lang, "restore")}
         </button>
-        <span className="lang-switch">
-          {LANGS.map((l) => (
-            <button
-              key={l.code}
-              className={`lang-btn${lang === l.code ? " active" : ""}`}
-              onClick={() => setLang(l.code)}
-              title={l.code}
-            >
-              {l.label}
-            </button>
-          ))}
-        </span>
-        <button
-          className="icon-btn theme"
-          onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-          title={theme === "dark" ? t(lang, "toLight") : t(lang, "toDark")}
-        >
-          {theme === "dark" ? "☀" : "🌙"}
-        </button>
-        <button className="icon-btn settings" onClick={openOptions} title={t(lang, "settings")}>⚙</button>
       </div>
       {(translateProgress || translateError) && (
         <div className={`tx-status ${translateError ? "err" : ""}`}>
