@@ -1,0 +1,519 @@
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { streamChat } from "@/lib/hermes-client";
+import { renderMarkdown } from "@/lib/markdown";
+import type { ChatMessage, ConnectionConfig, StoredMessage } from "@/lib/types";
+import { loadConfig, newMessage } from "@/lib/storage";
+import {
+  capturePageContext,
+  formatContextForPrompt,
+  getActiveTab,
+  type PageContext,
+} from "@/lib/page-context";
+import { restoreOriginals, translatePage } from "@/lib/translator";
+import { buildSkillMessages, PROMPT_SKILLS, type PromptSkill } from "@/lib/skills";
+import { isLang, LANG_KEY, LANGS, t, type Lang } from "@/lib/i18n";
+
+/** Local skill (runs in the page): list unique http links as a Markdown list. */
+function extractLinksInPage(): string {
+  const seen = new Set<string>();
+  const items: string[] = [];
+  for (const a of Array.from(document.querySelectorAll("a[href]"))) {
+    const href = (a as HTMLAnchorElement).href;
+    if (!/^https?:/.test(href) || seen.has(href)) continue;
+    seen.add(href);
+    const text = (a.textContent || "").trim().replace(/\s+/g, " ").slice(0, 80) || href;
+    items.push(`- [${text}](${href})`);
+    if (items.length >= 100) break;
+  }
+  return items.length ? `**${items.length} links**\n\n${items.join("\n")}` : "링크를 찾지 못했습니다.";
+}
+
+/** Local skill (runs in the page): word/char count + estimated reading time. */
+function readingStatsInPage(): string {
+  const text = (document.body?.innerText || "").trim();
+  const words = (text.match(/\S+/g) || []).length;
+  const mins = Math.max(1, Math.round(words / 200));
+  const title = document.title || location.href;
+  return (
+    `**${title}**\n\n` +
+    `- 단어 수: ${words.toLocaleString()}\n` +
+    `- 글자 수: ${text.length.toLocaleString()}\n` +
+    `- 예상 읽기 시간: 약 ${mins}분`
+  );
+}
+
+type HealthState = "unknown" | "online" | "offline";
+type Theme = "dark" | "light";
+
+const THEME_KEY = "hermes.theme";
+
+/** Apply the theme to the document root so the CSS variables switch. */
+function applyTheme(theme: Theme) {
+  document.documentElement.dataset.theme = theme;
+}
+
+/**
+ * Memoized markdown view. During streaming the whole message list re-renders
+ * on every frame; `memo` + `useMemo` mean only the message whose text actually
+ * changed re-parses markdown — stable messages are skipped entirely.
+ */
+const MarkdownView = memo(function MarkdownView({ text }: { text: string }) {
+  const html = useMemo(() => renderMarkdown(text), [text]);
+  return <div className="md" dangerouslySetInnerHTML={{ __html: html }} />;
+});
+
+export default function App() {
+  const [config, setConfig] = useState<ConnectionConfig | null>(null);
+  const [health, setHealth] = useState<HealthState>("unknown");
+  const [messages, setMessages] = useState<StoredMessage[]>([]);
+  const [input, setInput] = useState("");
+  const [streaming, setStreaming] = useState(false);
+  // Current-page context is still included in chat silently; the toggle UI was removed.
+  const usePage = true;
+  const [pageCtx, setPageCtx] = useState<PageContext | null>(null);
+  const [targetLang, setTargetLangState] = useState("English");
+  const setTargetLang = useCallback((lang: string) => {
+    setTargetLangState(lang);
+    void chrome.storage.local.set({ "hermes.translateTarget": lang });
+  }, []);
+  const [theme, setThemeState] = useState<Theme>("dark");
+  const setTheme = useCallback((next: Theme) => {
+    setThemeState(next);
+    applyTheme(next);
+    void chrome.storage.local.set({ [THEME_KEY]: next });
+  }, []);
+  const [lang, setLangState] = useState<Lang>("ko");
+  const setLang = useCallback((next: Lang) => {
+    setLangState(next);
+    void chrome.storage.local.set({ [LANG_KEY]: next });
+  }, []);
+  const [translateBusy, setTranslateBusy] = useState(false);
+  const [translateProgress, setTranslateProgress] = useState<{ done: number; total: number } | null>(null);
+  const [translateError, setTranslateError] = useState<string | null>(null);
+  const translateAbortRef = useRef<AbortController | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
+  const listRef = useRef<HTMLDivElement>(null);
+
+  // Refresh page context when tab changes / activates.
+  useEffect(() => {
+    let cancelled = false;
+    const refresh = () => {
+      capturePageContext().then((ctx) => {
+        if (!cancelled) setPageCtx(ctx);
+      });
+    };
+    refresh();
+    const onActivated = () => refresh();
+    const onUpdated = (
+      _tabId: number,
+      changeInfo: chrome.tabs.TabChangeInfo,
+    ) => {
+      if (changeInfo.status === "complete" || changeInfo.title) refresh();
+    };
+    chrome.tabs.onActivated.addListener(onActivated);
+    chrome.tabs.onUpdated.addListener(onUpdated);
+    return () => {
+      cancelled = true;
+      chrome.tabs.onActivated.removeListener(onActivated);
+      chrome.tabs.onUpdated.removeListener(onUpdated);
+    };
+  }, []);
+
+  // Initial load + react to options-page edits.
+  useEffect(() => {
+    let cancelled = false;
+    loadConfig().then((cfg) => {
+      if (!cancelled) setConfig(cfg);
+    });
+    chrome.storage.local.get(["hermes.translateTarget", THEME_KEY, LANG_KEY]).then((r) => {
+      if (cancelled) return;
+      if (typeof r["hermes.translateTarget"] === "string") {
+        setTargetLangState(r["hermes.translateTarget"]);
+      }
+      const stored = r[THEME_KEY];
+      if (stored === "light" || stored === "dark") {
+        setThemeState(stored);
+        applyTheme(stored);
+      }
+      if (isLang(r[LANG_KEY])) setLangState(r[LANG_KEY]);
+    });
+    const onChange = (
+      changes: Record<string, chrome.storage.StorageChange>,
+      area: chrome.storage.AreaName,
+    ) => {
+      if (area !== "local") return;
+      if (changes["hermes.config"]) {
+        loadConfig().then((cfg) => setConfig(cfg));
+      }
+      const nextTheme = changes[THEME_KEY]?.newValue;
+      if (nextTheme === "light" || nextTheme === "dark") {
+        setThemeState(nextTheme);
+        applyTheme(nextTheme);
+      }
+      if (isLang(changes[LANG_KEY]?.newValue)) setLangState(changes[LANG_KEY].newValue);
+    };
+    chrome.storage.onChanged.addListener(onChange);
+    return () => {
+      cancelled = true;
+      chrome.storage.onChanged.removeListener(onChange);
+    };
+  }, []);
+
+  // Probe health when config becomes available and every 15s while idle.
+  useEffect(() => {
+    if (!config) return;
+    let cancelled = false;
+    const probe = () => {
+      // Skip the network round-trip (and the re-render it triggers) while the
+      // panel is hidden — nothing is on screen to update.
+      if (document.visibilityState === "hidden") return;
+      chrome.runtime.sendMessage({ type: "hermes/health" }, (res) => {
+        if (cancelled) return;
+        if (chrome.runtime.lastError) {
+          setHealth("offline");
+          return;
+        }
+        setHealth(res?.ok ? "online" : "offline");
+      });
+    };
+    probe();
+    const id = setInterval(probe, 15_000);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, [config]);
+
+  // Auto-scroll on new content.
+  useEffect(() => {
+    const el = listRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [messages]);
+
+  // Shared streaming turn: shows a user bubble (`displayText`) + a streaming
+  // assistant bubble, and streams `history` from the model. Used by both the
+  // chat box and the one-click skills.
+  const streamTurn = useCallback(
+    async (history: ChatMessage[], displayText: string) => {
+      if (!config || streaming) return;
+      const userMsg = newMessage("user", displayText);
+      const assistantMsg: StoredMessage = { ...newMessage("assistant", ""), toolProgress: [] };
+      setMessages((prev) => [...prev, userMsg, assistantMsg]);
+      setStreaming(true);
+
+      const controller = new AbortController();
+      abortRef.current = controller;
+
+      const updateAssistant = (patch: Partial<StoredMessage>) => {
+        setMessages((prev) => {
+          let idx = -1;
+          for (let k = prev.length - 1; k >= 0; k--) {
+            if (prev[k].id === assistantMsg.id) {
+              idx = k;
+              break;
+            }
+          }
+          if (idx < 0) return prev;
+          const next = [...prev];
+          next[idx] = { ...next[idx], ...patch };
+          return next;
+        });
+      };
+
+      let acc = "";
+      const toolLines: string[] = [];
+      // Coalesce streaming updates to one React update per animation frame.
+      let rafId = 0;
+      let dirty = false;
+      const flush = () => {
+        rafId = 0;
+        if (!dirty) return;
+        dirty = false;
+        updateAssistant({ content: acc, ...(toolLines.length ? { toolProgress: [...toolLines] } : {}) });
+      };
+      const schedule = () => {
+        dirty = true;
+        if (!rafId) rafId = requestAnimationFrame(flush);
+      };
+
+      try {
+        await streamChat(
+          { config, messages: history, signal: controller.signal },
+          {
+            onChunk: (delta) => {
+              acc += delta;
+              schedule();
+            },
+            onToolProgress: (line) => {
+              toolLines.push(line);
+              schedule();
+            },
+            onError: (msg) => updateAssistant({ error: msg }),
+            onDone: () => schedule(),
+          },
+        );
+      } finally {
+        if (rafId) cancelAnimationFrame(rafId);
+        updateAssistant({ content: acc, ...(toolLines.length ? { toolProgress: [...toolLines] } : {}) });
+        abortRef.current = null;
+        setStreaming(false);
+      }
+    },
+    [config, streaming],
+  );
+
+  const send = useCallback(async () => {
+    if (!config || streaming) return;
+    const text = input.trim();
+    if (!text) return;
+    setInput("");
+
+    // Re-capture at send time so the context reflects the page right now.
+    let ctxNow: PageContext | null = pageCtx;
+    if (usePage) {
+      ctxNow = await capturePageContext();
+      setPageCtx(ctxNow);
+    }
+
+    const history: ChatMessage[] = messages.map((m) => ({ role: m.role, content: m.content }));
+    history.push({ role: "user", content: text });
+    if (usePage && ctxNow && !ctxNow.error && (ctxNow.text || ctxNow.selection)) {
+      history.unshift({ role: "system", content: formatContextForPrompt(ctxNow) });
+    }
+    await streamTurn(history, text);
+  }, [config, input, messages, streaming, pageCtx, usePage, streamTurn]);
+
+  // Run a prompt skill: capture the page text and ask the model to act on it.
+  const runPromptSkill = useCallback(
+    async (skill: PromptSkill) => {
+      if (!config || streaming) return;
+      const ctx = await capturePageContext();
+      setPageCtx(ctx);
+      const display = t(lang, `skill.${skill.id}.user`);
+      if (!ctx || ctx.error || !ctx.text.trim()) {
+        setMessages((prev) => [
+          ...prev,
+          newMessage("user", display),
+          { ...newMessage("assistant", ""), error: ctx?.error || t(lang, "noPageText") },
+        ]);
+        return;
+      }
+      await streamTurn(buildSkillMessages(skill, ctx.text), display);
+    },
+    [config, streaming, streamTurn, lang],
+  );
+
+  // Run a local skill entirely in the page (no model) and show the result.
+  const runLocalSkill = useCallback(
+    async (id: "links" | "stats") => {
+      if (streaming) return;
+      const tab = await getActiveTab();
+      if (!tab || tab.id === undefined) return;
+      const fn = id === "links" ? extractLinksInPage : readingStatsInPage;
+      const label = t(lang, id === "links" ? "skill.links.user" : "skill.stats.user");
+      try {
+        const res = await chrome.scripting.executeScript({ target: { tabId: tab.id }, func: fn });
+        const md = (res[0]?.result as string | undefined) ?? t(lang, "noResult");
+        setMessages((prev) => [...prev, newMessage("user", label), newMessage("assistant", md)]);
+      } catch (e) {
+        setMessages((prev) => [
+          ...prev,
+          newMessage("user", label),
+          { ...newMessage("assistant", ""), error: e instanceof Error ? e.message : String(e) },
+        ]);
+      }
+    },
+    [streaming, lang],
+  );
+
+  const stop = useCallback(() => {
+    abortRef.current?.abort();
+  }, []);
+
+  const runTranslate = useCallback(async () => {
+    if (!config || translateBusy) return;
+    setTranslateError(null);
+    setTranslateProgress({ done: 0, total: 0 });
+    const tab = await getActiveTab();
+    if (!tab || tab.id === undefined) {
+      setTranslateError("No active tab");
+      return;
+    }
+    setTranslateBusy(true);
+    const controller = new AbortController();
+    translateAbortRef.current = controller;
+    try {
+      const result = await translatePage({
+        tabId: tab.id,
+        config,
+        targetLang,
+        signal: controller.signal,
+        onProgress: (done, total) => setTranslateProgress({ done, total }),
+        onError: (_i, msg) => setTranslateError(msg),
+      });
+      if (result.chunks === 0) setTranslateError("No translatable text found");
+    } catch (e) {
+      setTranslateError(e instanceof Error ? e.message : String(e));
+    } finally {
+      translateAbortRef.current = null;
+      setTranslateBusy(false);
+    }
+  }, [config, targetLang, translateBusy]);
+
+  const runRestore = useCallback(async () => {
+    const tab = await getActiveTab();
+    if (!tab || tab.id === undefined) return;
+    await restoreOriginals(tab.id);
+    setTranslateProgress(null);
+    setTranslateError(null);
+  }, []);
+
+  const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      void send();
+    }
+  };
+
+  const openOptions = () => chrome.runtime.openOptionsPage();
+
+  return (
+    <div className="app">
+      <div className="topbar">
+        <span className={`status ${health}`}>
+          {health === "online" ? t(lang, "online") : health === "offline" ? t(lang, "offline") : "…"}
+        </span>
+        <span className="tx-label">{t(lang, "translateTo")}</span>
+        <select
+          className="tx-lang"
+          value={targetLang}
+          onChange={(e) => setTargetLang(e.target.value)}
+          disabled={translateBusy}
+        >
+          <option>English</option>
+          <option>Korean</option>
+          <option>Japanese</option>
+          <option>Chinese</option>
+          <option>Spanish</option>
+          <option>French</option>
+          <option>German</option>
+        </select>
+        {translateBusy ? (
+          <button className="tx-go" onClick={() => translateAbortRef.current?.abort()} title={t(lang, "stop")}>
+            {t(lang, "stop")}
+          </button>
+        ) : (
+          <button className="tx-go" onClick={() => void runTranslate()} disabled={!config}>
+            {t(lang, "translate")}
+          </button>
+        )}
+        <button
+          className="tx-restore secondary"
+          onClick={() => void runRestore()}
+          disabled={translateBusy}
+          title={t(lang, "restoreTitle")}
+        >
+          {t(lang, "restore")}
+        </button>
+        <span className="lang-switch">
+          {LANGS.map((l) => (
+            <button
+              key={l.code}
+              className={`lang-btn${lang === l.code ? " active" : ""}`}
+              onClick={() => setLang(l.code)}
+              title={l.code}
+            >
+              {l.label}
+            </button>
+          ))}
+        </span>
+        <button
+          className="icon-btn theme"
+          onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+          title={theme === "dark" ? t(lang, "toLight") : t(lang, "toDark")}
+        >
+          {theme === "dark" ? "☀" : "🌙"}
+        </button>
+        <button className="icon-btn settings" onClick={openOptions} title={t(lang, "settings")}>⚙</button>
+      </div>
+      {(translateProgress || translateError) && (
+        <div className={`tx-status ${translateError ? "err" : ""}`}>
+          {translateError
+            ? `⚠ ${translateError}`
+            : translateProgress
+              ? `${translateProgress.done} / ${translateProgress.total} chunks`
+              : ""}
+        </div>
+      )}
+
+      <div className="skills-bar">
+        {PROMPT_SKILLS.map((s) => (
+          <button
+            key={s.id}
+            className="skill"
+            title={t(lang, `skill.${s.id}.title`)}
+            disabled={!config || streaming}
+            onClick={() => void runPromptSkill(s)}
+          >
+            {t(lang, `skill.${s.id}`)}
+          </button>
+        ))}
+        <button className="skill" title={t(lang, "skill.links.title")} disabled={streaming} onClick={() => void runLocalSkill("links")}>
+          {t(lang, "skill.links")}
+        </button>
+        <button className="skill" title={t(lang, "skill.stats.title")} disabled={streaming} onClick={() => void runLocalSkill("stats")}>
+          {t(lang, "skill.stats")}
+        </button>
+      </div>
+
+      <div className="messages" ref={listRef}>
+        {messages.map((m, idx) => {
+          const isLast = idx === messages.length - 1;
+          const latestProgress =
+            m.toolProgress && m.toolProgress.length > 0
+              ? m.toolProgress[m.toolProgress.length - 1]
+              : "";
+          return (
+            <div key={m.id} className={`bubble ${m.role}${m.error ? " error" : ""}`}>
+              {m.error ? (
+                m.error
+              ) : m.role === "assistant" ? (
+                m.content ? (
+                  streaming && isLast ? (
+                    // Stream as plain text (cheap); format to Markdown once done.
+                    <div className="md md-stream">{m.content}</div>
+                  ) : (
+                    <MarkdownView text={m.content} />
+                  )
+                ) : streaming && isLast ? (
+                  // One-line progress: latest agent/skill step, or a working pulse.
+                  <div className="tool-progress working">{latestProgress || t(lang, "working")}</div>
+                ) : (
+                  ""
+                )
+              ) : (
+                m.content ?? ""
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="input-row">
+        <textarea
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={onKeyDown}
+          placeholder=""
+          rows={1}
+          disabled={streaming || !config}
+        />
+        {streaming ? (
+          <button className="stop" onClick={stop}>{t(lang, "stop")}</button>
+        ) : (
+          <button onClick={() => void send()} disabled={!config || !input.trim()}>{t(lang, "send")}</button>
+        )}
+      </div>
+    </div>
+  );
+}
