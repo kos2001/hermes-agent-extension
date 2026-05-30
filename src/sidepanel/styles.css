@@ -47,8 +47,20 @@ html, body, #root {
   height: 100vh;
 }
 
-/* Single merged control bar (status + translate + theme + settings). */
+/* Top row: status + language selection + settings-related controls. */
 .topbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--panel);
+  font-size: 12px;
+}
+
+/* Second row: page translation controls. */
+.translate-bar {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -81,6 +93,7 @@ html, body, #root {
 }
 .icon-btn:hover { background: var(--panel-2); }
 .icon-btn.settings { font-size: 19px; line-height: 1; padding: 3px 9px; }
+.icon-btn.new-chat { font-size: 16px; line-height: 1; padding: 3px 9px; }
 
 /* Language switcher (한 / EN / 中) — pushed to the right of the bar. */
 .lang-switch {
@@ -150,8 +163,8 @@ html, body, #root {
   white-space: nowrap;
 }
 
-.topbar .tx-label { color: var(--muted); white-space: nowrap; }
-.topbar select {
+.translate-bar .tx-label { color: var(--muted); white-space: nowrap; }
+.translate-bar select {
   background: var(--panel-2);
   color: var(--text);
   border: 1px solid var(--border);
@@ -160,7 +173,7 @@ html, body, #root {
   font: inherit;
   font-size: 12px;
 }
-.topbar .tx-go {
+.translate-bar .tx-go {
   background: var(--accent);
   border: 0;
   color: var(--on-accent);
@@ -170,7 +183,8 @@ html, body, #root {
   cursor: pointer;
   font-size: 12px;
 }
-.topbar .tx-restore {
+.translate-bar .tx-restore {
+  margin-left: auto;
   background: var(--panel-2);
   color: var(--text);
   border: 1px solid var(--border);
@@ -179,7 +193,8 @@ html, body, #root {
   cursor: pointer;
   font-size: 12px;
 }
-.topbar button:disabled { opacity: 0.5; cursor: not-allowed; }
+.topbar button:disabled,
+.translate-bar button:disabled { opacity: 0.5; cursor: not-allowed; }
 
 .skills-bar {
   display: flex;
