@@ -84,3 +84,41 @@ describe("planSort", () => {
     expect(planSort(nodes, "name")).toEqual([]);
   });
 });
+
+import { buildCategorizePrompt, parseCategorization } from "./bookmarks";
+
+describe("buildCategorizePrompt", () => {
+  it("sends only bookmarks, capped at 300, and reports the skipped count", () => {
+    const nodes = Array.from({ length: 305 }, (_, i) => bm(`b${i}`, `https://s${i}.com/`, i));
+    nodes.push(bm("folder", undefined, 1));
+    const { messages, sent, skipped } = buildCategorizePrompt(nodes);
+    expect(sent).toBe(300);
+    expect(skipped).toBe(5);
+    expect(messages[0].role).toBe("system");
+    expect(messages[1].role).toBe("user");
+  });
+});
+
+describe("parseCategorization", () => {
+  const nodes = [
+    bm("a", "https://a.com/", 1, { parentTitle: "Bar" }),
+    bm("b", "https://b.com/", 2, { parentTitle: "News" }),
+  ];
+
+  it("parses an assignments object into move actions", () => {
+    const text = '{"assignments": {"a": "News", "b": "News"}}';
+    const actions = parseCategorization(text, nodes);
+    expect(actions).toHaveLength(1);
+    expect(actions[0]).toMatchObject({ id: "move-a", kind: "move", toFolderPath: "News" });
+  });
+
+  it("extracts JSON from a fenced code block", () => {
+    const text = "Here you go:\n```json\n{\"assignments\":{\"a\":\"Dev\"}}\n```";
+    expect(parseCategorization(text, nodes)).toHaveLength(1);
+  });
+
+  it("ignores unknown ids and returns [] for garbage", () => {
+    expect(parseCategorization('{"assignments":{"zzz":"X"}}', nodes)).toEqual([]);
+    expect(parseCategorization("not json at all", nodes)).toEqual([]);
+  });
+});
