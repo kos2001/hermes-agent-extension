@@ -51,3 +51,36 @@ describe("findDuplicates", () => {
     expect(findDuplicates(nodes)).toEqual([]);
   });
 });
+
+import { planSort } from "./bookmarks";
+
+describe("planSort", () => {
+  it("emits a reorder action only for folders whose order changes", () => {
+    const nodes = [
+      bm("b", "https://b.com/", 200, { index: 0, parentId: "f1", parentTitle: "F1" }),
+      bm("a", "https://a.com/", 100, { index: 1, parentId: "f1", parentTitle: "F1" }),
+      bm("c", "https://c.com/", 300, { index: 0, parentId: "f2", parentTitle: "F2" }),
+    ];
+    const byName = planSort(nodes, "name");
+    expect(byName).toHaveLength(1);
+    expect(byName[0]).toMatchObject({ kind: "reorder", folderId: "f1", orderedIds: ["a", "b"], count: 2 });
+  });
+
+  it("sorts by date added", () => {
+    const nodes = [
+      bm("late", "https://l.com/", 999, { index: 0, parentId: "f1", parentTitle: "F1" }),
+      bm("early", "https://e.com/", 1, { index: 1, parentId: "f1", parentTitle: "F1" }),
+    ];
+    const byDate = planSort(nodes, "date");
+    expect(byDate[0].kind).toBe("reorder");
+    expect((byDate[0] as { orderedIds: string[] }).orderedIds).toEqual(["early", "late"]);
+  });
+
+  it("returns nothing when already sorted", () => {
+    const nodes = [
+      bm("a", "https://a.com/", 100, { index: 0, parentId: "f1", parentTitle: "F1" }),
+      bm("b", "https://b.com/", 200, { index: 1, parentId: "f1", parentTitle: "F1" }),
+    ];
+    expect(planSort(nodes, "name")).toEqual([]);
+  });
+});

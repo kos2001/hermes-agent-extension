@@ -63,3 +63,33 @@ export function findDuplicates(nodes: BookmarkNode[]): Action[] {
   }
   return actions;
 }
+
+/** Per folder, propose reordering bookmarks by name or date (only if changed). */
+export function planSort(nodes: BookmarkNode[], key: "name" | "date"): Action[] {
+  const byFolder = new Map<string, BookmarkNode[]>();
+  for (const n of nodes) {
+    if (!n.url || !n.parentId) continue;
+    const arr = byFolder.get(n.parentId);
+    if (arr) arr.push(n);
+    else byFolder.set(n.parentId, [n]);
+  }
+  const actions: Action[] = [];
+  for (const [folderId, arr] of byFolder) {
+    const current = [...arr].sort((a, b) => a.index - b.index);
+    const sorted = [...current].sort((a, b) =>
+      key === "name" ? a.title.localeCompare(b.title) : a.dateAdded - b.dateAdded,
+    );
+    const currentIds = current.map((n) => n.id);
+    const sortedIds = sorted.map((n) => n.id);
+    if (currentIds.join(" ") === sortedIds.join(" ")) continue;
+    actions.push({
+      id: `reorder-${folderId}`,
+      kind: "reorder",
+      folderId,
+      folderTitle: current[0]?.parentTitle ?? folderId,
+      orderedIds: sortedIds,
+      count: sortedIds.length,
+    });
+  }
+  return actions;
+}
