@@ -13,6 +13,7 @@
     "package": "npm run build && cd dist && rm -f ../hermes-agent-extension.zip && zip -rq ../hermes-agent-extension.zip . -x '*.map'"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.106.2",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
   },
