@@ -28,7 +28,7 @@ export const PROMPT_SKILLS: PromptSkill[] = [
     title: "이 페이지 요약",
     system:
       "You are a concise assistant. Summarize the web page below in 3–5 sentences, " +
-      "capturing its main points. Reply in the same language as the page content.",
+      "capturing its main points.",
     userText: "이 페이지를 요약해줘",
   },
   {
@@ -37,7 +37,7 @@ export const PROMPT_SKILLS: PromptSkill[] = [
     title: "핵심 포인트 추출",
     system:
       "Extract the key points of the web page below as a short Markdown bullet list " +
-      "(max 7 bullets). Reply in the same language as the page content.",
+      "(max 7 bullets).",
     userText: "핵심 포인트를 정리해줘",
   },
   {
@@ -46,7 +46,7 @@ export const PROMPT_SKILLS: PromptSkill[] = [
     title: "쉽게 설명",
     system:
       "Explain what the web page below is about in simple, plain language a beginner " +
-      "can understand. Reply in the same language as the page content.",
+      "can understand.",
     userText: "이 페이지를 쉽게 설명해줘",
   },
 ];
