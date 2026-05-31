@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
+  type BookmarkNode,
   buildCategorizePrompt,
   buildCleanupPrompt,
   canonicalUrl,
   findDuplicates,
   isDeadStatus,
+  listFolderChoices,
   parseCategorization,
   parseCleanupRemovals,
 } from "./bookmarks";
@@ -144,37 +146,55 @@ describe("buildCategorizePrompt", () => {
   });
 });
 
-describe("parseCategorization", () => {
+function folder(id: string, title: string, parentId?: string): BookmarkNode {
+  return { id, title, url: undefined, parentId, parentTitle: "", dateAdded: 0, index: 0 };
+}
+
+describe("listFolderChoices", () => {
+  it("lists folders with full paths and skips bookmarks", () => {
+    const nodes = [
+      folder("1", "Bookmarks bar"),
+      folder("f1", "Tech", "1"),
+      bm("a", "https://a.com/", 1, { parentId: "f1" }),
+    ];
+    expect(listFolderChoices(nodes)).toEqual([
+      { id: "1", title: "Bookmarks bar", path: "Bookmarks bar" },
+      { id: "f1", title: "Tech", path: "Bookmarks bar/Tech" },
+    ]);
+  });
+});
+
+describe("parseCategorization (into existing folders)", () => {
   const nodes = [
-    bm("a", "https://a.com/", 1, { parentTitle: "Bar" }),
-    bm("b", "https://b.com/", 2, { parentTitle: "News" }),
+    folder("1", "Bookmarks bar"),
+    folder("fNews", "News", "1"),
+    folder("fDev", "Dev", "1"),
+    bm("a", "https://a.com/", 1, { parentId: "1" }),
+    bm("b", "https://b.com/", 2, { parentId: "fNews" }),
   ];
 
-  it("parses an assignments object into move actions", () => {
-    const text = '{"assignments": {"a": "News", "b": "News"}}';
+  it("assigns by existing folderId, targeting the real folder", () => {
+    const text = '{"assignments":[{"id":"a","folderId":"fNews","reason":"news site"}]}';
     const actions = parseCategorization(text, nodes);
     expect(actions).toHaveLength(1);
-    expect(actions[0]).toMatchObject({ id: "move-a", kind: "move", toFolderPath: "News" });
+    expect(actions[0]).toMatchObject({ id: "move-a", kind: "move", toFolderId: "fNews", toFolderPath: "Bookmarks bar/News", note: "news site" });
   });
 
-  it("skips bookmarks already in the target folder", () => {
-    // b.parentTitle === "News", so assigning it to "News" yields no action.
-    expect(parseCategorization('{"assignments": {"b": "News"}}', nodes)).toEqual([]);
+  it("resolves a folder name/path to the existing folder (legacy map form)", () => {
+    expect(parseCategorization('{"assignments":{"a":"News"}}', nodes)[0]).toMatchObject({ toFolderId: "fNews" });
   });
 
-  it("extracts JSON from a fenced code block", () => {
-    const text = "Here you go:\n```json\n{\"assignments\":{\"a\":\"Dev\"}}\n```";
-    expect(parseCategorization(text, nodes)).toHaveLength(1);
+  it("drops assignments to non-existent folders (never invents)", () => {
+    expect(parseCategorization('{"assignments":[{"id":"a","folder":"Recipes"}]}', nodes)).toEqual([]);
+    expect(parseCategorization('{"assignments":[{"id":"a","folderId":"zzz"}]}', nodes)).toEqual([]);
   });
 
-  it("ignores unknown ids and returns [] for garbage", () => {
-    expect(parseCategorization('{"assignments":{"zzz":"X"}}', nodes)).toEqual([]);
-    expect(parseCategorization("not json at all", nodes)).toEqual([]);
+  it("skips a bookmark already in the target folder", () => {
+    expect(parseCategorization('{"assignments":[{"id":"b","folderId":"fNews"}]}', nodes)).toEqual([]);
   });
 
-  it("parses the array form and carries the per-item reason as note", () => {
-    const text = '{"assignments":[{"id":"a","folder":"News","reason":"tech news site"}]}';
-    const actions = parseCategorization(text, nodes);
-    expect(actions[0]).toMatchObject({ id: "move-a", toFolderPath: "News", note: "tech news site" });
+  it("extracts JSON from a fenced block and returns [] for garbage", () => {
+    expect(parseCategorization("```json\n{\"assignments\":[{\"id\":\"a\",\"folderId\":\"fDev\"}]}\n```", nodes)).toHaveLength(1);
+    expect(parseCategorization("not json", nodes)).toEqual([]);
   });
 });
