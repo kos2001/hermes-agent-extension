@@ -24,32 +24,55 @@ export type Action =
   | { id: string; kind: "remove"; bmId: string; title: string; url: string; reason: RemoveReason }
   | { id: string; kind: "move"; bmId: string; title: string; url: string; toFolderPath: string };
 
+/** Query params that only track/attribute and never change the destination. */
+const TRACKING_PARAMS = new Set([
+  "gclid", "fbclid", "msclkid", "yclid", "dclid", "gclsrc", "gbraid", "wbraid",
+  "mc_eid", "mc_cid", "igshid", "igsh", "ref", "ref_src", "ref_url", "referrer",
+  "source", "spm", "scm", "vero_id", "vero_conv", "_hsenc", "_hsmi", "_openstat",
+  "oly_anon_id", "oly_enc_id", "cmpid", "ncid", "sr_share", "s_kwcid",
+]);
+
 /**
- * Canonical form of a URL for duplicate detection: lowercase protocol+host,
- * no fragment, no trailing slash (except root), lone "?" dropped. Non-URLs
- * fall back to a trimmed lowercase string.
+ * Canonical form of a URL for *semantic* duplicate detection. Beyond basic
+ * normalization it folds together URLs that point at the same resource:
  *
- * NOTE: query-parameter ORDER is preserved as-is — two URLs that differ only
- * in the order of their query params are NOT treated as duplicates.
+ * - scheme-agnostic (http ≡ https) and `www.` stripped from the host
+ * - fragment removed; trailing slash removed (except root)
+ * - default documents (`/index.html`, `/default.aspx`, …) collapsed to `/`
+ * - tracking/attribution params (utm_*, gclid, fbclid, ref, …) removed
+ * - remaining query params sorted, so param ORDER no longer matters
+ * - lowercased throughout
+ *
+ * Non-URLs fall back to a trimmed lowercase string.
  */
-export function normalizeUrl(raw: string): string {
+export function canonicalUrl(raw: string): string {
   try {
     const u = new URL(raw.trim());
-    let path = u.pathname;
+    const isWeb = u.protocol === "http:" || u.protocol === "https:";
+    const scheme = isWeb ? "" : `${u.protocol}//`;
+    const host = u.host.toLowerCase().replace(/^www\./, "");
+    let path = u.pathname.replace(/\/(?:index|default|home)\.(?:html?|php|aspx?|jsp)$/i, "/");
     if (path.length > 1 && path.endsWith("/")) path = path.slice(0, -1);
-    const search = u.search === "?" ? "" : u.search;
-    return `${u.protocol}//${u.host}${path}${search}`.toLowerCase();
+    const params = [...u.searchParams.entries()]
+      .filter(([k]) => !TRACKING_PARAMS.has(k.toLowerCase()) && !/^utm_/i.test(k))
+      .sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0));
+    const search = params.length ? "?" + params.map(([k, v]) => `${k}=${v}`).join("&") : "";
+    return `${scheme}${host}${path}${search}`.toLowerCase();
   } catch {
     return raw.trim().toLowerCase();
   }
 }
 
-/** Group by normalized URL; keep the oldest, propose removing the rest. */
+/**
+ * Group by canonical URL (semantic duplicates: www/scheme/tracking-param/
+ * param-order variants collapse together); keep the oldest, propose removing
+ * the rest.
+ */
 export function findDuplicates(nodes: BookmarkNode[]): Action[] {
   const groups = new Map<string, BookmarkNode[]>();
   for (const n of nodes) {
     if (!n.url) continue;
-    const key = normalizeUrl(n.url);
+    const key = canonicalUrl(n.url);
     const arr = groups.get(key);
     if (arr) arr.push(n);
     else groups.set(key, [n]);
