@@ -19,6 +19,9 @@ import {
   type SelectionResponse,
 } from "@/lib/selection-actions";
 import { loadConfig } from "@/lib/storage";
+import { loadBookmarks } from "@/lib/bookmarks";
+import { loadMarketSettings, MARKET_ALARM, runMarketReport, saveReport } from "@/lib/market-report";
+import { isLang, LANG_KEY } from "@/lib/i18n";
 
 /** Post a message to a port, ignoring failures from a closed port. */
 function safePost(port: chrome.runtime.Port, msg: SelectionResponse): void {
@@ -110,4 +113,30 @@ chrome.runtime.onMessage.addListener((msg: BgMessage, _sender, sendResponse) => 
     return false;
   }
   return false;
+});
+
+/** Run the scheduled market report and notify on completion. */
+async function runScheduledMarketReport(): Promise<void> {
+  const settings = await loadMarketSettings();
+  if (settings.freq === "off" || !settings.folderId) return;
+  const config = await loadConfig();
+  const nodes = await loadBookmarks();
+  const folder = nodes.find((n) => n.id === settings.folderId && !n.url);
+  const folderTitle = folder?.title || settings.folderId;
+  // Match the report language to the user's selected UI language.
+  const storedLang = (await chrome.storage.local.get(LANG_KEY))[LANG_KEY];
+  const lang = isLang(storedLang) ? storedLang : "ko";
+  const report = await runMarketReport({ nodes, folderId: settings.folderId, folderTitle, config, lang });
+  await saveReport(report);
+  const ok = report.sites.filter((s) => !s.error).length;
+  chrome.notifications.create({
+    type: "basic",
+    iconUrl: "icons/icon-128.png",
+    title: "Market report ready",
+    message: `${folderTitle}: ${ok}/${report.sites.length} sites summarized`,
+  });
+}
+
+chrome.alarms.onAlarm.addListener((alarm) => {
+  if (alarm.name === MARKET_ALARM) void runScheduledMarketReport();
 });
