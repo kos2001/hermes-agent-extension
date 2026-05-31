@@ -43,31 +43,102 @@ export function buildSelectionMessages(
   action: SelectionActionKey,
   text: string,
   targetLang: string,
+  context?: string,
 ): ChatMessage[] {
-  const system = SYSTEM_PROMPTS[action](targetLang);
+  const system = action === "explain" ? explainSystem(text, context) : SYSTEM_PROMPTS[action](targetLang);
   return [
     { role: "system", content: system },
     { role: "user", content: text },
   ];
 }
 
+/**
+ * Is the selection a bare abbreviation/acronym (so Explain should lean on the
+ * surrounding text)? True for all-caps tokens (API, FDE), caps+digit (MV3,
+ * H2O), or dotted forms (e.g., i.e.) — but NOT ordinary Capitalized words.
+ */
+export function isAbbreviation(text: string): boolean {
+  const t = text.trim();
+  if (!t || /\s/.test(t) || t.length > 12 || !/[A-Za-z]/.test(t)) return false;
+  const letters = t.replace(/[^A-Za-z]/g, "");
+  const uppers = t.replace(/[^A-Z]/g, "").length;
+  const allCaps = letters.length > 0 && uppers === letters.length;
+  const dotted = /\w\.\w/.test(t) || /[A-Za-z]\.$/.test(t);
+  const capsWithDigit = /[A-Z]/.test(t) && /\d/.test(t);
+  return allCaps || dotted || capsWithDigit;
+}
+
+const BASE_EXPLAIN =
+  "Provide a clear explanation of the user's text. Clarify any complex terms or " +
+  "ideas, give relevant background, and discuss the significance or implications " +
+  "of the content so that someone with little prior knowledge can understand it.";
+
+/** Explain prompt — context-aware for bare abbreviations. */
+function explainSystem(text: string, context?: string): string {
+  if (context && context.trim() && isAbbreviation(text)) {
+    return (
+      `The user selected the abbreviation/acronym "${text}" on a web page. Use the ` +
+      "surrounding text below to infer what it stands for in THIS context, then " +
+      "explain it clearly and briefly. If the surrounding text does not make its " +
+      `meaning clear, DO NOT guess — say you are not sure what "${text}" means here ` +
+      "and ask the user to clarify (e.g. the full term or the topic).\n\n" +
+      `Surrounding text:\n"""${context.trim()}"""`
+    );
+  }
+  return BASE_EXPLAIN;
+}
+
 const SYSTEM_PROMPTS: Record<SelectionActionKey, (targetLang: string) => string> = {
   translate: (lang) =>
-    `Translate the user's text into ${lang}. Maintain the tone and style of the ` +
-    "original text as much as possible. Return ONLY the translation — no quotes, " +
-    "no explanations, no source-language label.",
+    `Translate the user's text into ${lang}. If the text is ALREADY written in ` +
+    `${lang}, return it unchanged — do not translate or rephrase it. Maintain the ` +
+    "tone and style of the original text as much as possible. Return ONLY the " +
+    "translation — no quotes, no explanations, no source-language label.",
   summary: () =>
     "Provide a concise summary of the user's text, capturing its main ideas and " +
     "key points. Summarize in no more than 3-4 sentences. Return only the summary.",
-  explain: () =>
-    "Provide a clear explanation of the user's text. Clarify any complex terms or " +
-    "ideas, give relevant background, and discuss the significance or implications " +
-    "of the content so that someone with little prior knowledge can understand it.",
+  explain: () => BASE_EXPLAIN,
   rephrase: () =>
     "Rewrite the user's text in a different way, preserving its original meaning " +
     "but using alternative vocabulary and sentence structures. Return ONLY the " +
     "rephrased text.",
 };
+
+/**
+ * Detect the dominant writing script of `text`. Hangul → ko, kana → ja,
+ * Han (without kana) → zh, ASCII/Latin letters → latin, else "other".
+ * Checked in order so Japanese (kana + kanji) isn't misread as Chinese.
+ */
+export function detectScript(text: string): "ko" | "ja" | "zh" | "latin" | "other" {
+  if (/[가-힣ᄀ-ᇿ㄰-㆏]/.test(text)) return "ko";
+  if (/[぀-ゟ゠-ヿ]/.test(text)) return "ja";
+  if (/[一-鿿㐀-䶿]/.test(text)) return "zh";
+  if (/[A-Za-z]/.test(text)) return "latin";
+  return "other";
+}
+
+const LANG_SCRIPT: Record<string, "ko" | "ja" | "zh" | "latin"> = {
+  Korean: "ko",
+  Japanese: "ja",
+  Chinese: "zh",
+  English: "latin",
+  Spanish: "latin",
+  French: "latin",
+  German: "latin",
+};
+
+/**
+ * Whether `text` is confidently already in `targetLang`, so a mouse-triggered
+ * translation should be skipped. Only returns true for the unambiguous CJK
+ * scripts — Latin-script languages (English/Spanish/French/German) can't be
+ * distinguished by script, so those are left to the model's "return unchanged
+ * if already in the target language" instruction.
+ */
+export function isSameLanguage(text: string, targetLang: string): boolean {
+  const target = LANG_SCRIPT[targetLang];
+  if (target === "ko" || target === "ja" || target === "zh") return detectScript(text) === target;
+  return false;
+}
 
 const TRANSLATE_TARGET_KEY = "hermes.translateTarget";
 
@@ -97,6 +168,8 @@ export interface SelectionRequest {
   text: string;
   /** Target language for the Translate action; falls back to the stored target. */
   targetLang?: string;
+  /** Surrounding page text — used by Explain to disambiguate abbreviations. */
+  context?: string;
 }
 
 /** Messages the service worker streams back over the port. */

@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, memo, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { streamChat } from "@/lib/hermes-client";
 import { renderMarkdown } from "@/lib/markdown";
 import type { ChatMessage, ConnectionConfig, StoredMessage } from "@/lib/types";
@@ -13,8 +13,10 @@ import { restoreOriginals, translatePage } from "@/lib/translator";
 import { buildSkillMessages, PROMPT_SKILLS, type PromptSkill } from "@/lib/skills";
 import { isLang, LANG_KEY, LANGS, t, type Lang } from "@/lib/i18n";
 import { isEnterSubmit } from "@/lib/keyboard";
-import BookmarksView from "./BookmarksView";
-import MarketReportView from "./MarketReportView";
+// Lazy-loaded: keep the bookmark/market views and their AI modules out of the
+// initial (chat) bundle — they load only when the user opens those views.
+const BookmarksView = lazy(() => import("./BookmarksView"));
+const MarketReportView = lazy(() => import("./MarketReportView"));
 
 /** Local skill (runs in the page): list unique http links as a Markdown list. */
 function extractLinksInPage(): string {
@@ -401,7 +403,7 @@ export default function App() {
     <div className="app">
       {/* Top row: online status + language selection + settings-related controls. */}
       <div className="topbar">
-        <span className={`status ${health}`}>
+        <span className={`status ${health}`} title={t(lang, "statusTitle")}>
           {health === "online" ? t(lang, "online") : health === "offline" ? t(lang, "offline") : "…"}
         </span>
         <span className="lang-switch">
@@ -410,7 +412,7 @@ export default function App() {
               key={l.code}
               className={`lang-btn${lang === l.code ? " active" : ""}`}
               onClick={() => setLang(l.code)}
-              title={l.code}
+              title={t(lang, "switchLang").replace("{name}", l.name)}
             >
               {l.label}
             </button>
@@ -422,6 +424,13 @@ export default function App() {
           title={theme === "dark" ? t(lang, "toLight") : t(lang, "toDark")}
         >
           {theme === "dark" ? "☀" : "🌙"}
+        </button>
+        <button
+          className={`icon-btn home${view === "chat" ? " active" : ""}`}
+          onClick={() => setView("chat")}
+          title={t(lang, "home")}
+        >
+          🏠
         </button>
         <button
           className={`icon-btn market${view === "market" ? " active" : ""}`}
@@ -456,6 +465,7 @@ export default function App() {
           value={targetLang}
           onChange={(e) => setTargetLang(e.target.value)}
           disabled={translateBusy}
+          title={t(lang, "translateLangTitle")}
         >
           <option>English</option>
           <option>Korean</option>
@@ -470,7 +480,7 @@ export default function App() {
             {t(lang, "stop")}
           </button>
         ) : (
-          <button className="tx-go" onClick={() => void runTranslate()} disabled={!config}>
+          <button className="tx-go" onClick={() => void runTranslate()} disabled={!config} title={t(lang, "translateTitle")}>
             {t(lang, "translate")}
           </button>
         )}
@@ -494,9 +504,13 @@ export default function App() {
       )}
 
       {view === "bookmarks" ? (
-        <BookmarksView config={config} lang={lang} />
+        <Suspense fallback={<div className="bm-status">…</div>}>
+          <BookmarksView config={config} lang={lang} />
+        </Suspense>
       ) : view === "market" ? (
-        <MarketReportView config={config} lang={lang} onReport={appendReport} />
+        <Suspense fallback={<div className="mr-status">…</div>}>
+          <MarketReportView config={config} lang={lang} onReport={appendReport} />
+        </Suspense>
       ) : (
         <>
       <div className="skills-bar">

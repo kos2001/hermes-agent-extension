@@ -8,6 +8,8 @@ import {
   type MarketReport,
   type MarketSettings,
   type ScheduleFreq,
+  DEFAULT_MARKET_SETTINGS,
+  downloadReport,
   listFolders,
   loadMarketSettings,
   loadReports,
@@ -30,11 +32,12 @@ export default function MarketReportView({
 }) {
   const [nodes, setNodes] = useState<BookmarkNode[]>([]);
   const [folders, setFolders] = useState<FolderInfo[]>([]);
-  const [settings, setSettings] = useState<MarketSettings>({ folderId: "", freq: "off", hour: 9 });
+  const [settings, setSettings] = useState<MarketSettings>(DEFAULT_MARKET_SETTINGS);
   const [reports, setReports] = useState<MarketReport[]>([]);
   const [running, setRunning] = useState(false);
   const [progress, setProgress] = useState<{ done: number; total: number; label: string } | null>(null);
   const [error, setError] = useState("");
+  const [saved, setSaved] = useState("");
   const abortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
@@ -92,6 +95,19 @@ export default function MarketReportView({
   const latest = reports[0];
   const latestHtml = useMemo(() => (latest?.synthesis ? renderMarkdown(latest.synthesis) : ""), [latest]);
 
+  // Save the latest report to the local Downloads/<saveFolder> directory.
+  const saveLatest = useCallback(async () => {
+    if (!latest) return;
+    setSaved("");
+    setError("");
+    try {
+      await downloadReport(latest, settings.saveFolder, false);
+      setSaved(t(lang, "mr.saved").replace("{folder}", settings.saveFolder || "Downloads"));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  }, [latest, settings.saveFolder, lang]);
+
   return (
     <div className="mr-view">
       <div className="mr-controls">
@@ -134,6 +150,25 @@ export default function MarketReportView({
             </select>
           </label>
         )}
+        <label className="mr-field">
+          <span>{t(lang, "mr.saveFolder")}</span>
+          <input
+            type="text"
+            value={settings.saveFolder}
+            onChange={(e) => persist({ ...settings, saveFolder: e.target.value })}
+            placeholder="market-reports"
+            disabled={running}
+          />
+        </label>
+        <label className="mr-field mr-check">
+          <input
+            type="checkbox"
+            checked={settings.autoSave}
+            onChange={(e) => persist({ ...settings, autoSave: e.target.checked })}
+            disabled={running}
+          />
+          <span>{t(lang, "mr.autoSave")}</span>
+        </label>
         {running ? (
           <button className="tx-restore" onClick={() => abortRef.current?.abort()}>{t(lang, "stop")}</button>
         ) : (
@@ -145,6 +180,7 @@ export default function MarketReportView({
 
       {folders.length === 0 && <div className="mr-status">{t(lang, "mr.noFolder")}</div>}
       {error && <div className="mr-status err">⚠ {error}</div>}
+      {saved && <div className="mr-status">✓ {saved}</div>}
       {running && progress && (
         <div className="mr-status">
           {t(lang, "mr.running")} {progress.done}/{progress.total} {progress.label}
@@ -155,7 +191,12 @@ export default function MarketReportView({
         {!latest && !running && <div className="mr-empty">{t(lang, "mr.empty")}</div>}
         {latest && (
           <>
-            <div className="mr-section-title">{t(lang, "mr.latest")} — {latest.folderTitle}</div>
+            <div className="mr-latest-head">
+              <span className="mr-section-title">{t(lang, "mr.latest")} — {latest.folderTitle}</span>
+              <button className="tx-restore mr-save" onClick={() => void saveLatest()}>
+                {t(lang, "mr.save")}
+              </button>
+            </div>
             {latest.skipped > 0 && (
               <div className="mr-status">{t(lang, "mr.skipped").replace("{n}", String(latest.skipped))}</div>
             )}

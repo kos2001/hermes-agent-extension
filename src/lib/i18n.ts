@@ -10,11 +10,11 @@ export type Lang = "ko" | "en" | "zh";
 
 export const LANG_KEY = "hermes.lang";
 
-/** Buttons shown in the language switcher. */
-export const LANGS: { code: Lang; label: string }[] = [
-  { code: "ko", label: "한" },
-  { code: "en", label: "EN" },
-  { code: "zh", label: "中" },
+/** Buttons shown in the language switcher (`name` is the hover description). */
+export const LANGS: { code: Lang; label: string; name: string }[] = [
+  { code: "ko", label: "한", name: "한국어" },
+  { code: "en", label: "EN", name: "English" },
+  { code: "zh", label: "中", name: "中文" },
 ];
 
 type Entry = Record<Lang, string>;
@@ -22,8 +22,12 @@ type Entry = Record<Lang, string>;
 const STR: Record<string, Entry> = {
   online: { ko: "● 온라인", en: "● online", zh: "● 在线" },
   offline: { ko: "● 오프라인", en: "● offline", zh: "● 离线" },
+  statusTitle: { ko: "Hermes 서버 연결 상태", en: "Hermes server connection status", zh: "Hermes 服务器连接状态" },
+  switchLang: { ko: "UI 언어: {name}", en: "UI language: {name}", zh: "界面语言：{name}" },
   translateTo: { ko: "번역 →", en: "Translate →", zh: "翻译 →" },
   translate: { ko: "번역", en: "Translate", zh: "翻译" },
+  translateTitle: { ko: "현재 페이지를 선택한 언어로 번역", en: "Translate the current page into the selected language", zh: "将当前页面翻译为所选语言" },
+  translateLangTitle: { ko: "번역 대상 언어 선택", en: "Choose the target language", zh: "选择目标语言" },
   translating: { ko: "번역 중…", en: "Translating…", zh: "翻译中…" },
   stop: { ko: "중지", en: "Stop", zh: "停止" },
   restore: { ko: "원복", en: "Restore", zh: "还原" },
@@ -40,8 +44,12 @@ const STR: Record<string, Entry> = {
   backToChat: { ko: "채팅으로", en: "Back to chat", zh: "返回聊天" },
   "bm.dedup": { ko: "중복 제거", en: "Duplicates", zh: "去重" },
   "bm.dead": { ko: "깨진 링크", en: "Dead links", zh: "失效链接" },
-  "bm.sortName": { ko: "이름순 정렬", en: "Sort by name", zh: "按名称排序" },
-  "bm.sortDate": { ko: "날짜순 정렬", en: "Sort by date", zh: "按日期排序" },
+  "bm.aiClean": { ko: "AI 정리", en: "AI cleanup", zh: "AI 清理" },
+  "bm.aiClean.title": { ko: "AI로 중복·깨진·의미 없는 링크 찾기", en: "Find duplicate, dead, and low-value links with AI", zh: "用 AI 查找重复、失效和无意义的链接" },
+  "bm.cleaning": { ko: "AI 정리 분석 중…", en: "Analyzing for cleanup…", zh: "正在分析清理…" },
+  "bm.aiDup": { ko: "AI 중복", en: "AI dupes", zh: "AI 去重" },
+  "bm.aiDup.title": { ko: "제목·앞 문장으로 내용이 같은 중복 페이지 찾기 (AMP·단축·타도메인 등)", en: "Find same-content duplicate pages by title + first sentences (AMP, shortened, cross-domain)", zh: "按标题和前几句查找内容相同的重复页面（AMP、短链、跨域）" },
+  "bm.dupAnalyzing": { ko: "의미 중복 분석 중…", en: "Analyzing for duplicates…", zh: "正在分析重复…" },
   "bm.ai": { ko: "AI 자동 분류", en: "AI categorize", zh: "AI 分类" },
   "bm.empty": { ko: "작업을 선택하면 변경 미리보기가 여기에 표시됩니다.", en: "Pick an operation to preview changes here.", zh: "选择一项操作以在此预览更改。" },
   "bm.apply": { ko: "적용", en: "Apply", zh: "应用" },
@@ -53,7 +61,17 @@ const STR: Record<string, Entry> = {
   "bm.aiSkipped": { ko: "{n}개는 한도 초과로 건너뜀", en: "{n} skipped (over the limit)", zh: "{n} 项因超出上限被跳过" },
   "bm.tagDup": { ko: "중복", en: "duplicate", zh: "重复" },
   "bm.tagDead": { ko: "깨진 링크", en: "dead link", zh: "失效" },
+  "bm.tagJunk": { ko: "의미 없음", en: "low-value", zh: "无意义" },
+  "bm.whyDup": { ko: "정규화 URL이 동일", en: "same canonical URL", zh: "规范化 URL 相同" },
+  "bm.whyDead": { ko: "응답 없음 (404/네트워크 실패)", en: "no response (404 / network failure)", zh: "无响应（404/网络失败）" },
+  "bm.whyJunk": { ko: "저가치 링크", en: "low-value link", zh: "低价值链接" },
+  "bm.selectAll": { ko: "전체 선택", en: "Select all", zh: "全选" },
+  "bm.selectNone": { ko: "전체 해제", en: "Clear all", zh: "全部取消" },
+  "bm.open": { ko: "사이트 열기", en: "Open site", zh: "打开网站" },
+  "bm.openSelected": { ko: "선택 항목 열기", en: "Open selected", zh: "打开所选" },
+  "bm.confirmOpen": { ko: "{n}개 사이트를 새 탭으로 엽니다. 계속할까요?", en: "Open {n} sites in new tabs?", zh: "在新标签页打开 {n} 个网站？" },
   // Market-trends report
+  home: { ko: "홈 (채팅)", en: "Home (chat)", zh: "主页（聊天）" },
   market: { ko: "시장 동향", en: "Market", zh: "市场动向" },
   marketTitle: { ko: "시장 동향 보고서", en: "Market-trends report", zh: "市场动向报告" },
   "mr.folder": { ko: "폴더", en: "Folder", zh: "文件夹" },
@@ -72,6 +90,10 @@ const STR: Record<string, Entry> = {
   "mr.noFolder": { ko: "북마크가 있는 폴더가 없습니다.", en: "No folders with bookmarks found.", zh: "未找到含书签的文件夹。" },
   "mr.skipped": { ko: "{n}개 사이트는 상한(20)으로 제외됨", en: "{n} sites skipped (cap 20)", zh: "{n} 个站点因上限(20)被跳过" },
   "mr.siteError": { ko: "수집 실패", en: "fetch failed", zh: "抓取失败" },
+  "mr.saveFolder": { ko: "저장 폴더", en: "Save folder", zh: "保存文件夹" },
+  "mr.autoSave": { ko: "자동 저장", en: "Auto-save", zh: "自动保存" },
+  "mr.save": { ko: "저장", en: "Save", zh: "保存" },
+  "mr.saved": { ko: "다운로드 폴더 '{folder}'에 저장됨", en: "Saved to Downloads/{folder}", zh: "已保存到 下载/{folder}" },
   working: { ko: "● 작업 중…", en: "● Working…", zh: "● 处理中…" },
   inputPlaceholder: { ko: "메시지 입력…", en: "Message…", zh: "输入消息…" },
   noPageText: { ko: "페이지 내용을 읽을 수 없습니다.", en: "Could not read the page content.", zh: "无法读取页面内容。" },
