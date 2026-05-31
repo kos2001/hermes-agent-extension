@@ -4,9 +4,20 @@ import {
   buildCleanupPrompt,
   canonicalUrl,
   findDuplicates,
+  isDeadStatus,
   parseCategorization,
   parseCleanupRemovals,
 } from "./bookmarks";
+
+describe("isDeadStatus", () => {
+  it("flags only the canonical gone statuses", () => {
+    expect(isDeadStatus(404)).toBe(true);
+    expect(isDeadStatus(410)).toBe(true);
+  });
+  it("does not flag blocked/auth/server-error/ok statuses", () => {
+    for (const s of [200, 301, 401, 403, 429, 500, 503]) expect(isDeadStatus(s)).toBe(false);
+  });
+});
 
 describe("canonicalUrl", () => {
   it("lowercases, drops the fragment, and is scheme-agnostic", () => {

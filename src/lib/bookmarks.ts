@@ -266,43 +266,74 @@ export async function applyActions(actions: Action[]): Promise<{ applied: number
 export interface DeadLinkOpts {
   concurrency?: number;
   signal?: AbortSignal;
+  /** Per-request timeout in ms (default 8000). */
+  timeoutMs?: number;
   onProgress?: (done: number, total: number) => void;
 }
 
 /**
- * Fetch each http(s) bookmark and flag dead ones (status >= 400 or network
- * failure). Concurrency-limited, abortable, 8s per-URL timeout. Individual
- * failures never abort the whole run. A user abort is NOT counted as dead.
+ * Whether an HTTP status confidently means the page is gone. Only the canonical
+ * "gone" statuses count — so we never propose deleting bookmarks that merely
+ * block bots (403/429), require auth (401), or are temporarily erroring (5xx).
+ */
+export function isDeadStatus(status: number): boolean {
+  return status === 404 || status === 410;
+}
+
+interface ProbeResult {
+  status: number;
+  timedOut: boolean;
+  netErr: boolean;
+}
+
+/**
+ * Fetch each http(s) bookmark and flag dead ones. A link is "dead" only when it
+ * is confidently gone: a 404/410 status, or a hard network failure (DNS /
+ * connection refused) that persists through a GET retry. Slow links that time
+ * out are treated as UNCERTAIN and never flagged, so a sluggish server doesn't
+ * get a bookmark deleted. HEAD is tried first (cheap); a 403/405/network result
+ * retries with GET (some servers reject HEAD or block bots on it).
+ * Concurrency-limited, abortable; a user abort is never counted as dead.
  */
 export async function checkDeadLinks(nodes: BookmarkNode[], opts: DeadLinkOpts = {}): Promise<Action[]> {
   const concurrency = opts.concurrency ?? 6;
+  const timeoutMs = opts.timeoutMs ?? 8000;
   const targets = nodes.filter((n) => n.url && /^https?:/i.test(n.url));
   const total = targets.length;
   let done = 0;
   const actions: Action[] = [];
 
-  const isDead = async (n: BookmarkNode): Promise<boolean> => {
+  const probe = async (url: string, method: "HEAD" | "GET"): Promise<ProbeResult> => {
     const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), 8000);
+    let timedOut = false;
+    const timer = setTimeout(() => {
+      timedOut = true;
+      ctrl.abort();
+    }, timeoutMs);
     const onAbort = () => ctrl.abort();
     opts.signal?.addEventListener("abort", onAbort);
     try {
-      let res = await fetch(n.url as string, { method: "HEAD", signal: ctrl.signal, redirect: "follow" });
-      // Some servers reject HEAD with 405 — retry with GET for a real status.
-      if (res.status === 405) {
-        res = await fetch(n.url as string, { method: "GET", signal: ctrl.signal, redirect: "follow" });
-      }
-      // Conservative: only the canonical "gone" statuses count as dead, so we
-      // never propose deleting bookmarks that merely block bots (403/429),
-      // require auth (401), or are temporarily erroring (5xx).
-      return res.status === 404 || res.status === 410;
+      const res = await fetch(url, { method, signal: ctrl.signal, redirect: "follow" });
+      return { status: res.status, timedOut: false, netErr: false };
     } catch {
-      // Network failure (DNS / connection refused) = dead, unless the user aborted.
-      return !opts.signal?.aborted;
+      return { status: 0, timedOut, netErr: !timedOut };
     } finally {
       clearTimeout(timer);
       opts.signal?.removeEventListener("abort", onAbort);
     }
+  };
+
+  const isDead = async (n: BookmarkNode): Promise<boolean> => {
+    const url = n.url as string;
+    let r = await probe(url, "HEAD");
+    // Retry with GET when HEAD is rejected (403/405) or errored — a second
+    // chance that also smooths over a transient first failure.
+    if (!opts.signal?.aborted && (r.status === 403 || r.status === 405 || r.netErr || (r.timedOut && r.status === 0))) {
+      r = await probe(url, "GET");
+    }
+    if (opts.signal?.aborted || r.timedOut) return false; // aborted or slow → uncertain, not dead
+    if (r.netErr) return true; // hard network failure after retry → dead
+    return isDeadStatus(r.status);
   };
 
   let i = 0;
