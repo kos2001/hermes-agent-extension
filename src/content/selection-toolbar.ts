@@ -177,12 +177,12 @@ function showToolbar(rect: DOMRect, text: string, context: string) {
   el.style.gap = "2px";
 
   for (const action of SELECTION_ACTIONS) {
-    // Translate first lets the user pick a target language; the rest run directly.
-    const onClick =
-      action.key === "translate"
-        ? () => showLanguageMenu(rect, text)
-        : () => runAction(action.key, action.title, rect, text, undefined, context);
-    el.appendChild(makeChip(action.label, action.title, onClick));
+    // Every action first asks which language to produce its result in.
+    el.appendChild(
+      makeChip(action.label, action.title, () =>
+        showLanguageMenu(action.key, action.label, rect, text, context),
+      ),
+    );
   }
 
   const width = Math.min(SELECTION_ACTIONS.length * 70, window.innerWidth - 16);
@@ -192,14 +192,20 @@ function showToolbar(rect: DOMRect, text: string, context: string) {
   lastText = text;
 }
 
-/** Show the target-language picker for the Translate action. */
-function showLanguageMenu(rect: DOMRect, text: string) {
+/** Show the output-language picker for any action, then run it in that language. */
+function showLanguageMenu(
+  action: SelectionActionKey,
+  actionLabel: string,
+  rect: DOMRect,
+  text: string,
+  context: string,
+) {
   hide();
   const el = createRoot();
   el.style.padding = "6px";
 
   const label = document.createElement("div");
-  label.textContent = "번역 →";
+  label.textContent = `${actionLabel} →`;
   label.style.cssText = [
     "font-size: 11px",
     "font-weight: 700",
@@ -215,8 +221,8 @@ function showLanguageMenu(rect: DOMRect, text: string) {
   const langs = [lastLang, ...TRANSLATE_LANGUAGES.filter((l) => l !== lastLang)];
   for (const lang of langs) {
     grid.appendChild(
-      makeChip(lang, `Translate to ${lang}`, () =>
-        runAction("translate", `Translate → ${lang}`, rect, text, lang),
+      makeChip(lang, `${actionLabel} → ${lang}`, () =>
+        runAction(action, `${actionLabel} → ${lang}`, rect, text, lang, context),
       ),
     );
   }
@@ -239,9 +245,11 @@ function runAction(
 ) {
   hide();
   if (targetLang) {
-    // Remember the chosen language (shared with the side panel's target select).
+    // Remember the chosen language for the menu's "most-recent" ordering. Only
+    // Translate persists to the shared page-translate target (TARGET_KEY) — a
+    // summary/explain/rephrase language choice shouldn't change that.
     lastLang = targetLang;
-    void chrome.storage?.local?.set({ [TARGET_KEY]: targetLang });
+    if (action === "translate") void chrome.storage?.local?.set({ [TARGET_KEY]: targetLang });
   }
   ensureMarkdownStyles();
   const el = createRoot();

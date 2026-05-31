@@ -23,7 +23,18 @@ export type RemoveReason = "duplicate" | "dead" | "meaningless";
 /** `note` is a short human-readable rationale (from the AI passes) shown in the preview. */
 export type Action =
   | { id: string; kind: "remove"; bmId: string; title: string; url: string; reason: RemoveReason; note?: string }
-  | { id: string; kind: "move"; bmId: string; title: string; url: string; toFolderPath: string; note?: string };
+  | {
+      id: string;
+      kind: "move";
+      bmId: string;
+      title: string;
+      url: string;
+      /** Display path of the destination folder. */
+      toFolderPath: string;
+      /** Existing destination folder id (preferred); else the folder is created by name. */
+      toFolderId?: string;
+      note?: string;
+    };
 
 /** Query params that only track/attribute and never change the destination. */
 const TRACKING_PARAMS = new Set([
@@ -100,23 +111,55 @@ export function findDuplicates(nodes: BookmarkNode[]): Action[] {
 /** Max bookmarks sent to the model per categorize request (token bound). */
 export const MAX_CATEGORIZE = 300;
 
-/** Build the LLM request for categorization. Returns the sent/skipped counts. */
+export interface FolderChoice {
+  id: string;
+  title: string;
+  /** Full folder path, e.g. "Bookmarks bar/Tech/AI" — for display + the prompt. */
+  path: string;
+}
+
+/** Every existing folder (no url), with its full path — the categorize targets. */
+export function listFolderChoices(nodes: BookmarkNode[]): FolderChoice[] {
+  const byId = new Map(nodes.map((n) => [n.id, n]));
+  const pathOf = (n: BookmarkNode): string => {
+    const parts: string[] = [];
+    let cur: BookmarkNode | undefined = n;
+    const seen = new Set<string>();
+    while (cur && cur.title && !seen.has(cur.id)) {
+      seen.add(cur.id);
+      parts.unshift(cur.title);
+      cur = cur.parentId ? byId.get(cur.parentId) : undefined;
+    }
+    return parts.join("/");
+  };
+  return nodes
+    .filter((n) => !n.url && n.title)
+    .map((n) => ({ id: n.id, title: n.title, path: pathOf(n) || n.title }));
+}
+
+/**
+ * Build the LLM request to sort bookmarks into the user's EXISTING folders.
+ * The model is given the folder list ({id, path}) and must assign each bookmark
+ * to an existing folder id (or omit it) — it never invents new folders.
+ */
 export function buildCategorizePrompt(
   nodes: BookmarkNode[],
 ): { messages: ChatMessage[]; sent: number; skipped: number } {
   const all = nodes.filter((n) => n.url);
   const picked = all.slice(0, MAX_CATEGORIZE);
-  const list = picked.map((n) => ({ id: n.id, title: n.title, url: n.url }));
+  const bookmarks = picked.map((n) => ({ id: n.id, title: n.title, url: n.url }));
+  const folders = listFolderChoices(nodes).map((f) => ({ id: f.id, path: f.path }));
   const system =
-    "You organize browser bookmarks into topic folders. Given a JSON array of " +
-    'bookmarks ({id, title, url}), reply with a JSON object {"assignments": ' +
-    '[{"id": "<id>", "folder": "<Folder Name>", "reason": "<≤8-word why>"}]}. Use ' +
-    "a small set of clear, single-level folder names (no nesting, no slashes). " +
-    "Give every bookmark exactly one assignment with a brief reason. Reply JSON only.";
+    "You sort bookmarks into the user's EXISTING folders. You are given `folders` " +
+    "({id, path}) and `bookmarks` ({id, title, url}). For each bookmark, assign it " +
+    "to the id of the SINGLE most appropriate existing folder. If no existing " +
+    "folder is a good fit, OMIT that bookmark — never invent folders. Reply with " +
+    'a JSON object {"assignments": [{"id": "<bookmark id>", "folderId": ' +
+    '"<folder id>", "reason": "<≤8-word why>"}]}. Reply with JSON only.';
   return {
     messages: [
       { role: "system", content: system },
-      { role: "user", content: JSON.stringify(list) },
+      { role: "user", content: JSON.stringify({ folders, bookmarks }) },
     ],
     sent: picked.length,
     skipped: all.length - picked.length,
@@ -138,39 +181,66 @@ function extractJsonObject(text: string): Record<string, unknown> | null {
 }
 
 /**
- * Turn a model categorization response into `move` actions (with a per-item
- * rationale `note`). Accepts the array form `{assignments:[{id,folder,reason}]}`
- * and, for robustness, the legacy map form `{assignments:{id: folder}}` or
- * `{assignments:{id:{folder,reason}}}`.
+ * Turn a categorization response into `move` actions targeting the user's
+ * EXISTING folders (with a per-item rationale `note`). Resolves the chosen
+ * `folderId` (preferred) or a `folder` name/path against the real folders —
+ * assignments that don't match an existing folder are dropped (no inventing).
+ * Accepts the array form `{assignments:[{id,folderId,reason}]}` and the legacy
+ * map form `{assignments:{id: folderName}}`.
  */
 export function parseCategorization(text: string, nodes: BookmarkNode[]): Action[] {
   const obj = extractJsonObject(text);
   if (!obj) return [];
   const byId = new Map(nodes.map((n) => [n.id, n]));
+  const folders = listFolderChoices(nodes);
+  const folderById = new Map(folders.map((f) => [f.id, f]));
+  const folderByKey = new Map<string, FolderChoice>();
+  for (const f of folders) {
+    folderByKey.set(f.path.toLowerCase(), f);
+    if (!folderByKey.has(f.title.toLowerCase())) folderByKey.set(f.title.toLowerCase(), f);
+  }
   const actions: Action[] = [];
   const seen = new Set<string>();
 
-  const add = (bmId: unknown, folder: unknown, reason: unknown) => {
+  const add = (bmId: unknown, folderId: unknown, folderName: unknown, reason: unknown) => {
     if (typeof bmId !== "string" || seen.has(bmId)) return;
     if (bmId === "__proto__" || bmId === "constructor" || bmId === "prototype") return;
-    if (typeof folder !== "string" || !folder.trim()) return;
     const node = byId.get(bmId);
     if (!node || !node.url) return;
-    const target = folder.trim();
-    if ((node.parentTitle ?? "") === target) return;
+    let folder = typeof folderId === "string" ? folderById.get(folderId) : undefined;
+    if (!folder && typeof folderName === "string" && folderName.trim()) {
+      folder = folderByKey.get(folderName.trim().toLowerCase());
+    }
+    if (!folder || node.parentId === folder.id) return; // must be an existing folder, not already there
     seen.add(bmId);
     const note = typeof reason === "string" && reason.trim() ? reason.trim() : undefined;
-    actions.push({ id: `move-${bmId}`, kind: "move", bmId, title: node.title, url: node.url, toFolderPath: target, note });
+    actions.push({
+      id: `move-${bmId}`,
+      kind: "move",
+      bmId,
+      title: node.title,
+      url: node.url,
+      toFolderPath: folder.path,
+      toFolderId: folder.id,
+      note,
+    });
   };
 
   const raw = obj.assignments ?? obj;
   if (Array.isArray(raw)) {
-    for (const e of raw) add((e as Record<string, unknown>)?.id, (e as Record<string, unknown>)?.folder, (e as Record<string, unknown>)?.reason);
+    for (const e of raw) {
+      const o = e as Record<string, unknown>;
+      add(o?.id, o?.folderId, o?.folder, o?.reason);
+    }
   } else if (raw && typeof raw === "object") {
     for (const [bmId, val] of Object.entries(raw as Record<string, unknown>)) {
       if (!Object.prototype.hasOwnProperty.call(raw, bmId)) continue;
-      if (val && typeof val === "object") add(bmId, (val as Record<string, unknown>).folder, (val as Record<string, unknown>).reason);
-      else add(bmId, val, undefined);
+      if (val && typeof val === "object") {
+        const o = val as Record<string, unknown>;
+        add(bmId, o.folderId, o.folder, o.reason);
+      } else {
+        add(bmId, undefined, val, undefined); // map form: id -> folder name
+      }
     }
   }
   return actions;
@@ -271,7 +341,9 @@ export async function applyActions(actions: Action[]): Promise<{ applied: number
       if (action.kind === "remove") {
         await chrome.bookmarks.remove(action.bmId);
       } else {
-        const folderId = await ensureFolder(action.toFolderPath, folderCache);
+        // Move into the chosen existing folder; only fall back to find/create
+        // by name when no concrete folder id was resolved.
+        const folderId = action.toFolderId ?? (await ensureFolder(action.toFolderPath, folderCache));
         await chrome.bookmarks.move(action.bmId, { parentId: folderId });
       }
       applied++;

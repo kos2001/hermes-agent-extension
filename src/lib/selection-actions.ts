@@ -45,7 +45,12 @@ export function buildSelectionMessages(
   targetLang: string,
   context?: string,
 ): ChatMessage[] {
-  const system = action === "explain" ? explainSystem(text, context) : SYSTEM_PROMPTS[action](targetLang);
+  let system = action === "explain" ? explainSystem(text, context) : SYSTEM_PROMPTS[action](targetLang);
+  // Translate already targets `targetLang`; for Summarize/Explain/Rephrase the
+  // chosen language is the OUTPUT language, so force the reply into it.
+  if (action !== "translate" && targetLang) {
+    system += ` Write your entire response in ${targetLang}, regardless of the source language.`;
+  }
   return [
     { role: "system", content: system },
     { role: "user", content: text },
