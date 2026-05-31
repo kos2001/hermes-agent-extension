@@ -116,7 +116,13 @@ export default function BookmarksView({
     setChecked((prev) => (prev.size === actions.length ? new Set() : new Set(actions.map((a) => a.id))));
   }, [actions]);
 
-  const runDedup = useCallback(() => setResult(findDuplicates(nodes)), [nodes, setResult]);
+  // Note shown when an operation finishes with no proposed changes.
+  const noChanges = (n: number) => (n === 0 ? t(lang, "bm.noChanges") : "");
+
+  const runDedup = useCallback(() => {
+    const r = findDuplicates(nodes);
+    setResult(r, noChanges(r.length));
+  }, [nodes, setResult, lang]);
 
   // AI cleanup: duplicates + dead links + AI-judged low-value links, merged
   // (one remove per bookmark). Requires a configured connection for the AI pass.
@@ -146,7 +152,8 @@ export default function BookmarksView({
       // Merge, one remove per bookmark (duplicate > dead > meaningless order).
       const byId = new Map<string, Action>();
       for (const a of [...dupes, ...dead, ...junk]) if (!byId.has(a.bmId)) byId.set(a.bmId, a);
-      setResult([...byId.values()]);
+      const merged = [...byId.values()];
+      setResult(merged, noChanges(merged.length));
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -167,13 +174,13 @@ export default function BookmarksView({
         signal: ctrl.signal,
         onProgress: (done, total) => setProgress({ done, total }),
       });
-      setResult(result);
+      setResult(result, noChanges(result.length));
     } finally {
       deadAbort.current = null;
       setBusy(null);
       setProgress(null);
     }
-  }, [nodes, setResult]);
+  }, [nodes, setResult, lang]);
 
   const runAi = useCallback(async () => {
     if (!config) {
@@ -234,7 +241,8 @@ export default function BookmarksView({
         onProgress: (done, total) => setProgress({ done, total }),
       });
       setProgress(null);
-      setResult(actions, skipped > 0 ? t(lang, "bm.aiSkipped").replace("{n}", String(skipped)) : "");
+      const skipNote = skipped > 0 ? t(lang, "bm.aiSkipped").replace("{n}", String(skipped)) : "";
+      setResult(actions, actions.length === 0 ? t(lang, "bm.noChanges") : skipNote);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -309,7 +317,7 @@ export default function BookmarksView({
       {note && <div className="bm-status">{note}</div>}
 
       <div className="bm-list">
-        {actions.length === 0 && !disabled && <div className="bm-empty">{t(lang, "bm.empty")}</div>}
+        {actions.length === 0 && !disabled && !note && <div className="bm-empty">{t(lang, "bm.empty")}</div>}
         {actions.map((a) => (
           <BookmarkRow key={a.id} action={a} checked={checked.has(a.id)} lang={lang} onToggle={toggle} onOpen={openOne} />
         ))}
