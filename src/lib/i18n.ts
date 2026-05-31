@@ -54,6 +54,7 @@ const STR: Record<string, Entry> = {
   "bm.tagDup": { ko: "중복", en: "duplicate", zh: "重复" },
   "bm.tagDead": { ko: "깨진 링크", en: "dead link", zh: "失效" },
   // Market-trends report
+  home: { ko: "홈 (채팅)", en: "Home (chat)", zh: "主页（聊天）" },
   market: { ko: "시장 동향", en: "Market", zh: "市场动向" },
   marketTitle: { ko: "시장 동향 보고서", en: "Market-trends report", zh: "市场动向报告" },
   "mr.folder": { ko: "폴더", en: "Folder", zh: "文件夹" },
