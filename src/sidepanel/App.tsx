@@ -13,6 +13,8 @@ import { restoreOriginals, translatePage } from "@/lib/translator";
 import { buildSkillMessages, PROMPT_SKILLS, type PromptSkill } from "@/lib/skills";
 import { isLang, LANG_KEY, LANGS, t, type Lang } from "@/lib/i18n";
 import { isEnterSubmit } from "@/lib/keyboard";
+import BookmarksView from "./BookmarksView";
+import MarketReportView from "./MarketReportView";
 
 /** Local skill (runs in the page): list unique http links as a Markdown list. */
 function extractLinksInPage(): string {
@@ -68,6 +70,7 @@ export default function App() {
   const [health, setHealth] = useState<HealthState>("unknown");
   const [messages, setMessages] = useState<StoredMessage[]>([]);
   const [input, setInput] = useState("");
+  const [view, setView] = useState<"chat" | "bookmarks" | "market">("chat");
   const [streaming, setStreaming] = useState(false);
   // Current-page context is still included in chat silently; the toggle UI was removed.
   const usePage = true;
@@ -339,6 +342,11 @@ export default function App() {
     setInput("");
   }, []);
 
+  // Append a generated market report to the chat transcript.
+  const appendReport = useCallback((markdown: string) => {
+    setMessages((prev) => [...prev, newMessage("assistant", markdown)]);
+  }, []);
+
   const runTranslate = useCallback(async () => {
     if (!config || translateBusy) return;
     setTranslateError(null);
@@ -416,6 +424,20 @@ export default function App() {
           {theme === "dark" ? "☀" : "🌙"}
         </button>
         <button
+          className={`icon-btn market${view === "market" ? " active" : ""}`}
+          onClick={() => setView((v) => (v === "market" ? "chat" : "market"))}
+          title={t(lang, "marketTitle")}
+        >
+          📈
+        </button>
+        <button
+          className={`icon-btn bookmarks${view === "bookmarks" ? " active" : ""}`}
+          onClick={() => setView((v) => (v === "bookmarks" ? "chat" : "bookmarks"))}
+          title={view === "bookmarks" ? t(lang, "backToChat") : t(lang, "bookmarksTitle")}
+        >
+          🔖
+        </button>
+        <button
           className="icon-btn new-chat"
           onClick={newChat}
           disabled={messages.length === 0 && !streaming}
@@ -471,6 +493,12 @@ export default function App() {
         </div>
       )}
 
+      {view === "bookmarks" ? (
+        <BookmarksView config={config} lang={lang} />
+      ) : view === "market" ? (
+        <MarketReportView config={config} lang={lang} onReport={appendReport} />
+      ) : (
+        <>
       <div className="skills-bar">
         {PROMPT_SKILLS.map((s) => (
           <button
@@ -539,6 +567,8 @@ export default function App() {
           <button onClick={() => void send()} disabled={!config || !input.trim()}>{t(lang, "send")}</button>
         )}
       </div>
+        </>
+      )}
     </div>
   );
 }
