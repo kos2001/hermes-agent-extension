@@ -197,7 +197,7 @@ export async function collectChat(req: StreamChatRequest): Promise<string> {
       acc += d;
     },
     onError: (m) => {
-      error = m;
+      if (!error) error = m;
     },
   });
   if (error) throw new HermesError(error);
