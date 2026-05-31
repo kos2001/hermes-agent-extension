@@ -26,6 +26,11 @@ function describe(a: Action, lang: Lang): string {
   return `↕ ${a.folderTitle} (${a.count})`;
 }
 
+/** The site URL an action refers to, if any (reorder actions have none). */
+function urlOf(a: Action): string | undefined {
+  return a.kind === "reorder" ? undefined : a.url;
+}
+
 export default function BookmarksView({
   config,
   lang,
@@ -105,6 +110,26 @@ export default function BookmarksView({
     }
   }, [config, nodes, lang, setResult]);
 
+  // Open a single site in a background tab so the user can verify the issue.
+  const openOne = useCallback((url: string) => {
+    void chrome.tabs.create({ url, active: false });
+  }, []);
+
+  // Open every checked URL-bearing action in background tabs (deduped).
+  const openSelected = useCallback(() => {
+    const urls = Array.from(
+      new Set(
+        actions
+          .filter((a) => checked.has(a.id))
+          .map(urlOf)
+          .filter((u): u is string => !!u),
+      ),
+    );
+    if (urls.length === 0) return;
+    if (urls.length > 10 && !window.confirm(t(lang, "bm.confirmOpen").replace("{n}", String(urls.length)))) return;
+    for (const url of urls) void chrome.tabs.create({ url, active: false });
+  }, [actions, checked, lang]);
+
   const toggle = useCallback((id: string) => {
     setChecked((prev) => {
       const next = new Set(prev);
@@ -155,20 +180,41 @@ export default function BookmarksView({
 
       <div className="bm-list">
         {actions.length === 0 && !disabled && <div className="bm-empty">{t(lang, "bm.empty")}</div>}
-        {actions.map((a) => (
-          <label key={a.id} className="bm-row">
-            <input type="checkbox" checked={checked.has(a.id)} onChange={() => toggle(a.id)} />
-            <span className="bm-row-main">{describe(a, lang)}</span>
-          </label>
-        ))}
+        {actions.map((a) => {
+          const url = urlOf(a);
+          return (
+            <div key={a.id} className="bm-row">
+              <label className="bm-row-label">
+                <input type="checkbox" checked={checked.has(a.id)} onChange={() => toggle(a.id)} />
+                <span className="bm-row-main">{describe(a, lang)}</span>
+              </label>
+              {url && (
+                <button className="bm-open" title={`${t(lang, "bm.open")}: ${url}`} onClick={() => openOne(url)}>
+                  ↗
+                </button>
+              )}
+            </div>
+          );
+        })}
       </div>
 
       {actions.length > 0 && (
         <div className="bm-apply">
           <span>{t(lang, "bm.selected").replace("{n}", String(checked.size))}</span>
-          <button className="tx-go" onClick={() => void apply()} disabled={disabled || checked.size === 0}>
-            {t(lang, "bm.apply")}
-          </button>
+          <span className="bm-apply-btns">
+            {actions.some((a) => urlOf(a)) && (
+              <button
+                className="tx-restore"
+                onClick={openSelected}
+                disabled={disabled || checked.size === 0}
+              >
+                {t(lang, "bm.openSelected")}
+              </button>
+            )}
+            <button className="tx-go" onClick={() => void apply()} disabled={disabled || checked.size === 0}>
+              {t(lang, "bm.apply")}
+            </button>
+          </span>
         </div>
       )}
     </div>
