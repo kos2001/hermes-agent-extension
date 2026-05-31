@@ -29,7 +29,20 @@ export interface MarketSettings {
   folderId: string;
   freq: ScheduleFreq;
   hour: number;
+  /** Subfolder under the browser's Downloads dir where reports are saved. */
+  saveFolder: string;
+  /** Auto-download each scheduled report to `saveFolder`. */
+  autoSave: boolean;
 }
+
+/** Defaults merged over any stored settings (so older saves gain new fields). */
+export const DEFAULT_MARKET_SETTINGS: MarketSettings = {
+  folderId: "",
+  freq: "off",
+  hour: 9,
+  saveFolder: "market-reports",
+  autoSave: false,
+};
 
 export interface FolderInfo {
   id: string;
@@ -274,7 +287,8 @@ export async function saveReport(report: MarketReport): Promise<MarketReport[]> 
 
 export async function loadMarketSettings(): Promise<MarketSettings> {
   const r = await chrome.storage.local.get(SETTINGS_KEY);
-  return (r[SETTINGS_KEY] as MarketSettings | undefined) ?? { folderId: "", freq: "off", hour: 9 };
+  const stored = r[SETTINGS_KEY] as Partial<MarketSettings> | undefined;
+  return { ...DEFAULT_MARKET_SETTINGS, ...stored };
 }
 
 export async function saveMarketSettings(s: MarketSettings): Promise<void> {
@@ -289,5 +303,65 @@ export async function scheduleMarketAlarm(settings: MarketSettings): Promise<voi
   chrome.alarms.create(MARKET_ALARM, {
     when: nextFireTime(Date.now(), settings.hour),
     periodInMinutes: spec.periodInMinutes,
+  });
+}
+
+/** Render a report as a standalone Markdown document for local saving. */
+export function reportToMarkdown(report: MarketReport): string {
+  const date = new Date(report.createdAt).toISOString().slice(0, 10);
+  const lines = [`# ${report.folderTitle} — Market report`, "", `_${date}_`, ""];
+  if (report.synthesis) lines.push(report.synthesis, "");
+  lines.push("---", "", "## Sources", "");
+  for (const s of report.sites) {
+    lines.push(`### ${s.title}`, s.url, "");
+    if (s.error) lines.push(`> ⚠ ${s.error}`, "");
+    else if (s.summary) lines.push(s.summary, "");
+  }
+  if (report.skipped > 0) lines.push(`_${report.skipped} site(s) skipped (cap ${MAX_SITES})._`, "");
+  return lines.join("\n");
+}
+
+/** Sanitize one path segment: drop chars illegal in filenames, collapse to dashes. */
+export function sanitizePathSegment(s: string): string {
+  return s
+    .replace(/[\\/:*?"<>|]+/g, "-")
+    .replace(/\s+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 80);
+}
+
+/** Build the report's filename: `market-report-<folder>-<date>.md`. */
+export function reportFilename(report: MarketReport): string {
+  const date = new Date(report.createdAt).toISOString().slice(0, 10);
+  const slug = sanitizePathSegment(report.folderTitle) || "report";
+  return `market-report-${slug}-${date}.md`;
+}
+
+/** Join a (possibly empty) Downloads subfolder with a filename, sanitized. */
+export function joinDownloadPath(folder: string, filename: string): string {
+  const dir = folder
+    .split("/")
+    .map(sanitizePathSegment)
+    .filter((seg) => seg && seg !== "." && seg !== "..")
+    .join("/");
+  return dir ? `${dir}/${filename}` : filename;
+}
+
+/**
+ * Save a report to the local Downloads folder (optionally under `folder`).
+ * Works from both the side panel and the background service worker — uses a
+ * data: URL (no Blob URL, which is unavailable in MV3 workers).
+ */
+export async function downloadReport(
+  report: MarketReport,
+  folder: string,
+  saveAs = false,
+): Promise<number> {
+  const url = "data:text/markdown;charset=utf-8," + encodeURIComponent(reportToMarkdown(report));
+  return chrome.downloads.download({
+    url,
+    filename: joinDownloadPath(folder, reportFilename(report)),
+    saveAs,
   });
 }
