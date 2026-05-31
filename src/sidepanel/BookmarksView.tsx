@@ -5,19 +5,25 @@ import { collectChat } from "@/lib/hermes-client";
 import {
   type Action,
   type BookmarkNode,
+  type FolderChoice,
   applyActions,
   buildCategorizePrompt,
   buildCleanupPrompt,
   checkDeadLinks,
   findDuplicates,
+  listFolderChoices,
   loadBookmarks,
   parseCategorization,
   parseCleanupRemovals,
 } from "@/lib/bookmarks";
 import { runSemanticDedup } from "@/lib/semantic-dedup";
+import { cloudConfigured, supabase } from "@/lib/cloud/client";
+import { getSession } from "@/lib/cloud/auth";
+import { publishFolder } from "@/lib/cloud/folders";
+import { summarizeFolder } from "@/lib/cloud/summarize-folder";
 
-/** null = idle. Long ops: "dead"/"ai"/"clean"/"sdup". "apply" = applying. */
-type Busy = null | "dead" | "ai" | "clean" | "sdup" | "apply";
+/** null = idle. Long ops: "dead"/"ai"/"clean"/"sdup"/"share". "apply" = applying. */
+type Busy = null | "dead" | "ai" | "clean" | "sdup" | "apply" | "share";
 
 /** Short rationale for an action: the AI's note if present, else a default. */
 function rationale(a: Action, lang: Lang): string {
@@ -252,6 +258,52 @@ export default function BookmarksView({
     }
   }, [config, nodes, lang, setResult]);
 
+  // Folders the user can publish to Hive (non-empty, with at least one bookmark).
+  const shareFolders: FolderChoice[] = (() => {
+    if (!cloudConfigured) return [];
+    const withItems = new Set(nodes.filter((n) => n.url && n.parentId).map((n) => n.parentId));
+    return listFolderChoices(nodes).filter((f) => withItems.has(f.id));
+  })();
+  const [shareFolderId, setShareFolderId] = useState("");
+
+  // Share a folder to Hive: summarize its bookmarks client-side, then publish.
+  const runShare = useCallback(async () => {
+    if (!config) {
+      setError(t(lang, "bm.needConfig"));
+      return;
+    }
+    const folder = listFolderChoices(nodes).find((f) => f.id === shareFolderId);
+    if (!folder) return;
+    const items = nodes
+      .filter((n) => n.parentId === folder.id && n.url)
+      .map((n) => ({ title: n.title || n.url!, url: n.url! }));
+    if (items.length === 0) return;
+
+    setResult([]);
+    setError("");
+    setBusy("share");
+    try {
+      const session = await getSession();
+      if (!session) {
+        setError(t(lang, "bm.shareNeedSignIn"));
+        return;
+      }
+      const summary = await summarizeFolder(config, folder.path, items);
+      await publishFolder(supabase, {
+        title: folder.path,
+        sourceFolderName: folder.path,
+        summary: summary.summary,
+        topics: summary.topics,
+        items: summary.items,
+      });
+      setNote(t(lang, "bm.shareDone").replace("{n}", String(summary.items.length)));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : t(lang, "bm.shareFailed"));
+    } finally {
+      setBusy(null);
+    }
+  }, [config, nodes, shareFolderId, lang, setResult]);
+
   const toggle = useCallback((id: string) => {
     setChecked((prev) => {
       const next = new Set(prev);
@@ -303,6 +355,31 @@ export default function BookmarksView({
         </button>
         <button className="skill" onClick={() => void runAi()} disabled={disabled || !config}>{t(lang, "bm.ai")}</button>
       </div>
+
+      {cloudConfigured && (
+        <div className="bm-share" title={t(lang, "bm.shareTitle")}>
+          <select
+            className="tx-lang"
+            value={shareFolderId}
+            onChange={(e) => setShareFolderId(e.target.value)}
+            disabled={disabled}
+          >
+            <option value="">{t(lang, "bm.sharePick")}</option>
+            {shareFolders.map((f) => (
+              <option key={f.id} value={f.id}>{f.path}</option>
+            ))}
+          </select>
+          <button
+            className="tx-go"
+            onClick={() => void runShare()}
+            disabled={disabled || !config || !shareFolderId}
+            title={t(lang, "bm.shareTitle")}
+          >
+            {t(lang, "bm.shareToHive")}
+          </button>
+        </div>
+      )}
+      {busy === "share" && <div className="bm-status">{t(lang, "bm.sharing")}</div>}
 
       {(busy === "dead" || busy === "clean" || busy === "sdup") && progress && (
         <div className="bm-status">
