@@ -11,7 +11,7 @@ import {
 } from "@/lib/page-context";
 import { restoreOriginals, translatePage } from "@/lib/translator";
 import { buildSkillMessages, PROMPT_SKILLS, type PromptSkill } from "@/lib/skills";
-import { isLang, LANG_KEY, LANGS, t, type Lang } from "@/lib/i18n";
+import { isLang, LANG_KEY, LANGS, replyLanguageInstruction, t, type Lang } from "@/lib/i18n";
 import { isEnterSubmit } from "@/lib/keyboard";
 // Lazy-loaded: keep the bookmark/market views and their AI modules out of the
 // initial (chat) bundle — they load only when the user opens those views.
@@ -31,20 +31,6 @@ function extractLinksInPage(): string {
     if (items.length >= 100) break;
   }
   return items.length ? `**${items.length} links**\n\n${items.join("\n")}` : "링크를 찾지 못했습니다.";
-}
-
-/** Local skill (runs in the page): word/char count + estimated reading time. */
-function readingStatsInPage(): string {
-  const text = (document.body?.innerText || "").trim();
-  const words = (text.match(/\S+/g) || []).length;
-  const mins = Math.max(1, Math.round(words / 200));
-  const title = document.title || location.href;
-  return (
-    `**${title}**\n\n` +
-    `- 단어 수: ${words.toLocaleString()}\n` +
-    `- 글자 수: ${text.length.toLocaleString()}\n` +
-    `- 예상 읽기 시간: 약 ${mins}분`
-  );
 }
 
 type HealthState = "unknown" | "online" | "offline";
@@ -242,9 +228,16 @@ export default function App() {
         if (!rafId) rafId = requestAnimationFrame(flush);
       };
 
+      // Force the reply into the user's selected UI language (한/中/영). Prepended
+      // as the first system message so it overrides any page/question language.
+      const messages: ChatMessage[] = [
+        { role: "system", content: replyLanguageInstruction(lang) },
+        ...history,
+      ];
+
       try {
         await streamChat(
-          { config, messages: history, signal: controller.signal },
+          { config, messages, signal: controller.signal },
           {
             onChunk: (delta) => {
               acc += delta;
@@ -265,7 +258,7 @@ export default function App() {
         setStreaming(false);
       }
     },
-    [config, streaming],
+    [config, streaming, lang],
   );
 
   const send = useCallback(async () => {
@@ -309,16 +302,15 @@ export default function App() {
     [config, streaming, streamTurn, lang],
   );
 
-  // Run a local skill entirely in the page (no model) and show the result.
+  // Run the local "extract links" skill entirely in the page (no model).
   const runLocalSkill = useCallback(
-    async (id: "links" | "stats") => {
+    async () => {
       if (streaming) return;
       const tab = await getActiveTab();
       if (!tab || tab.id === undefined) return;
-      const fn = id === "links" ? extractLinksInPage : readingStatsInPage;
-      const label = t(lang, id === "links" ? "skill.links.user" : "skill.stats.user");
+      const label = t(lang, "skill.links.user");
       try {
-        const res = await chrome.scripting.executeScript({ target: { tabId: tab.id }, func: fn });
+        const res = await chrome.scripting.executeScript({ target: { tabId: tab.id }, func: extractLinksInPage });
         const md = (res[0]?.result as string | undefined) ?? t(lang, "noResult");
         setMessages((prev) => [...prev, newMessage("user", label), newMessage("assistant", md)]);
       } catch (e) {
@@ -525,11 +517,8 @@ export default function App() {
             {t(lang, `skill.${s.id}`)}
           </button>
         ))}
-        <button className="skill" title={t(lang, "skill.links.title")} disabled={streaming} onClick={() => void runLocalSkill("links")}>
+        <button className="skill" title={t(lang, "skill.links.title")} disabled={streaming} onClick={() => void runLocalSkill()}>
           {t(lang, "skill.links")}
-        </button>
-        <button className="skill" title={t(lang, "skill.stats.title")} disabled={streaming} onClick={() => void runLocalSkill("stats")}>
-          {t(lang, "skill.stats")}
         </button>
       </div>
 
