@@ -50,6 +50,9 @@ export default function BookmarksView({
     void reload();
   }, [reload]);
 
+  // Abort any in-flight dead-link scan if the view unmounts.
+  useEffect(() => () => deadAbort.current?.abort(), []);
+
   const setResult = useCallback((next: Action[], noteMsg = "") => {
     setActions(next);
     setChecked(new Set(next.map((a) => a.id)));
@@ -102,13 +105,14 @@ export default function BookmarksView({
     }
   }, [config, nodes, lang, setResult]);
 
-  const toggle = (id: string) =>
+  const toggle = useCallback((id: string) => {
     setChecked((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);
       return next;
     });
+  }, []);
 
   const apply = useCallback(async () => {
     const selected = actions.filter((a) => checked.has(a.id));
