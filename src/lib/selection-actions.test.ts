@@ -1,5 +1,29 @@
 import { describe, expect, it } from "vitest";
-import { buildSelectionMessages, detectScript, isSameLanguage } from "./selection-actions";
+import { buildSelectionMessages, detectScript, isAbbreviation, isSameLanguage } from "./selection-actions";
+
+describe("isAbbreviation", () => {
+  it("flags all-caps / caps+digit / dotted forms", () => {
+    for (const t of ["API", "FDE", "MV3", "H2O", "e.g.", "i.e."]) expect(isAbbreviation(t)).toBe(true);
+  });
+  it("does not flag ordinary words, capitalized words, or multi-word text", () => {
+    for (const t of ["Apple", "html", "hello", "New York", "the API spec"]) expect(isAbbreviation(t)).toBe(false);
+  });
+});
+
+describe("explain prompt", () => {
+  it("uses surrounding context and an ask-if-unsure instruction for an abbreviation", () => {
+    const [system] = buildSelectionMessages("explain", "FDE", "English", "A Forward Deployed Engineer (FDE) embeds with the customer.");
+    expect(system.content).toContain("FDE");
+    expect(system.content).toContain("Forward Deployed Engineer");
+    expect(system.content.toLowerCase()).toContain("ask the user");
+  });
+  it("falls back to the plain explanation without context or for non-abbreviations", () => {
+    const [a] = buildSelectionMessages("explain", "FDE", "English");
+    expect(a.content).not.toContain("Surrounding text");
+    const [b] = buildSelectionMessages("explain", "the whole sentence here", "English", "ctx");
+    expect(b.content).not.toContain("Surrounding text");
+  });
+});
 
 describe("detectScript", () => {
   it("detects Korean (Hangul)", () => {

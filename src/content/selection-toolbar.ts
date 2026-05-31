@@ -169,7 +169,7 @@ function makeChip(label: string, title: string, onClick: () => void): HTMLButton
 }
 
 /** Render the action-button toolbar. */
-function showToolbar(rect: DOMRect, text: string) {
+function showToolbar(rect: DOMRect, text: string, context: string) {
   hide();
   const el = createRoot();
   el.style.padding = "4px";
@@ -181,7 +181,7 @@ function showToolbar(rect: DOMRect, text: string) {
     const onClick =
       action.key === "translate"
         ? () => showLanguageMenu(rect, text)
-        : () => runAction(action.key, action.title, rect, text);
+        : () => runAction(action.key, action.title, rect, text, undefined, context);
     el.appendChild(makeChip(action.label, action.title, onClick));
   }
 
@@ -235,6 +235,7 @@ function runAction(
   rect: DOMRect,
   text: string,
   targetLang?: string,
+  context?: string,
 ) {
   hide();
   if (targetLang) {
@@ -284,7 +285,7 @@ function runAction(
   root = el;
   lastText = text;
 
-  streamInto(action, text, body, status, targetLang);
+  streamInto(action, text, body, status, targetLang, context);
 }
 
 /** Open the port, send the request, and stream chunks into `body`. */
@@ -294,6 +295,7 @@ function streamInto(
   body: HTMLDivElement,
   status: HTMLDivElement,
   targetLang?: string,
+  context?: string,
 ) {
   let acc = "";
   let gotChunk = false;
@@ -374,7 +376,21 @@ function streamInto(
   });
 
   log("dispatch", { action, len: text.length, targetLang });
-  port.postMessage({ action, text, targetLang });
+  port.postMessage({ action, text, targetLang, context });
+}
+
+/** Surrounding text around the selection (for Explain to read context). */
+const CONTEXT_CHARS = 240;
+function captureContext(range: Range, selected: string): string {
+  const node = range.commonAncestorContainer;
+  const el = (node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement) as Element | null;
+  const block = el?.closest("p, li, article, section, blockquote, td, div, main, body") ?? el;
+  const full = (block?.textContent ?? "").replace(/\s+/g, " ").trim();
+  if (!full) return "";
+  const at = full.indexOf(selected.replace(/\s+/g, " ").trim());
+  const start = at < 0 ? 0 : Math.max(0, at - CONTEXT_CHARS);
+  const end = at < 0 ? Math.min(full.length, CONTEXT_CHARS * 2) : Math.min(full.length, at + selected.length + CONTEXT_CHARS);
+  return full.slice(start, end);
 }
 
 function handleSelection() {
@@ -387,13 +403,15 @@ function handleSelection() {
     return;
   }
   if (text === lastText && root) return;
+  let range: Range;
   let rect: DOMRect;
   try {
-    rect = sel.getRangeAt(0).getBoundingClientRect();
+    range = sel.getRangeAt(0);
+    rect = range.getBoundingClientRect();
   } catch {
     return;
   }
-  showToolbar(rect, text);
+  showToolbar(rect, text, captureContext(range, text));
 }
 
 document.addEventListener("mouseup", () => {
