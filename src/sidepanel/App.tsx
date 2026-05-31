@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, memo, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { streamChat } from "@/lib/hermes-client";
 import { renderMarkdown } from "@/lib/markdown";
 import type { ChatMessage, ConnectionConfig, StoredMessage } from "@/lib/types";
@@ -13,8 +13,10 @@ import { restoreOriginals, translatePage } from "@/lib/translator";
 import { buildSkillMessages, PROMPT_SKILLS, type PromptSkill } from "@/lib/skills";
 import { isLang, LANG_KEY, LANGS, t, type Lang } from "@/lib/i18n";
 import { isEnterSubmit } from "@/lib/keyboard";
-import BookmarksView from "./BookmarksView";
-import MarketReportView from "./MarketReportView";
+// Lazy-loaded: keep the bookmark/market views and their AI modules out of the
+// initial (chat) bundle — they load only when the user opens those views.
+const BookmarksView = lazy(() => import("./BookmarksView"));
+const MarketReportView = lazy(() => import("./MarketReportView"));
 
 /** Local skill (runs in the page): list unique http links as a Markdown list. */
 function extractLinksInPage(): string {
@@ -502,9 +504,13 @@ export default function App() {
       )}
 
       {view === "bookmarks" ? (
-        <BookmarksView config={config} lang={lang} />
+        <Suspense fallback={<div className="bm-status">…</div>}>
+          <BookmarksView config={config} lang={lang} />
+        </Suspense>
       ) : view === "market" ? (
-        <MarketReportView config={config} lang={lang} onReport={appendReport} />
+        <Suspense fallback={<div className="mr-status">…</div>}>
+          <MarketReportView config={config} lang={lang} onReport={appendReport} />
+        </Suspense>
       ) : (
         <>
       <div className="skills-bar">
