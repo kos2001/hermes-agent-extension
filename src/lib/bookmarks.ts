@@ -222,3 +222,53 @@ export async function applyActions(actions: Action[]): Promise<{ applied: number
   }
   return { applied, failed };
 }
+
+export interface DeadLinkOpts {
+  concurrency?: number;
+  signal?: AbortSignal;
+  onProgress?: (done: number, total: number) => void;
+}
+
+/**
+ * Fetch each http(s) bookmark and flag dead ones (status >= 400 or network
+ * failure). Concurrency-limited, abortable, 8s per-URL timeout. Individual
+ * failures never abort the whole run. A user abort is NOT counted as dead.
+ */
+export async function checkDeadLinks(nodes: BookmarkNode[], opts: DeadLinkOpts = {}): Promise<Action[]> {
+  const concurrency = opts.concurrency ?? 6;
+  const targets = nodes.filter((n) => n.url && /^https?:/i.test(n.url));
+  const total = targets.length;
+  let done = 0;
+  const actions: Action[] = [];
+
+  const isDead = async (n: BookmarkNode): Promise<boolean> => {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 8000);
+    const onAbort = () => ctrl.abort();
+    opts.signal?.addEventListener("abort", onAbort);
+    try {
+      const res = await fetch(n.url as string, { method: "GET", signal: ctrl.signal, redirect: "follow" });
+      return res.status >= 400;
+    } catch {
+      return !opts.signal?.aborted;
+    } finally {
+      clearTimeout(timer);
+      opts.signal?.removeEventListener("abort", onAbort);
+    }
+  };
+
+  let i = 0;
+  const worker = async () => {
+    while (i < targets.length && !opts.signal?.aborted) {
+      const n = targets[i++];
+      const dead = await isDead(n);
+      if (dead && !opts.signal?.aborted) {
+        actions.push({ id: `remove-${n.id}`, kind: "remove", bmId: n.id, title: n.title, url: n.url as string, reason: "dead" });
+      }
+      done++;
+      opts.onProgress?.(done, total);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(concurrency, targets.length) }, worker));
+  return actions;
+}
