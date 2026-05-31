@@ -227,9 +227,12 @@ export async function runMarketReport(opts: RunMarketReportOpts): Promise<Market
     done++;
     opts.onProgress?.(done, picked.length, title);
   }
-  const synthesis = sites.some((s) => !s.error && s.summary)
-    ? await synthesizeReport(opts.config, opts.folderTitle, sites, opts.signal)
-    : "";
+  // Skip synthesis if the run was aborted mid-loop — synthesizeReport would
+  // otherwise fetch with an already-aborted signal and throw.
+  const synthesis =
+    !opts.signal?.aborted && sites.some((s) => !s.error && s.summary)
+      ? await synthesizeReport(opts.config, opts.folderTitle, sites, opts.signal)
+      : "";
   return {
     id: crypto.randomUUID(),
     folderId: opts.folderId,
