@@ -6,3 +6,5 @@ dist/
 *.zip
 .env
 .env.local
+
+dist-web/

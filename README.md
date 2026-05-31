@@ -136,6 +136,21 @@ To enable it:
 6. **Rebuild** (`npm run build`) and reload the unpacked extension. A
    "Sign in to Hive" button appears in the side-panel top bar.
 
+### The feed site (sub-project C)
+
+The shared feed is a separate web app under `web/` (its own Vite config). It
+reuses the same Supabase project + env vars:
+
+```sh
+npm run dev:web      # vite dev server (http://localhost:5180)
+npm run build:web    # production build → dist-web/
+```
+
+Add the web app's origin (e.g. `http://localhost:5180` in dev, your deployed
+origin in prod) to Supabase Auth → URL Configuration → Redirect URLs, alongside
+the extension's `chromiumapp.org` URL. Sign in there to browse the folders
+members publish from the extension.
+
 Design + plan docs live under `docs/superpowers/`
 (`specs/2026-05-31-collective-bookmarks-platform-design.md`,
 `plans/2026-05-31-hive-platform-foundation.md`). Sub-projects B (share folder),
