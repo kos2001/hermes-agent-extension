@@ -424,6 +424,13 @@ export default function App() {
           {theme === "dark" ? "☀" : "🌙"}
         </button>
         <button
+          className={`icon-btn home${view === "chat" ? " active" : ""}`}
+          onClick={() => setView("chat")}
+          title={t(lang, "home")}
+        >
+          🏠
+        </button>
+        <button
           className={`icon-btn market${view === "market" ? " active" : ""}`}
           onClick={() => setView((v) => (v === "market" ? "chat" : "market"))}
           title={t(lang, "marketTitle")}
