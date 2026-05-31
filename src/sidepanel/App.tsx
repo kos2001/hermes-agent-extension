@@ -11,7 +11,7 @@ import {
 } from "@/lib/page-context";
 import { restoreOriginals, translatePage } from "@/lib/translator";
 import { buildSkillMessages, PROMPT_SKILLS, type PromptSkill } from "@/lib/skills";
-import { isLang, LANG_KEY, LANGS, t, type Lang } from "@/lib/i18n";
+import { isLang, LANG_KEY, LANGS, replyLanguageInstruction, t, type Lang } from "@/lib/i18n";
 import { isEnterSubmit } from "@/lib/keyboard";
 // Lazy-loaded: keep the bookmark/market views and their AI modules out of the
 // initial (chat) bundle — they load only when the user opens those views.
@@ -242,9 +242,16 @@ export default function App() {
         if (!rafId) rafId = requestAnimationFrame(flush);
       };
 
+      // Force the reply into the user's selected UI language (한/中/영). Prepended
+      // as the first system message so it overrides any page/question language.
+      const messages: ChatMessage[] = [
+        { role: "system", content: replyLanguageInstruction(lang) },
+        ...history,
+      ];
+
       try {
         await streamChat(
-          { config, messages: history, signal: controller.signal },
+          { config, messages, signal: controller.signal },
           {
             onChunk: (delta) => {
               acc += delta;
@@ -265,7 +272,7 @@ export default function App() {
         setStreaming(false);
       }
     },
-    [config, streaming],
+    [config, streaming, lang],
   );
 
   const send = useCallback(async () => {

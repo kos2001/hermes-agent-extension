@@ -129,3 +129,14 @@ export function t(lang: Lang, key: string): string {
 export function isLang(v: unknown): v is Lang {
   return v === "ko" || v === "en" || v === "zh";
 }
+
+/** English language name for model prompts (unambiguous for the LLM). */
+const LANG_PROMPT_NAME: Record<Lang, string> = { ko: "Korean", en: "English", zh: "Chinese" };
+
+/**
+ * System instruction forcing the assistant to answer in the user's selected UI
+ * language, regardless of the question's or the page's language.
+ */
+export function replyLanguageInstruction(lang: Lang): string {
+  return `Always write your reply in ${LANG_PROMPT_NAME[lang]}, regardless of the language of the question, the page, or any provided content.`;
+}
