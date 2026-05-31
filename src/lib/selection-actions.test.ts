@@ -10,6 +10,20 @@ describe("isAbbreviation", () => {
   });
 });
 
+describe("output language for summarize/explain/rephrase", () => {
+  it("forces the chosen output language into non-translate actions", () => {
+    for (const action of ["summary", "explain", "rephrase"] as const) {
+      const [system] = buildSelectionMessages(action, "some text", "Korean");
+      expect(system.content).toContain("Write your entire response in Korean");
+    }
+  });
+  it("does not append the output-language line to translate (it targets the language directly)", () => {
+    const [system] = buildSelectionMessages("translate", "hi", "Korean");
+    expect(system.content).not.toContain("Write your entire response in");
+    expect(system.content).toContain("Korean");
+  });
+});
+
 describe("explain prompt", () => {
   it("uses surrounding context and an ask-if-unsure instruction for an abbreviation", () => {
     const [system] = buildSelectionMessages("explain", "FDE", "English", "A Forward Deployed Engineer (FDE) embeds with the customer.");
