@@ -20,9 +20,10 @@ export interface BookmarkNode {
  */
 export type RemoveReason = "duplicate" | "dead" | "meaningless";
 
+/** `note` is a short human-readable rationale (from the AI passes) shown in the preview. */
 export type Action =
-  | { id: string; kind: "remove"; bmId: string; title: string; url: string; reason: RemoveReason }
-  | { id: string; kind: "move"; bmId: string; title: string; url: string; toFolderPath: string };
+  | { id: string; kind: "remove"; bmId: string; title: string; url: string; reason: RemoveReason; note?: string }
+  | { id: string; kind: "move"; bmId: string; title: string; url: string; toFolderPath: string; note?: string };
 
 /** Query params that only track/attribute and never change the destination. */
 const TRACKING_PARAMS = new Set([
@@ -109,9 +110,9 @@ export function buildCategorizePrompt(
   const system =
     "You organize browser bookmarks into topic folders. Given a JSON array of " +
     'bookmarks ({id, title, url}), reply with a JSON object {"assignments": ' +
-    '{"<bookmark id>": "<Folder Name>"}}. Use a small set of clear, single-level ' +
-    "folder names (no nesting, no slashes). Every input id must appear exactly " +
-    "once. Reply with JSON only.";
+    '[{"id": "<id>", "folder": "<Folder Name>", "reason": "<≤8-word why>"}]}. Use ' +
+    "a small set of clear, single-level folder names (no nesting, no slashes). " +
+    "Give every bookmark exactly one assignment with a brief reason. Reply JSON only.";
   return {
     messages: [
       { role: "system", content: system },
@@ -136,25 +137,41 @@ function extractJsonObject(text: string): Record<string, unknown> | null {
   }
 }
 
-/** Turn a model categorization response into `move` actions. */
+/**
+ * Turn a model categorization response into `move` actions (with a per-item
+ * rationale `note`). Accepts the array form `{assignments:[{id,folder,reason}]}`
+ * and, for robustness, the legacy map form `{assignments:{id: folder}}` or
+ * `{assignments:{id:{folder,reason}}}`.
+ */
 export function parseCategorization(text: string, nodes: BookmarkNode[]): Action[] {
   const obj = extractJsonObject(text);
   if (!obj) return [];
-  const raw = (obj.assignments ?? obj) as unknown;
-  if (!raw || typeof raw !== "object") return [];
-  const assignments = raw as Record<string, unknown>;
   const byId = new Map(nodes.map((n) => [n.id, n]));
   const actions: Action[] = [];
-  for (const [bmId, folder] of Object.entries(assignments)) {
-    // Ignore inherited / prototype keys from the parsed JSON.
-    if (!Object.prototype.hasOwnProperty.call(assignments, bmId)) continue;
-    if (bmId === "__proto__" || bmId === "constructor" || bmId === "prototype") continue;
-    if (typeof folder !== "string" || !folder.trim()) continue;
+  const seen = new Set<string>();
+
+  const add = (bmId: unknown, folder: unknown, reason: unknown) => {
+    if (typeof bmId !== "string" || seen.has(bmId)) return;
+    if (bmId === "__proto__" || bmId === "constructor" || bmId === "prototype") return;
+    if (typeof folder !== "string" || !folder.trim()) return;
     const node = byId.get(bmId);
-    if (!node || !node.url) continue;
+    if (!node || !node.url) return;
     const target = folder.trim();
-    if ((node.parentTitle ?? "") === target) continue;
-    actions.push({ id: `move-${bmId}`, kind: "move", bmId, title: node.title, url: node.url, toFolderPath: target });
+    if ((node.parentTitle ?? "") === target) return;
+    seen.add(bmId);
+    const note = typeof reason === "string" && reason.trim() ? reason.trim() : undefined;
+    actions.push({ id: `move-${bmId}`, kind: "move", bmId, title: node.title, url: node.url, toFolderPath: target, note });
+  };
+
+  const raw = obj.assignments ?? obj;
+  if (Array.isArray(raw)) {
+    for (const e of raw) add((e as Record<string, unknown>)?.id, (e as Record<string, unknown>)?.folder, (e as Record<string, unknown>)?.reason);
+  } else if (raw && typeof raw === "object") {
+    for (const [bmId, val] of Object.entries(raw as Record<string, unknown>)) {
+      if (!Object.prototype.hasOwnProperty.call(raw, bmId)) continue;
+      if (val && typeof val === "object") add(bmId, (val as Record<string, unknown>).folder, (val as Record<string, unknown>).reason);
+      else add(bmId, val, undefined);
+    }
   }
   return actions;
 }
@@ -171,8 +188,8 @@ export function buildCleanupPrompt(
     "that are meaningless or low-value to keep: blank/placeholder/untitled pages, " +
     "localhost or 127.0.0.1 test pages, login/auth or error pages, search-result " +
     "URLs, and obviously temporary or junk links. Reply with a JSON object " +
-    '{"remove": ["<id>", ...]} listing ONLY the ids worth deleting. When unsure, ' +
-    "omit the id. Reply with JSON only.";
+    '{"remove": [{"id": "<id>", "reason": "<≤8-word why>"}]} listing ONLY the ' +
+    "ones worth deleting, each with a brief reason. When unsure, omit it. Reply JSON only.";
   return {
     messages: [
       { role: "system", content: system },
@@ -193,13 +210,15 @@ export function parseCleanupRemovals(text: string, nodes: BookmarkNode[]): Actio
   const seen = new Set<string>();
   const actions: Action[] = [];
   for (const entry of raw) {
-    // Accept both ["id", ...] and [{ id: "..." }, ...] shapes.
+    // Accept both ["id", ...] and [{ id, reason }, ...] shapes.
     const bmId = typeof entry === "string" ? entry : (entry as { id?: unknown })?.id;
+    const reason = typeof entry === "string" ? undefined : (entry as { reason?: unknown })?.reason;
     if (typeof bmId !== "string" || seen.has(bmId)) continue;
     const node = byId.get(bmId);
     if (!node || !node.url) continue;
     seen.add(bmId);
-    actions.push({ id: `remove-${bmId}`, kind: "remove", bmId, title: node.title, url: node.url, reason: "meaningless" });
+    const note = typeof reason === "string" && reason.trim() ? reason.trim() : undefined;
+    actions.push({ id: `remove-${bmId}`, kind: "remove", bmId, title: node.title, url: node.url, reason: "meaningless", note });
   }
   return actions;
 }

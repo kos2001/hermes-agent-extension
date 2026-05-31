@@ -40,10 +40,11 @@ export function buildSemanticDedupPrompt(items: SnippetItem[]): { messages: Chat
     "snippet is the first few sentences of the page. Group entries that are the " +
     "SAME underlying content — e.g. an article and its AMP/mobile version, a " +
     "shortened or redirected link, or the same story syndicated on another " +
-    'domain. Reply with JSON {"groups": [["<id>", "<id>", ...], ...]} where each ' +
-    "inner array lists ids that are duplicates of EACH OTHER. Only group items " +
-    "you are confident share the same content; never group merely-related or " +
-    "same-topic pages, and omit singletons. Reply with JSON only.";
+    'domain. Reply with JSON {"groups": [{"ids": ["<id>", ...], "reason": "<≤10-' +
+    'word why these are the same content>"}]} where each group\'s ids are ' +
+    "duplicates of EACH OTHER. Only group items you are confident share the same " +
+    "content; never group merely-related or same-topic pages, and omit singletons. " +
+    "Reply with JSON only.";
   return {
     messages: [
       { role: "system", content: system },
@@ -67,9 +68,10 @@ function extractJsonObject(text: string): Record<string, unknown> | null {
 }
 
 /**
- * Turn the model's `{groups:[[id,...],...]}` into remove actions: within each
- * group keep the oldest bookmark and remove the rest. A bookmark removed by one
- * group is never proposed again (deduped across groups).
+ * Turn the model's groups into remove actions: within each group keep the
+ * oldest bookmark and remove the rest (with a per-item rationale `note`). A
+ * bookmark removed by one group is never proposed again (deduped across groups).
+ * Accepts `{groups:[{ids:[...],reason}]}` and the legacy `{groups:[[id,...]]}`.
  */
 export function parseSemanticGroups(text: string, nodes: BookmarkNode[]): Action[] {
   const obj = extractJsonObject(text);
@@ -79,14 +81,19 @@ export function parseSemanticGroups(text: string, nodes: BookmarkNode[]): Action
   const kept = new Set<string>();
   const actions: Action[] = [];
   for (const group of obj.groups as unknown[]) {
-    if (!Array.isArray(group)) continue;
-    const members = group
+    const ids = Array.isArray(group)
+      ? group
+      : ((group as { ids?: unknown })?.ids as unknown);
+    const reason = Array.isArray(group) ? undefined : (group as { reason?: unknown })?.reason;
+    if (!Array.isArray(ids)) continue;
+    const members = ids
       .filter((id): id is string => typeof id === "string")
       .map((id) => byId.get(id))
       .filter((n): n is BookmarkNode => !!n && !!n.url && !removed.has(n.id) && !kept.has(n.id));
     if (members.length < 2) continue;
     const oldestFirst = [...members].sort((a, b) => a.dateAdded - b.dateAdded || a.id.localeCompare(b.id));
     kept.add(oldestFirst[0].id);
+    const note = typeof reason === "string" && reason.trim() ? reason.trim() : undefined;
     for (const dup of oldestFirst.slice(1)) {
       if (removed.has(dup.id)) continue;
       removed.add(dup.id);
@@ -97,6 +104,7 @@ export function parseSemanticGroups(text: string, nodes: BookmarkNode[]): Action
         title: dup.title,
         url: dup.url as string,
         reason: "duplicate",
+        note,
       });
     }
   }

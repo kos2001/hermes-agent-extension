@@ -110,6 +110,11 @@ describe("parseCleanupRemovals", () => {
     expect(actions.map((a) => a.id)).toEqual(["remove-a"]);
   });
 
+  it("carries the per-item reason as note", () => {
+    const actions = parseCleanupRemovals('{"remove":[{"id":"a","reason":"login page"}]}', nodes);
+    expect(actions[0]).toMatchObject({ id: "remove-a", note: "login page" });
+  });
+
   it("returns [] for non-array / garbage", () => {
     expect(parseCleanupRemovals('{"remove":"a"}', nodes)).toEqual([]);
     expect(parseCleanupRemovals("not json", nodes)).toEqual([]);
@@ -165,5 +170,11 @@ describe("parseCategorization", () => {
   it("ignores unknown ids and returns [] for garbage", () => {
     expect(parseCategorization('{"assignments":{"zzz":"X"}}', nodes)).toEqual([]);
     expect(parseCategorization("not json at all", nodes)).toEqual([]);
+  });
+
+  it("parses the array form and carries the per-item reason as note", () => {
+    const text = '{"assignments":[{"id":"a","folder":"News","reason":"tech news site"}]}';
+    const actions = parseCategorization(text, nodes);
+    expect(actions[0]).toMatchObject({ id: "move-a", toFolderPath: "News", note: "tech news site" });
   });
 });

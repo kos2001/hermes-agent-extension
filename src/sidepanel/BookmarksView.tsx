@@ -19,17 +19,29 @@ import { runSemanticDedup } from "@/lib/semantic-dedup";
 /** null = idle. Long ops: "dead"/"ai"/"clean"/"sdup". "apply" = applying. */
 type Busy = null | "dead" | "ai" | "clean" | "sdup" | "apply";
 
+/** Short rationale for an action: the AI's note if present, else a default. */
+function rationale(a: Action, lang: Lang): string {
+  if (a.note) return a.note;
+  if (a.kind === "move") return "";
+  return a.reason === "duplicate"
+    ? t(lang, "bm.whyDup")
+    : a.reason === "dead"
+      ? t(lang, "bm.whyDead")
+      : t(lang, "bm.whyJunk");
+}
+
 function describe(a: Action, lang: Lang): string {
+  const why = rationale(a, lang);
   if (a.kind === "remove") {
-    const why =
+    const tag =
       a.reason === "duplicate"
         ? t(lang, "bm.tagDup")
         : a.reason === "dead"
           ? t(lang, "bm.tagDead")
           : t(lang, "bm.tagJunk");
-    return `🗑 [${why}] ${a.title || a.url}`;
+    return `🗑 [${tag}] ${a.title || a.url}${why ? ` — ${why}` : ""}`;
   }
-  return `📁 ${a.toFolderPath} ← ${a.title || a.url}`;
+  return `📁 ${a.toFolderPath} ← ${a.title || a.url}${why ? ` — ${why}` : ""}`;
 }
 
 export default function BookmarksView({
@@ -59,12 +71,18 @@ export default function BookmarksView({
   // Abort any in-flight dead-link scan if the view unmounts.
   useEffect(() => () => deadAbort.current?.abort(), []);
 
+  // Results start with NOTHING selected — the user opts in to each change.
   const setResult = useCallback((next: Action[], noteMsg = "") => {
     setActions(next);
-    setChecked(new Set(next.map((a) => a.id)));
+    setChecked(new Set());
     setNote(noteMsg);
     setError("");
   }, []);
+
+  const allChecked = actions.length > 0 && checked.size === actions.length;
+  const toggleAll = useCallback(() => {
+    setChecked((prev) => (prev.size === actions.length ? new Set() : new Set(actions.map((a) => a.id))));
+  }, [actions]);
 
   const runDedup = useCallback(() => setResult(findDuplicates(nodes)), [nodes, setResult]);
 
@@ -264,7 +282,7 @@ export default function BookmarksView({
           <div key={a.id} className="bm-row">
             <label className="bm-row-label">
               <input type="checkbox" checked={checked.has(a.id)} onChange={() => toggle(a.id)} />
-              <span className="bm-row-main">{describe(a, lang)}</span>
+              <span className="bm-row-main" title={describe(a, lang)}>{describe(a, lang)}</span>
             </label>
             <button className="bm-open" title={`${t(lang, "bm.open")}: ${a.url}`} onClick={() => openOne(a.url)}>
               ↗
@@ -277,6 +295,9 @@ export default function BookmarksView({
         <div className="bm-apply">
           <span>{t(lang, "bm.selected").replace("{n}", String(checked.size))}</span>
           <span className="bm-apply-btns">
+            <button className="tx-restore" onClick={toggleAll} disabled={disabled}>
+              {allChecked ? t(lang, "bm.selectNone") : t(lang, "bm.selectAll")}
+            </button>
             <button className="tx-restore" onClick={openSelected} disabled={disabled || checked.size === 0}>
               {t(lang, "bm.openSelected")}
             </button>
