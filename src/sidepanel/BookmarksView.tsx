@@ -7,28 +7,28 @@ import {
   type BookmarkNode,
   applyActions,
   buildCategorizePrompt,
+  buildCleanupPrompt,
   checkDeadLinks,
   findDuplicates,
   loadBookmarks,
   parseCategorization,
-  planSort,
+  parseCleanupRemovals,
 } from "@/lib/bookmarks";
 
-/** null = idle. "dead"/"ai" = a long op running. "apply" = applying changes. */
-type Busy = null | "dead" | "ai" | "apply";
+/** null = idle. "dead"/"ai"/"clean" = a long op running. "apply" = applying. */
+type Busy = null | "dead" | "ai" | "clean" | "apply";
 
 function describe(a: Action, lang: Lang): string {
   if (a.kind === "remove") {
-    const why = a.reason === "duplicate" ? t(lang, "bm.tagDup") : t(lang, "bm.tagDead");
+    const why =
+      a.reason === "duplicate"
+        ? t(lang, "bm.tagDup")
+        : a.reason === "dead"
+          ? t(lang, "bm.tagDead")
+          : t(lang, "bm.tagJunk");
     return `🗑 [${why}] ${a.title || a.url}`;
   }
-  if (a.kind === "move") return `📁 ${a.toFolderPath} ← ${a.title || a.url}`;
-  return `↕ ${a.folderTitle} (${a.count})`;
-}
-
-/** The site URL an action refers to, if any (reorder actions have none). */
-function urlOf(a: Action): string | undefined {
-  return a.kind === "reorder" ? undefined : a.url;
+  return `📁 ${a.toFolderPath} ← ${a.title || a.url}`;
 }
 
 export default function BookmarksView({
@@ -66,7 +66,44 @@ export default function BookmarksView({
   }, []);
 
   const runDedup = useCallback(() => setResult(findDuplicates(nodes)), [nodes, setResult]);
-  const runSort = useCallback((key: "name" | "date") => setResult(planSort(nodes, key)), [nodes, setResult]);
+
+  // AI cleanup: duplicates + dead links + AI-judged low-value links, merged
+  // (one remove per bookmark). Requires a configured connection for the AI pass.
+  const runAiClean = useCallback(async () => {
+    if (!config) {
+      setError(t(lang, "bm.needConfig"));
+      return;
+    }
+    setResult([]);
+    setBusy("clean");
+    setProgress({ done: 0, total: 0 });
+    const ctrl = new AbortController();
+    deadAbort.current = ctrl;
+    try {
+      const dupes = findDuplicates(nodes);
+      const dead = await checkDeadLinks(nodes, {
+        signal: ctrl.signal,
+        onProgress: (done, total) => setProgress({ done, total }),
+      });
+      setProgress(null);
+      let junk: Action[] = [];
+      if (!ctrl.signal.aborted) {
+        const { messages } = buildCleanupPrompt(nodes);
+        const text = await collectChat({ config, messages, responseFormat: { type: "json_object" }, signal: ctrl.signal });
+        junk = parseCleanupRemovals(text, nodes);
+      }
+      // Merge, one remove per bookmark (duplicate > dead > meaningless order).
+      const byId = new Map<string, Action>();
+      for (const a of [...dupes, ...dead, ...junk]) if (!byId.has(a.bmId)) byId.set(a.bmId, a);
+      setResult([...byId.values()]);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      deadAbort.current = null;
+      setBusy(null);
+      setProgress(null);
+    }
+  }, [config, nodes, lang, setResult]);
 
   const runDead = useCallback(async () => {
     setResult([]);
@@ -118,12 +155,7 @@ export default function BookmarksView({
   // Open every checked URL-bearing action in background tabs (deduped).
   const openSelected = useCallback(() => {
     const urls = Array.from(
-      new Set(
-        actions
-          .filter((a) => checked.has(a.id))
-          .map(urlOf)
-          .filter((u): u is string => !!u),
-      ),
+      new Set(actions.filter((a) => checked.has(a.id)).map((a) => a.url)),
     );
     if (urls.length === 0) return;
     if (urls.length > 10 && !window.confirm(t(lang, "bm.confirmOpen").replace("{n}", String(urls.length)))) return;
@@ -163,54 +195,50 @@ export default function BookmarksView({
       <div className="bm-actions">
         <button className="skill" onClick={runDedup} disabled={disabled}>{t(lang, "bm.dedup")}</button>
         <button className="skill" onClick={() => void runDead()} disabled={disabled}>{t(lang, "bm.dead")}</button>
-        <button className="skill" onClick={() => runSort("name")} disabled={disabled}>{t(lang, "bm.sortName")}</button>
-        <button className="skill" onClick={() => runSort("date")} disabled={disabled}>{t(lang, "bm.sortDate")}</button>
+        <button
+          className="skill"
+          title={t(lang, "bm.aiClean.title")}
+          onClick={() => void runAiClean()}
+          disabled={disabled || !config}
+        >
+          {t(lang, "bm.aiClean")}
+        </button>
         <button className="skill" onClick={() => void runAi()} disabled={disabled || !config}>{t(lang, "bm.ai")}</button>
       </div>
 
-      {busy === "dead" && progress && (
+      {(busy === "dead" || busy === "clean") && progress && (
         <div className="bm-status">
           {progress.done} / {progress.total}
           <button className="tx-restore" onClick={() => deadAbort.current?.abort()}>{t(lang, "stop")}</button>
         </div>
       )}
+      {busy === "clean" && !progress && <div className="bm-status">{t(lang, "bm.cleaning")}</div>}
       {(busy === "ai" || busy === "apply") && <div className="bm-status">{t(lang, "working")}</div>}
       {error && <div className="bm-status err">⚠ {error}</div>}
       {note && <div className="bm-status">{note}</div>}
 
       <div className="bm-list">
         {actions.length === 0 && !disabled && <div className="bm-empty">{t(lang, "bm.empty")}</div>}
-        {actions.map((a) => {
-          const url = urlOf(a);
-          return (
-            <div key={a.id} className="bm-row">
-              <label className="bm-row-label">
-                <input type="checkbox" checked={checked.has(a.id)} onChange={() => toggle(a.id)} />
-                <span className="bm-row-main">{describe(a, lang)}</span>
-              </label>
-              {url && (
-                <button className="bm-open" title={`${t(lang, "bm.open")}: ${url}`} onClick={() => openOne(url)}>
-                  ↗
-                </button>
-              )}
-            </div>
-          );
-        })}
+        {actions.map((a) => (
+          <div key={a.id} className="bm-row">
+            <label className="bm-row-label">
+              <input type="checkbox" checked={checked.has(a.id)} onChange={() => toggle(a.id)} />
+              <span className="bm-row-main">{describe(a, lang)}</span>
+            </label>
+            <button className="bm-open" title={`${t(lang, "bm.open")}: ${a.url}`} onClick={() => openOne(a.url)}>
+              ↗
+            </button>
+          </div>
+        ))}
       </div>
 
       {actions.length > 0 && (
         <div className="bm-apply">
           <span>{t(lang, "bm.selected").replace("{n}", String(checked.size))}</span>
           <span className="bm-apply-btns">
-            {actions.some((a) => urlOf(a)) && (
-              <button
-                className="tx-restore"
-                onClick={openSelected}
-                disabled={disabled || checked.size === 0}
-              >
-                {t(lang, "bm.openSelected")}
-              </button>
-            )}
+            <button className="tx-restore" onClick={openSelected} disabled={disabled || checked.size === 0}>
+              {t(lang, "bm.openSelected")}
+            </button>
             <button className="tx-go" onClick={() => void apply()} disabled={disabled || checked.size === 0}>
               {t(lang, "bm.apply")}
             </button>
