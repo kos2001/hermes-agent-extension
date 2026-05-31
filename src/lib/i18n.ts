@@ -53,6 +53,9 @@ const STR: Record<string, Entry> = {
   "bm.aiSkipped": { ko: "{n}개는 한도 초과로 건너뜀", en: "{n} skipped (over the limit)", zh: "{n} 项因超出上限被跳过" },
   "bm.tagDup": { ko: "중복", en: "duplicate", zh: "重复" },
   "bm.tagDead": { ko: "깨진 링크", en: "dead link", zh: "失效" },
+  "bm.open": { ko: "사이트 열기", en: "Open site", zh: "打开网站" },
+  "bm.openSelected": { ko: "선택 항목 열기", en: "Open selected", zh: "打开所选" },
+  "bm.confirmOpen": { ko: "{n}개 사이트를 새 탭으로 엽니다. 계속할까요?", en: "Open {n} sites in new tabs?", zh: "在新标签页打开 {n} 个网站？" },
   // Market-trends report
   home: { ko: "홈 (채팅)", en: "Home (chat)", zh: "主页（聊天）" },
   market: { ko: "시장 동향", en: "Market", zh: "市场动向" },

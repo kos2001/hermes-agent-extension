@@ -406,9 +406,38 @@ html, body, #root {
   gap: 8px;
   padding: 6px 12px;
   font-size: 13px;
-  cursor: pointer;
 }
 .bm-row:hover { background: var(--panel-2); }
+.bm-row-label {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+.bm-open {
+  flex: none;
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 5px;
+  padding: 1px 7px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.bm-open:hover { background: var(--panel-2); }
+.bm-apply-btns { display: inline-flex; gap: 8px; }
+.bm-apply .tx-restore {
+  background: var(--panel-2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  padding: 4px 10px;
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 12px;
+}
+.bm-apply button:disabled { opacity: 0.5; cursor: not-allowed; }
 .bm-row-main {
   overflow: hidden;
   text-overflow: ellipsis;
