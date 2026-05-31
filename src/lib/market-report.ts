@@ -240,3 +240,42 @@ export async function runMarketReport(opts: RunMarketReportOpts): Promise<Market
     skipped: all.length - picked.length,
   };
 }
+
+const REPORTS_KEY = "hermes.market.reports";
+const SETTINGS_KEY = "hermes.market.settings";
+const MAX_REPORTS = 10;
+
+/** Alarm name for the scheduled market report. */
+export const MARKET_ALARM = "hermes.market.run";
+
+export async function loadReports(): Promise<MarketReport[]> {
+  const r = await chrome.storage.local.get(REPORTS_KEY);
+  return (r[REPORTS_KEY] as MarketReport[] | undefined) ?? [];
+}
+
+/** Prepend a report, keep the latest MAX_REPORTS, return the new list. */
+export async function saveReport(report: MarketReport): Promise<MarketReport[]> {
+  const next = [report, ...(await loadReports())].slice(0, MAX_REPORTS);
+  await chrome.storage.local.set({ [REPORTS_KEY]: next });
+  return next;
+}
+
+export async function loadMarketSettings(): Promise<MarketSettings> {
+  const r = await chrome.storage.local.get(SETTINGS_KEY);
+  return (r[SETTINGS_KEY] as MarketSettings | undefined) ?? { folderId: "", freq: "off", hour: 9 };
+}
+
+export async function saveMarketSettings(s: MarketSettings): Promise<void> {
+  await chrome.storage.local.set({ [SETTINGS_KEY]: s });
+}
+
+/** Re-create the recurring alarm from settings (cleared when off / no folder). */
+export async function scheduleMarketAlarm(settings: MarketSettings): Promise<void> {
+  await chrome.alarms.clear(MARKET_ALARM);
+  const spec = alarmSpec(settings.freq);
+  if (!spec || !settings.folderId) return;
+  chrome.alarms.create(MARKET_ALARM, {
+    when: nextFireTime(Date.now(), settings.hour),
+    periodInMinutes: spec.periodInMinutes,
+  });
+}
