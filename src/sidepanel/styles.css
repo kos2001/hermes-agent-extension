@@ -532,3 +532,7 @@ html, body, #root {
 .hive-auth-name { font-size: 12px; color: var(--muted); max-width: 110px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .icon-btn.hive-in, .icon-btn.hive-out { font-size: 12px; padding: 3px 8px; }
 .hive-auth-error { font-size: 11px; color: #e5534b; }
+
+/* Hive: share-a-folder row in the Bookmarks view */
+.bm-share { display: flex; gap: 8px; align-items: center; margin: 8px 0; }
+.bm-share .tx-lang { flex: 1; min-width: 0; }
