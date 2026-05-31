@@ -21,6 +21,7 @@ import {
 import { loadConfig } from "@/lib/storage";
 import { loadBookmarks } from "@/lib/bookmarks";
 import { loadMarketSettings, MARKET_ALARM, runMarketReport, saveReport } from "@/lib/market-report";
+import { isLang, LANG_KEY } from "@/lib/i18n";
 
 /** Post a message to a port, ignoring failures from a closed port. */
 function safePost(port: chrome.runtime.Port, msg: SelectionResponse): void {
@@ -122,7 +123,10 @@ async function runScheduledMarketReport(): Promise<void> {
   const nodes = await loadBookmarks();
   const folder = nodes.find((n) => n.id === settings.folderId && !n.url);
   const folderTitle = folder?.title || settings.folderId;
-  const report = await runMarketReport({ nodes, folderId: settings.folderId, folderTitle, config });
+  // Match the report language to the user's selected UI language.
+  const storedLang = (await chrome.storage.local.get(LANG_KEY))[LANG_KEY];
+  const lang = isLang(storedLang) ? storedLang : "ko";
+  const report = await runMarketReport({ nodes, folderId: settings.folderId, folderTitle, config, lang });
   await saveReport(report);
   const ok = report.sites.filter((s) => !s.error).length;
   chrome.notifications.create({

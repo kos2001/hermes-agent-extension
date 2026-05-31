@@ -1,6 +1,10 @@
 import type { BookmarkNode } from "./bookmarks";
 import type { ChatMessage, ConnectionConfig } from "./types";
 import { collectChat } from "./hermes-client";
+import type { Lang } from "./i18n";
+
+/** Human-readable language name fed to the model so the report matches the UI language. */
+export const LANG_NAMES: Record<Lang, string> = { ko: "Korean", en: "English", zh: "Chinese" };
 
 export interface SiteSummary {
   url: string;
@@ -151,6 +155,7 @@ export async function summarizeSite(
   config: ConnectionConfig,
   title: string,
   text: string,
+  language: string,
   signal?: AbortSignal,
 ): Promise<string> {
   const messages: ChatMessage[] = [
@@ -159,7 +164,7 @@ export async function summarizeSite(
       content:
         "Summarize the following web page for a market-trends briefing. Reply with " +
         "2-4 concise bullet points capturing key facts, figures, and signals. " +
-        "Plain text bullets only, no preamble.",
+        `Plain text bullets only, no preamble. Write the bullets in ${language}.`,
     },
     { role: "user", content: `Title: ${title}\n\n${text.slice(0, 8000)}` },
   ];
@@ -171,6 +176,7 @@ export async function synthesizeReport(
   config: ConnectionConfig,
   folderTitle: string,
   sites: SiteSummary[],
+  language: string,
   signal?: AbortSignal,
 ): Promise<string> {
   const body = sites
@@ -184,7 +190,7 @@ export async function synthesizeReport(
         "You are a market analyst. From the per-site summaries, write a comprehensive " +
         "market-trends report in Markdown with: an executive summary, key trends across " +
         "sources, notable signals and risks, and a short outlook. Be specific and cite " +
-        "site titles. Reply in the user's language.",
+        `site titles. Write the entire report in ${language}.`,
     },
     { role: "user", content: `Folder: ${folderTitle}\n\n${body}` },
   ];
@@ -196,12 +202,15 @@ export interface RunMarketReportOpts {
   folderId: string;
   folderTitle: string;
   config: ConnectionConfig;
+  /** UI language the report (and summaries) should be written in. */
+  lang: Lang;
   signal?: AbortSignal;
   onProgress?: (done: number, total: number, label: string) => void;
 }
 
 /** End-to-end: per-site fetch (tab fallback) -> summarize -> synthesize. */
 export async function runMarketReport(opts: RunMarketReportOpts): Promise<MarketReport> {
+  const language = LANG_NAMES[opts.lang];
   const all = bookmarksInFolder(opts.nodes, opts.folderId);
   const picked = all.slice(0, MAX_SITES);
   const sites: SiteSummary[] = [];
@@ -219,7 +228,7 @@ export async function runMarketReport(opts: RunMarketReportOpts): Promise<Market
         if (viaTab.length > text.length) text = viaTab;
       }
       if (text.length < 50) error = "No readable content";
-      else summary = await summarizeSite(opts.config, title, text, opts.signal);
+      else summary = await summarizeSite(opts.config, title, text, language, opts.signal);
     } catch (e) {
       error = e instanceof Error ? e.message : String(e);
     }
@@ -231,7 +240,7 @@ export async function runMarketReport(opts: RunMarketReportOpts): Promise<Market
   // otherwise fetch with an already-aborted signal and throw.
   const synthesis =
     !opts.signal?.aborted && sites.some((s) => !s.error && s.summary)
-      ? await synthesizeReport(opts.config, opts.folderTitle, sites, opts.signal)
+      ? await synthesizeReport(opts.config, opts.folderTitle, sites, language, opts.signal)
       : "";
   return {
     id: crypto.randomUUID(),
