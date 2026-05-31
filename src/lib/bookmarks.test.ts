@@ -1,32 +1,68 @@
 import { describe, expect, it } from "vitest";
 import {
   buildCategorizePrompt,
+  buildCleanupPrompt,
+  canonicalUrl,
   findDuplicates,
-  normalizeUrl,
+  isDeadStatus,
   parseCategorization,
-  planSort,
+  parseCleanupRemovals,
 } from "./bookmarks";
 
-describe("normalizeUrl", () => {
-  it("lowercases protocol and host but not the path", () => {
-    expect(normalizeUrl("HTTPS://Example.COM/Path")).toBe("https://example.com/path");
+describe("isDeadStatus", () => {
+  it("flags only the canonical gone statuses", () => {
+    expect(isDeadStatus(404)).toBe(true);
+    expect(isDeadStatus(410)).toBe(true);
+  });
+  it("does not flag blocked/auth/server-error/ok statuses", () => {
+    for (const s of [200, 301, 401, 403, 429, 500, 503]) expect(isDeadStatus(s)).toBe(false);
+  });
+});
+
+describe("canonicalUrl", () => {
+  it("lowercases, drops the fragment, and is scheme-agnostic", () => {
+    expect(canonicalUrl("HTTPS://Example.COM/Path")).toBe("example.com/path");
+    expect(canonicalUrl("http://a.com/x")).toBe(canonicalUrl("https://a.com/x"));
   });
 
-  it("drops the fragment", () => {
-    expect(normalizeUrl("https://a.com/x#section")).toBe("https://a.com/x");
+  it("strips a www. prefix", () => {
+    expect(canonicalUrl("https://www.a.com/x")).toBe("a.com/x");
   });
 
   it("strips a trailing slash except on the root", () => {
-    expect(normalizeUrl("https://a.com/x/")).toBe("https://a.com/x");
-    expect(normalizeUrl("https://a.com/")).toBe("https://a.com/");
+    expect(canonicalUrl("https://a.com/x/")).toBe("a.com/x");
+    expect(canonicalUrl("https://a.com/")).toBe("a.com/");
+  });
+
+  it("collapses default documents", () => {
+    expect(canonicalUrl("https://a.com/index.html")).toBe("a.com/");
+    expect(canonicalUrl("https://a.com/sub/index.php")).toBe("a.com/sub");
+  });
+
+  it("removes tracking params and sorts the rest", () => {
+    expect(canonicalUrl("https://a.com/x?utm_source=t&id=5&fbclid=z")).toBe("a.com/x?id=5");
+    expect(canonicalUrl("https://a.com/x?b=2&a=1")).toBe("a.com/x?a=1&b=2");
+    expect(canonicalUrl("https://a.com/x?utm_campaign=c")).toBe("a.com/x");
   });
 
   it("treats a lone '?' as no query", () => {
-    expect(normalizeUrl("https://a.com/x?")).toBe("https://a.com/x");
+    expect(canonicalUrl("https://a.com/x?")).toBe("a.com/x");
   });
 
   it("falls back to a trimmed lowercase string for non-URLs", () => {
-    expect(normalizeUrl("  Not A URL ")).toBe("not a url");
+    expect(canonicalUrl("  Not A URL ")).toBe("not a url");
+  });
+});
+
+describe("findDuplicates — semantic", () => {
+  it("folds www/scheme/tracking-param/param-order variants of the same page", () => {
+    const nodes = [
+      bm("keep", "https://a.com/p?x=1", 100),
+      bm("www", "http://www.a.com/p?x=1", 200),
+      bm("utm", "https://a.com/p?x=1&utm_source=news", 300),
+    ];
+    const actions = findDuplicates(nodes);
+    expect(actions.map((a) => a.id).sort()).toEqual(["remove-utm", "remove-www"]);
   });
 });
 
@@ -56,34 +92,43 @@ describe("findDuplicates", () => {
   });
 });
 
-describe("planSort", () => {
-  it("emits a reorder action only for folders whose order changes", () => {
-    const nodes = [
-      bm("b", "https://b.com/", 200, { index: 0, parentId: "f1", parentTitle: "F1" }),
-      bm("a", "https://a.com/", 100, { index: 1, parentId: "f1", parentTitle: "F1" }),
-      bm("c", "https://c.com/", 300, { index: 0, parentId: "f2", parentTitle: "F2" }),
-    ];
-    const byName = planSort(nodes, "name");
-    expect(byName).toHaveLength(1);
-    expect(byName[0]).toMatchObject({ kind: "reorder", folderId: "f1", orderedIds: ["a", "b"], count: 2 });
+describe("parseCleanupRemovals", () => {
+  const nodes = [
+    bm("a", "https://a.com/", 1),
+    bm("b", "https://b.com/", 2),
+    bm("folder", undefined, 3),
+  ];
+
+  it('parses {"remove":[ids]} into meaningless-remove actions', () => {
+    const actions = parseCleanupRemovals('{"remove":["a","b"]}', nodes);
+    expect(actions.map((a) => a.id)).toEqual(["remove-a", "remove-b"]);
+    expect(actions.every((a) => a.kind === "remove" && a.reason === "meaningless")).toBe(true);
   });
 
-  it("sorts by date added", () => {
-    const nodes = [
-      bm("late", "https://l.com/", 999, { index: 0, parentId: "f1", parentTitle: "F1" }),
-      bm("early", "https://e.com/", 1, { index: 1, parentId: "f1", parentTitle: "F1" }),
-    ];
-    const byDate = planSort(nodes, "date");
-    expect(byDate[0].kind).toBe("reorder");
-    expect((byDate[0] as { orderedIds: string[] }).orderedIds).toEqual(["early", "late"]);
+  it("accepts object entries and dedupes, ignoring unknown/folder ids", () => {
+    const actions = parseCleanupRemovals('{"remove":[{"id":"a"},{"id":"a"},"zzz","folder"]}', nodes);
+    expect(actions.map((a) => a.id)).toEqual(["remove-a"]);
   });
 
-  it("returns nothing when already sorted", () => {
-    const nodes = [
-      bm("a", "https://a.com/", 100, { index: 0, parentId: "f1", parentTitle: "F1" }),
-      bm("b", "https://b.com/", 200, { index: 1, parentId: "f1", parentTitle: "F1" }),
-    ];
-    expect(planSort(nodes, "name")).toEqual([]);
+  it("carries the per-item reason as note", () => {
+    const actions = parseCleanupRemovals('{"remove":[{"id":"a","reason":"login page"}]}', nodes);
+    expect(actions[0]).toMatchObject({ id: "remove-a", note: "login page" });
+  });
+
+  it("returns [] for non-array / garbage", () => {
+    expect(parseCleanupRemovals('{"remove":"a"}', nodes)).toEqual([]);
+    expect(parseCleanupRemovals("not json", nodes)).toEqual([]);
+  });
+});
+
+describe("buildCleanupPrompt", () => {
+  it("sends only bookmarks (capped) with system+user roles", () => {
+    const nodes = [bm("a", "https://a.com/", 1), bm("folder", undefined, 2)];
+    const { messages, sent, skipped } = buildCleanupPrompt(nodes);
+    expect(sent).toBe(1);
+    expect(skipped).toBe(0);
+    expect(messages[0].role).toBe("system");
+    expect(messages[1].role).toBe("user");
   });
 });
 
@@ -125,5 +170,11 @@ describe("parseCategorization", () => {
   it("ignores unknown ids and returns [] for garbage", () => {
     expect(parseCategorization('{"assignments":{"zzz":"X"}}', nodes)).toEqual([]);
     expect(parseCategorization("not json at all", nodes)).toEqual([]);
+  });
+
+  it("parses the array form and carries the per-item reason as note", () => {
+    const text = '{"assignments":[{"id":"a","folder":"News","reason":"tech news site"}]}';
+    const actions = parseCategorization(text, nodes);
+    expect(actions[0]).toMatchObject({ id: "move-a", toFolderPath: "News", note: "tech news site" });
   });
 });

@@ -14,13 +14,14 @@ import { checkHealth, streamChat } from "@/lib/hermes-client";
 import {
   buildSelectionMessages,
   getTranslateTarget,
+  isSameLanguage,
   SELECTION_PORT,
   type SelectionRequest,
   type SelectionResponse,
 } from "@/lib/selection-actions";
 import { loadConfig } from "@/lib/storage";
 import { loadBookmarks } from "@/lib/bookmarks";
-import { loadMarketSettings, MARKET_ALARM, runMarketReport, saveReport } from "@/lib/market-report";
+import { downloadReport, loadMarketSettings, MARKET_ALARM, runMarketReport, saveReport } from "@/lib/market-report";
 import { isLang, LANG_KEY } from "@/lib/i18n";
 
 /** Post a message to a port, ignoring failures from a closed port. */
@@ -53,10 +54,17 @@ chrome.runtime.onConnect.addListener((port) => {
         safePost(port, msg);
       };
       try {
+        const target = req.targetLang || (await getTranslateTarget());
+        // Mouse-triggered translate: skip when the selection is already in the
+        // target language (don't translate same-language text).
+        if (req.action === "translate" && isSameLanguage(req.text, target)) {
+          safePost(port, { type: "chunk", delta: `이미 ${target} 텍스트입니다 — 번역하지 않았습니다.` });
+          finish({ type: "done" });
+          return;
+        }
         const cfg = await loadConfig();
         if (!cfg.apiKey) throw new Error("No API key configured — open extension options");
-        const target = req.targetLang || (await getTranslateTarget());
-        const messages = buildSelectionMessages(req.action, req.text, target);
+        const messages = buildSelectionMessages(req.action, req.text, target, req.context);
         let produced = false;
         let lastError = "";
         await streamChat(
@@ -128,6 +136,13 @@ async function runScheduledMarketReport(): Promise<void> {
   const lang = isLang(storedLang) ? storedLang : "ko";
   const report = await runMarketReport({ nodes, folderId: settings.folderId, folderTitle, config, lang });
   await saveReport(report);
+  if (settings.autoSave && report.synthesis) {
+    try {
+      await downloadReport(report, settings.saveFolder);
+    } catch {
+      /* download failed (e.g. no synthesis / permission) — keep the in-app report */
+    }
+  }
   const ok = report.sites.filter((s) => !s.error).length;
   chrome.notifications.create({
     type: "basic",
