@@ -15,14 +15,14 @@ export interface BookmarkNode {
 
 /**
  * A proposed change, rendered in the preview and consumed by `applyActions`.
- * `id` is derived from the Chrome bookmark/folder id (`remove-<id>`,
- * `move-<id>`, `reorder-<id>`); Chrome ids are numeric strings, so these
- * prefixes never collide with the underlying id.
+ * `id` is derived from the Chrome bookmark id (`remove-<id>`, `move-<id>`);
+ * Chrome ids are numeric strings, so these prefixes never collide with the id.
  */
+export type RemoveReason = "duplicate" | "dead" | "meaningless";
+
 export type Action =
-  | { id: string; kind: "remove"; bmId: string; title: string; url: string; reason: "duplicate" | "dead" }
-  | { id: string; kind: "move"; bmId: string; title: string; url: string; toFolderPath: string }
-  | { id: string; kind: "reorder"; folderId: string; folderTitle: string; orderedIds: string[]; count: number };
+  | { id: string; kind: "remove"; bmId: string; title: string; url: string; reason: RemoveReason }
+  | { id: string; kind: "move"; bmId: string; title: string; url: string; toFolderPath: string };
 
 /**
  * Canonical form of a URL for duplicate detection: lowercase protocol+host,
@@ -69,36 +69,6 @@ export function findDuplicates(nodes: BookmarkNode[]): Action[] {
         reason: "duplicate",
       });
     }
-  }
-  return actions;
-}
-
-/** Per folder, propose reordering bookmarks by name or date (only if changed). */
-export function planSort(nodes: BookmarkNode[], key: "name" | "date"): Action[] {
-  const byFolder = new Map<string, BookmarkNode[]>();
-  for (const n of nodes) {
-    if (!n.url || !n.parentId) continue;
-    const arr = byFolder.get(n.parentId);
-    if (arr) arr.push(n);
-    else byFolder.set(n.parentId, [n]);
-  }
-  const actions: Action[] = [];
-  for (const [folderId, arr] of byFolder) {
-    const current = [...arr].sort((a, b) => a.index - b.index);
-    const sorted = [...current].sort((a, b) =>
-      key === "name" ? a.title.localeCompare(b.title, undefined, { sensitivity: "base" }) : a.dateAdded - b.dateAdded,
-    );
-    const currentIds = current.map((n) => n.id);
-    const sortedIds = sorted.map((n) => n.id);
-    if (currentIds.join(" ") === sortedIds.join(" ")) continue;
-    actions.push({
-      id: `reorder-${folderId}`,
-      kind: "reorder",
-      folderId,
-      folderTitle: current[0]?.parentTitle ?? folderId,
-      orderedIds: sortedIds,
-      count: sortedIds.length,
-    });
   }
   return actions;
 }
@@ -166,6 +136,51 @@ export function parseCategorization(text: string, nodes: BookmarkNode[]): Action
   return actions;
 }
 
+/** Build the LLM request that flags meaningless / low-value bookmarks. */
+export function buildCleanupPrompt(
+  nodes: BookmarkNode[],
+): { messages: ChatMessage[]; sent: number; skipped: number } {
+  const all = nodes.filter((n) => n.url);
+  const picked = all.slice(0, MAX_CATEGORIZE);
+  const list = picked.map((n) => ({ id: n.id, title: n.title, url: n.url }));
+  const system =
+    "You audit a list of browser bookmarks ({id, title, url}) and identify ones " +
+    "that are meaningless or low-value to keep: blank/placeholder/untitled pages, " +
+    "localhost or 127.0.0.1 test pages, login/auth or error pages, search-result " +
+    "URLs, and obviously temporary or junk links. Reply with a JSON object " +
+    '{"remove": ["<id>", ...]} listing ONLY the ids worth deleting. When unsure, ' +
+    "omit the id. Reply with JSON only.";
+  return {
+    messages: [
+      { role: "system", content: system },
+      { role: "user", content: JSON.stringify(list) },
+    ],
+    sent: picked.length,
+    skipped: all.length - picked.length,
+  };
+}
+
+/** Parse the cleanup response into `remove`/`meaningless` actions. */
+export function parseCleanupRemovals(text: string, nodes: BookmarkNode[]): Action[] {
+  const obj = extractJsonObject(text);
+  if (!obj) return [];
+  const raw = (obj.remove ?? obj.ids) as unknown;
+  if (!Array.isArray(raw)) return [];
+  const byId = new Map(nodes.map((n) => [n.id, n]));
+  const seen = new Set<string>();
+  const actions: Action[] = [];
+  for (const entry of raw) {
+    // Accept both ["id", ...] and [{ id: "..." }, ...] shapes.
+    const bmId = typeof entry === "string" ? entry : (entry as { id?: unknown })?.id;
+    if (typeof bmId !== "string" || seen.has(bmId)) continue;
+    const node = byId.get(bmId);
+    if (!node || !node.url) continue;
+    seen.add(bmId);
+    actions.push({ id: `remove-${bmId}`, kind: "remove", bmId, title: node.title, url: node.url, reason: "meaningless" });
+  }
+  return actions;
+}
+
 /** Flatten `chrome.bookmarks.getTree()` into a list (bookmarks + folders). */
 export async function loadBookmarks(): Promise<BookmarkNode[]> {
   const tree = await chrome.bookmarks.getTree();
@@ -213,13 +228,6 @@ export async function applyActions(actions: Action[]): Promise<{ applied: number
     try {
       if (action.kind === "remove") {
         await chrome.bookmarks.remove(action.bmId);
-      } else if (action.kind === "reorder") {
-        // Move in ascending index order: Chrome reindexes siblings after each
-        // move, so placing index 0 first, then 1, etc. yields the correct
-        // final order. orderedIds covers all bookmarks in the folder.
-        for (let i = 0; i < action.orderedIds.length; i++) {
-          await chrome.bookmarks.move(action.orderedIds[i], { parentId: action.folderId, index: i });
-        }
       } else {
         const folderId = await ensureFolder(action.toFolderPath, folderCache);
         await chrome.bookmarks.move(action.bmId, { parentId: folderId });

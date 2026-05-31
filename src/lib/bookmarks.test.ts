@@ -1,10 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
   buildCategorizePrompt,
+  buildCleanupPrompt,
   findDuplicates,
   normalizeUrl,
   parseCategorization,
-  planSort,
+  parseCleanupRemovals,
 } from "./bookmarks";
 
 describe("normalizeUrl", () => {
@@ -56,34 +57,38 @@ describe("findDuplicates", () => {
   });
 });
 
-describe("planSort", () => {
-  it("emits a reorder action only for folders whose order changes", () => {
-    const nodes = [
-      bm("b", "https://b.com/", 200, { index: 0, parentId: "f1", parentTitle: "F1" }),
-      bm("a", "https://a.com/", 100, { index: 1, parentId: "f1", parentTitle: "F1" }),
-      bm("c", "https://c.com/", 300, { index: 0, parentId: "f2", parentTitle: "F2" }),
-    ];
-    const byName = planSort(nodes, "name");
-    expect(byName).toHaveLength(1);
-    expect(byName[0]).toMatchObject({ kind: "reorder", folderId: "f1", orderedIds: ["a", "b"], count: 2 });
+describe("parseCleanupRemovals", () => {
+  const nodes = [
+    bm("a", "https://a.com/", 1),
+    bm("b", "https://b.com/", 2),
+    bm("folder", undefined, 3),
+  ];
+
+  it('parses {"remove":[ids]} into meaningless-remove actions', () => {
+    const actions = parseCleanupRemovals('{"remove":["a","b"]}', nodes);
+    expect(actions.map((a) => a.id)).toEqual(["remove-a", "remove-b"]);
+    expect(actions.every((a) => a.kind === "remove" && a.reason === "meaningless")).toBe(true);
   });
 
-  it("sorts by date added", () => {
-    const nodes = [
-      bm("late", "https://l.com/", 999, { index: 0, parentId: "f1", parentTitle: "F1" }),
-      bm("early", "https://e.com/", 1, { index: 1, parentId: "f1", parentTitle: "F1" }),
-    ];
-    const byDate = planSort(nodes, "date");
-    expect(byDate[0].kind).toBe("reorder");
-    expect((byDate[0] as { orderedIds: string[] }).orderedIds).toEqual(["early", "late"]);
+  it("accepts object entries and dedupes, ignoring unknown/folder ids", () => {
+    const actions = parseCleanupRemovals('{"remove":[{"id":"a"},{"id":"a"},"zzz","folder"]}', nodes);
+    expect(actions.map((a) => a.id)).toEqual(["remove-a"]);
   });
 
-  it("returns nothing when already sorted", () => {
-    const nodes = [
-      bm("a", "https://a.com/", 100, { index: 0, parentId: "f1", parentTitle: "F1" }),
-      bm("b", "https://b.com/", 200, { index: 1, parentId: "f1", parentTitle: "F1" }),
-    ];
-    expect(planSort(nodes, "name")).toEqual([]);
+  it("returns [] for non-array / garbage", () => {
+    expect(parseCleanupRemovals('{"remove":"a"}', nodes)).toEqual([]);
+    expect(parseCleanupRemovals("not json", nodes)).toEqual([]);
+  });
+});
+
+describe("buildCleanupPrompt", () => {
+  it("sends only bookmarks (capped) with system+user roles", () => {
+    const nodes = [bm("a", "https://a.com/", 1), bm("folder", undefined, 2)];
+    const { messages, sent, skipped } = buildCleanupPrompt(nodes);
+    expect(sent).toBe(1);
+    expect(skipped).toBe(0);
+    expect(messages[0].role).toBe("system");
+    expect(messages[1].role).toBe("user");
   });
 });
 
