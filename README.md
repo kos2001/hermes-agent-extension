@@ -111,6 +111,36 @@ The manifest requests broad host access (`host_permissions: http://*/*`,
 `https://*/*`) at install so the side panel can read page content and translate
 on any site without a separate runtime grant.
 
+## Hive (cloud) setup — optional
+
+"Hive" is the collaborative layer: members sign in and (in later sub-projects)
+publish summarized bookmark folders to a shared feed. The foundation
+(sub-project A) ships a Supabase-backed data layer + Google sign-in. Without the
+env vars below, the cloud features stay dormant (the sign-in button is hidden)
+and the extension works exactly as before.
+
+To enable it:
+
+1. **Create a Supabase project** (https://supabase.com).
+2. **Run the schema:** open the SQL editor and run
+   `supabase/migrations/0001_init.sql` (creates the tables, RLS policies, and the
+   profile-creation trigger).
+3. **Enable Google auth:** Auth → Providers → Google. Supply a Google OAuth
+   client id/secret (from the Google Cloud console; authorized redirect URI is
+   your Supabase project's `…/auth/v1/callback`).
+4. **Register the extension redirect:** load `dist/` unpacked first
+   (`chrome://extensions` shows the extension id), then in Supabase Auth → URL
+   Configuration → Redirect URLs add `https://<extension-id>.chromiumapp.org/`.
+5. **Add credentials:** copy `.env.example` to `.env` and fill
+   `VITE_SUPABASE_URL` + `VITE_SUPABASE_ANON_KEY` (Settings → API).
+6. **Rebuild** (`npm run build`) and reload the unpacked extension. A
+   "Sign in to Hive" button appears in the side-panel top bar.
+
+Design + plan docs live under `docs/superpowers/`
+(`specs/2026-05-31-collective-bookmarks-platform-design.md`,
+`plans/2026-05-31-hive-platform-foundation.md`). Sub-projects B (share folder),
+C (feed web app), and D (collective-intelligence features) build on this layer.
+
 ## Tests
 
 `npm test` runs Node/vitest suites: SSE parsing, the HTTP client helpers
