@@ -31,6 +31,12 @@ describe("parseSemanticGroups", () => {
     expect(parseSemanticGroups('{"groups":[["a"],["zzz","folder"]]}', nodes)).toEqual([]);
   });
 
+  it("parses the {ids,reason} form and carries the reason as note", () => {
+    const actions = parseSemanticGroups('{"groups":[{"ids":["a","b"],"reason":"AMP copy"}]}', nodes);
+    expect(actions).toHaveLength(1);
+    expect(actions[0]).toMatchObject({ id: "remove-b", note: "AMP copy" });
+  });
+
   it("does not propose the same bookmark twice across overlapping groups", () => {
     const actions = parseSemanticGroups('{"groups":[["a","b"],["a","b"]]}', nodes);
     expect(actions.map((x) => x.id)).toEqual(["remove-b"]);
