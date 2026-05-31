@@ -1,4 +1,6 @@
 import type { BookmarkNode } from "./bookmarks";
+import type { ChatMessage, ConnectionConfig } from "./types";
+import { collectChat } from "./hermes-client";
 
 export interface SiteSummary {
   url: string;
@@ -87,4 +89,154 @@ export function nextFireTime(now: number, hour: number): number {
   let t = d.getTime();
   if (t <= now) t += 24 * 60 * 60 * 1000;
   return t;
+}
+
+/** Fetch a URL and reduce it to text. Returns "" on any failure (15s timeout). */
+export async function fetchSiteText(url: string, signal?: AbortSignal): Promise<string> {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 15000);
+  const onAbort = () => ctrl.abort();
+  signal?.addEventListener("abort", onAbort);
+  try {
+    const res = await fetch(url, { signal: ctrl.signal, redirect: "follow" });
+    if (!res.ok) return "";
+    return htmlToText(await res.text());
+  } catch {
+    return "";
+  } finally {
+    clearTimeout(timer);
+    signal?.removeEventListener("abort", onAbort);
+  }
+}
+
+/** Open the URL in an inactive tab, extract innerText, close the tab. "" on failure. */
+export async function extractViaTab(url: string): Promise<string> {
+  let tabId: number | undefined;
+  try {
+    const tab = await chrome.tabs.create({ url, active: false });
+    tabId = tab.id;
+    if (tabId === undefined) return "";
+    await new Promise<void>((resolve) => {
+      const done = () => {
+        chrome.tabs.onUpdated.removeListener(listener);
+        clearTimeout(t);
+        resolve();
+      };
+      const listener = (id: number, info: chrome.tabs.TabChangeInfo) => {
+        if (id === tabId && info.status === "complete") done();
+      };
+      const t = setTimeout(done, 15000);
+      chrome.tabs.onUpdated.addListener(listener);
+    });
+    const res = await chrome.scripting.executeScript({
+      target: { tabId },
+      func: () => (document.body?.innerText || "").replace(/\s+/g, " ").trim(),
+    });
+    return (res[0]?.result as string | undefined) ?? "";
+  } catch {
+    return "";
+  } finally {
+    if (tabId !== undefined) {
+      try {
+        await chrome.tabs.remove(tabId);
+      } catch {
+        /* tab already gone */
+      }
+    }
+  }
+}
+
+/** Summarize one site into a few bullet points. */
+export async function summarizeSite(
+  config: ConnectionConfig,
+  title: string,
+  text: string,
+  signal?: AbortSignal,
+): Promise<string> {
+  const messages: ChatMessage[] = [
+    {
+      role: "system",
+      content:
+        "Summarize the following web page for a market-trends briefing. Reply with " +
+        "2-4 concise bullet points capturing key facts, figures, and signals. " +
+        "Plain text bullets only, no preamble.",
+    },
+    { role: "user", content: `Title: ${title}\n\n${text.slice(0, 8000)}` },
+  ];
+  return (await collectChat({ config, messages, signal })).trim();
+}
+
+/** Synthesize per-site summaries into a comprehensive Markdown report. */
+export async function synthesizeReport(
+  config: ConnectionConfig,
+  folderTitle: string,
+  sites: SiteSummary[],
+  signal?: AbortSignal,
+): Promise<string> {
+  const body = sites
+    .filter((s) => !s.error && s.summary)
+    .map((s) => `## ${s.title}\n${s.url}\n${s.summary}`)
+    .join("\n\n");
+  const messages: ChatMessage[] = [
+    {
+      role: "system",
+      content:
+        "You are a market analyst. From the per-site summaries, write a comprehensive " +
+        "market-trends report in Markdown with: an executive summary, key trends across " +
+        "sources, notable signals and risks, and a short outlook. Be specific and cite " +
+        "site titles. Reply in the user's language.",
+    },
+    { role: "user", content: `Folder: ${folderTitle}\n\n${body}` },
+  ];
+  return (await collectChat({ config, messages, signal })).trim();
+}
+
+export interface RunMarketReportOpts {
+  nodes: BookmarkNode[];
+  folderId: string;
+  folderTitle: string;
+  config: ConnectionConfig;
+  signal?: AbortSignal;
+  onProgress?: (done: number, total: number, label: string) => void;
+}
+
+/** End-to-end: per-site fetch (tab fallback) -> summarize -> synthesize. */
+export async function runMarketReport(opts: RunMarketReportOpts): Promise<MarketReport> {
+  const all = bookmarksInFolder(opts.nodes, opts.folderId);
+  const picked = all.slice(0, MAX_SITES);
+  const sites: SiteSummary[] = [];
+  let done = 0;
+  for (const n of picked) {
+    if (opts.signal?.aborted) break;
+    const url = n.url as string;
+    const title = n.title || url;
+    let summary = "";
+    let error: string | undefined;
+    try {
+      let text = await fetchSiteText(url, opts.signal);
+      if (text.length < MIN_TEXT) {
+        const viaTab = await extractViaTab(url);
+        if (viaTab.length > text.length) text = viaTab;
+      }
+      if (text.length < 50) error = "No readable content";
+      else summary = await summarizeSite(opts.config, title, text, opts.signal);
+    } catch (e) {
+      error = e instanceof Error ? e.message : String(e);
+    }
+    sites.push({ url, title, summary, error });
+    done++;
+    opts.onProgress?.(done, picked.length, title);
+  }
+  const synthesis = sites.some((s) => !s.error && s.summary)
+    ? await synthesizeReport(opts.config, opts.folderTitle, sites, opts.signal)
+    : "";
+  return {
+    id: crypto.randomUUID(),
+    folderId: opts.folderId,
+    folderTitle: opts.folderTitle,
+    createdAt: Date.now(),
+    sites,
+    synthesis,
+    skipped: all.length - picked.length,
+  };
 }
