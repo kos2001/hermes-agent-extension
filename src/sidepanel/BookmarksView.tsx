@@ -14,9 +14,10 @@ import {
   parseCategorization,
   parseCleanupRemovals,
 } from "@/lib/bookmarks";
+import { runSemanticDedup } from "@/lib/semantic-dedup";
 
-/** null = idle. "dead"/"ai"/"clean" = a long op running. "apply" = applying. */
-type Busy = null | "dead" | "ai" | "clean" | "apply";
+/** null = idle. Long ops: "dead"/"ai"/"clean"/"sdup". "apply" = applying. */
+type Busy = null | "dead" | "ai" | "clean" | "sdup" | "apply";
 
 function describe(a: Action, lang: Lang): string {
   if (a.kind === "remove") {
@@ -162,6 +163,37 @@ export default function BookmarksView({
     for (const url of urls) void chrome.tabs.create({ url, active: false });
   }, [actions, checked, lang]);
 
+  // Content-level semantic dedup: judge by title + first few sentences (short
+  // snippet) to keep latency down. Catches AMP/mobile/shortened/cross-domain
+  // copies that URL canonicalization can't.
+  const runSemanticDup = useCallback(async () => {
+    if (!config) {
+      setError(t(lang, "bm.needConfig"));
+      return;
+    }
+    setResult([]);
+    setBusy("sdup");
+    setProgress({ done: 0, total: 0 });
+    const ctrl = new AbortController();
+    deadAbort.current = ctrl;
+    try {
+      const { actions, skipped } = await runSemanticDedup({
+        nodes,
+        config,
+        signal: ctrl.signal,
+        onProgress: (done, total) => setProgress({ done, total }),
+      });
+      setProgress(null);
+      setResult(actions, skipped > 0 ? t(lang, "bm.aiSkipped").replace("{n}", String(skipped)) : "");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      deadAbort.current = null;
+      setBusy(null);
+      setProgress(null);
+    }
+  }, [config, nodes, lang, setResult]);
+
   const toggle = useCallback((id: string) => {
     setChecked((prev) => {
       const next = new Set(prev);
@@ -203,16 +235,25 @@ export default function BookmarksView({
         >
           {t(lang, "bm.aiClean")}
         </button>
+        <button
+          className="skill"
+          title={t(lang, "bm.aiDup.title")}
+          onClick={() => void runSemanticDup()}
+          disabled={disabled || !config}
+        >
+          {t(lang, "bm.aiDup")}
+        </button>
         <button className="skill" onClick={() => void runAi()} disabled={disabled || !config}>{t(lang, "bm.ai")}</button>
       </div>
 
-      {(busy === "dead" || busy === "clean") && progress && (
+      {(busy === "dead" || busy === "clean" || busy === "sdup") && progress && (
         <div className="bm-status">
           {progress.done} / {progress.total}
           <button className="tx-restore" onClick={() => deadAbort.current?.abort()}>{t(lang, "stop")}</button>
         </div>
       )}
       {busy === "clean" && !progress && <div className="bm-status">{t(lang, "bm.cleaning")}</div>}
+      {busy === "sdup" && !progress && <div className="bm-status">{t(lang, "bm.dupAnalyzing")}</div>}
       {(busy === "ai" || busy === "apply") && <div className="bm-status">{t(lang, "working")}</div>}
       {error && <div className="bm-status err">⚠ {error}</div>}
       {note && <div className="bm-status">{note}</div>}
