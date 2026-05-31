@@ -184,3 +184,22 @@ export async function streamChat(
 
   await consumeSseStream(res.body, cb, req.signal);
 }
+
+/**
+ * Non-streaming convenience: run a chat request and return the full text.
+ * Accumulates `streamChat` deltas; rejects with HermesError on stream error.
+ */
+export async function collectChat(req: StreamChatRequest): Promise<string> {
+  let acc = "";
+  let error: string | null = null;
+  await streamChat(req, {
+    onChunk: (d) => {
+      acc += d;
+    },
+    onError: (m) => {
+      error = m;
+    },
+  });
+  if (error) throw new HermesError(error);
+  return acc;
+}
