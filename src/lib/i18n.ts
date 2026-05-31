@@ -105,21 +105,18 @@ const STR: Record<string, Entry> = {
   "skill.keypoints": { ko: "🔑 핵심", en: "🔑 Key points", zh: "🔑 要点" },
   "skill.explain": { ko: "🧒 쉽게", en: "🧒 Explain", zh: "🧒 通俗" },
   "skill.links": { ko: "🔗 링크", en: "🔗 Links", zh: "🔗 链接" },
-  "skill.stats": { ko: "⏱ 통계", en: "⏱ Stats", zh: "⏱ 统计" },
 
   // Skill tooltips
   "skill.summarize.title": { ko: "이 페이지 요약", en: "Summarize this page", zh: "总结此页面" },
   "skill.keypoints.title": { ko: "핵심 포인트 추출", en: "Extract key points", zh: "提取要点" },
   "skill.explain.title": { ko: "쉽게 설명", en: "Explain simply", zh: "通俗解释" },
   "skill.links.title": { ko: "페이지 링크 추출", en: "Extract page links", zh: "提取页面链接" },
-  "skill.stats.title": { ko: "읽기 통계 (단어 수·시간)", en: "Reading stats (words, time)", zh: "阅读统计（字数·时间）" },
 
   // Text shown in the user bubble when a skill runs
   "skill.summarize.user": { ko: "이 페이지를 요약해줘", en: "Summarize this page", zh: "请总结此页面" },
   "skill.keypoints.user": { ko: "핵심 포인트를 정리해줘", en: "List the key points", zh: "请列出要点" },
   "skill.explain.user": { ko: "이 페이지를 쉽게 설명해줘", en: "Explain this page simply", zh: "请通俗解释此页面" },
   "skill.links.user": { ko: "🔗 링크 추출", en: "🔗 Extract links", zh: "🔗 提取链接" },
-  "skill.stats.user": { ko: "⏱ 읽기 통계", en: "⏱ Reading stats", zh: "⏱ 阅读统计" },
 };
 
 export function t(lang: Lang, key: string): string {
