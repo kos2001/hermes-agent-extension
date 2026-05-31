@@ -13,6 +13,7 @@ import { restoreOriginals, translatePage } from "@/lib/translator";
 import { buildSkillMessages, PROMPT_SKILLS, type PromptSkill } from "@/lib/skills";
 import { isLang, LANG_KEY, LANGS, replyLanguageInstruction, t, type Lang } from "@/lib/i18n";
 import { isEnterSubmit } from "@/lib/keyboard";
+import { HiveSignIn } from "./HiveSignIn";
 // Lazy-loaded: keep the bookmark/market views and their AI modules out of the
 // initial (chat) bundle — they load only when the user opens those views.
 const BookmarksView = lazy(() => import("./BookmarksView"));
@@ -446,6 +447,7 @@ export default function App() {
         >
           ✎
         </button>
+        <HiveSignIn lang={lang} />
         <button className="icon-btn settings" onClick={openOptions} title={t(lang, "settings")}>⚙</button>
       </div>
 
