@@ -182,6 +182,8 @@ export async function loadBookmarks(): Promise<BookmarkNode[]> {
     });
     if (node.children) for (const c of node.children) walk(c, node.title || parentTitle);
   };
+  // Note: a virtual root's title ("Bookmarks bar", "Other bookmarks") is
+  // locale-dependent; parentTitle is display-only — applyActions moves by id.
   for (const root of tree) {
     if (root.children) for (const c of root.children) walk(c, root.title);
   }
@@ -192,7 +194,11 @@ export async function loadBookmarks(): Promise<BookmarkNode[]> {
 async function ensureFolder(title: string, cache: Map<string, string>): Promise<string> {
   const cached = cache.get(title);
   if (cached) return cached;
-  const found = (await chrome.bookmarks.search({ title })).find((n) => !n.url);
+  // Exact match among the bookmarks-bar's direct children only. (search()
+  // does a global, case-insensitive substring match and could otherwise
+  // adopt an unrelated folder from elsewhere in the tree.)
+  const children = await chrome.bookmarks.getChildren("1");
+  const found = children.find((n) => !n.url && n.title === title);
   const id = found ? found.id : (await chrome.bookmarks.create({ parentId: "1", title })).id;
   cache.set(title, id);
   return id;
@@ -208,6 +214,9 @@ export async function applyActions(actions: Action[]): Promise<{ applied: number
       if (action.kind === "remove") {
         await chrome.bookmarks.remove(action.bmId);
       } else if (action.kind === "reorder") {
+        // Move in ascending index order: Chrome reindexes siblings after each
+        // move, so placing index 0 first, then 1, etc. yields the correct
+        // final order. orderedIds covers all bookmarks in the folder.
         for (let i = 0; i < action.orderedIds.length; i++) {
           await chrome.bookmarks.move(action.orderedIds[i], { parentId: action.folderId, index: i });
         }
@@ -247,9 +256,17 @@ export async function checkDeadLinks(nodes: BookmarkNode[], opts: DeadLinkOpts =
     const onAbort = () => ctrl.abort();
     opts.signal?.addEventListener("abort", onAbort);
     try {
-      const res = await fetch(n.url as string, { method: "GET", signal: ctrl.signal, redirect: "follow" });
-      return res.status >= 400;
+      let res = await fetch(n.url as string, { method: "HEAD", signal: ctrl.signal, redirect: "follow" });
+      // Some servers reject HEAD with 405 — retry with GET for a real status.
+      if (res.status === 405) {
+        res = await fetch(n.url as string, { method: "GET", signal: ctrl.signal, redirect: "follow" });
+      }
+      // Conservative: only the canonical "gone" statuses count as dead, so we
+      // never propose deleting bookmarks that merely block bots (403/429),
+      // require auth (401), or are temporarily erroring (5xx).
+      return res.status === 404 || res.status === 410;
     } catch {
+      // Network failure (DNS / connection refused) = dead, unless the user aborted.
       return !opts.signal?.aborted;
     } finally {
       clearTimeout(timer);
@@ -266,7 +283,7 @@ export async function checkDeadLinks(nodes: BookmarkNode[], opts: DeadLinkOpts =
         actions.push({ id: `remove-${n.id}`, kind: "remove", bmId: n.id, title: n.title, url: n.url as string, reason: "dead" });
       }
       done++;
-      opts.onProgress?.(done, total);
+      if (!opts.signal?.aborted) opts.onProgress?.(done, total);
     }
   };
   await Promise.all(Array.from({ length: Math.min(concurrency, targets.length) }, worker));
