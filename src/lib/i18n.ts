@@ -118,6 +118,14 @@ const STR: Record<string, Entry> = {
   "skill.keypoints.user": { ko: "핵심 포인트를 정리해줘", en: "List the key points", zh: "请列出要点" },
   "skill.explain.user": { ko: "이 페이지를 쉽게 설명해줘", en: "Explain this page simply", zh: "请通俗解释此页面" },
   "skill.links.user": { ko: "🔗 링크 추출", en: "🔗 Extract links", zh: "🔗 提取链接" },
+
+  // Hive (cloud) sign-in
+  hiveSignIn: { ko: "Hive 로그인", en: "Sign in to Hive", zh: "登录 Hive" },
+  hiveSignInTitle: { ko: "Google로 Hive에 로그인", en: "Sign in to Hive with Google", zh: "使用 Google 登录 Hive" },
+  hiveSignOut: { ko: "로그아웃", en: "Sign out", zh: "退出登录" },
+  hiveSignedInAs: { ko: "{name} 님으로 로그인됨", en: "Signed in as {name}", zh: "已登录：{name}" },
+  hiveSignInError: { ko: "로그인 실패. 다시 시도하세요.", en: "Sign-in failed. Please try again.", zh: "登录失败，请重试。" },
+  hiveNotConfigured: { ko: "Hive가 구성되지 않았습니다.", en: "Hive is not configured.", zh: "Hive 尚未配置。" },
 };
 
 export function t(lang: Lang, key: string): string {
