@@ -52,6 +52,7 @@ const STR: Record<string, Entry> = {
   "bm.dupAnalyzing": { ko: "의미 중복 분석 중…", en: "Analyzing for duplicates…", zh: "正在分析重复…" },
   "bm.ai": { ko: "AI 자동 분류", en: "AI categorize", zh: "AI 分类" },
   "bm.empty": { ko: "작업을 선택하면 변경 미리보기가 여기에 표시됩니다.", en: "Pick an operation to preview changes here.", zh: "选择一项操作以在此预览更改。" },
+  "bm.noChanges": { ko: "✓ 수정할 항목이 없습니다 — 이미 깔끔합니다.", en: "✓ Nothing to fix — already clean.", zh: "✓ 无需修改 — 已很整洁。" },
   "bm.apply": { ko: "적용", en: "Apply", zh: "应用" },
   "bm.selected": { ko: "{n}개 선택됨", en: "{n} selected", zh: "已选 {n} 项" },
   "bm.applied": { ko: "적용 {a}건, 실패 {f}건", en: "{a} applied, {f} failed", zh: "已应用 {a} 项，失败 {f} 项" },
