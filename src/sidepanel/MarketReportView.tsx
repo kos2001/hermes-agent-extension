@@ -74,6 +74,7 @@ export default function MarketReportView({
         folderId: settings.folderId,
         folderTitle: folder?.title || settings.folderId,
         config,
+        lang,
         signal: ctrl.signal,
         onProgress: (done, total, label) => setProgress({ done, total, label }),
       });
