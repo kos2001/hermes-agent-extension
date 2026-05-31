@@ -92,6 +92,7 @@ html, body, #root {
   font-size: 12px;
 }
 .icon-btn:hover { background: var(--panel-2); }
+.icon-btn.active { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
 .icon-btn.settings { font-size: 19px; line-height: 1; padding: 3px 9px; }
 .icon-btn.new-chat { font-size: 16px; line-height: 1; padding: 3px 9px; }
 
@@ -423,3 +424,23 @@ html, body, #root {
   font-size: 12px;
   color: var(--muted);
 }
+.bm-apply .tx-go {
+  background: var(--accent);
+  border: 0;
+  color: var(--on-accent);
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 12px;
+}
+.bm-status .tx-restore {
+  background: var(--panel-2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  padding: 4px 10px;
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 12px;
+}
+.bm-view button:disabled { opacity: 0.5; cursor: not-allowed; }
