@@ -47,6 +47,10 @@ export default function MarketReportView({
     })();
   }, []);
 
+  // Abort any in-flight report run if the view unmounts (e.g. switching tabs),
+  // so it doesn't append a report to chat after the user navigated away.
+  useEffect(() => () => abortRef.current?.abort(), []);
+
   const persist = useCallback((next: MarketSettings) => {
     setSettings(next);
     void saveMarketSettings(next).then(() => scheduleMarketAlarm(next));
