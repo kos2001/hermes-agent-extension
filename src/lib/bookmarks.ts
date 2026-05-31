@@ -165,3 +165,60 @@ export function parseCategorization(text: string, nodes: BookmarkNode[]): Action
   }
   return actions;
 }
+
+/** Flatten `chrome.bookmarks.getTree()` into a list (bookmarks + folders). */
+export async function loadBookmarks(): Promise<BookmarkNode[]> {
+  const tree = await chrome.bookmarks.getTree();
+  const out: BookmarkNode[] = [];
+  const walk = (node: chrome.bookmarks.BookmarkTreeNode, parentTitle: string) => {
+    out.push({
+      id: node.id,
+      title: node.title,
+      url: node.url,
+      parentId: node.parentId,
+      parentTitle,
+      dateAdded: node.dateAdded ?? 0,
+      index: node.index ?? 0,
+    });
+    if (node.children) for (const c of node.children) walk(c, node.title || parentTitle);
+  };
+  for (const root of tree) {
+    if (root.children) for (const c of root.children) walk(c, root.title);
+  }
+  return out;
+}
+
+/** Find or create a single-level topic folder under the bookmarks bar (id "1"). */
+async function ensureFolder(title: string, cache: Map<string, string>): Promise<string> {
+  const cached = cache.get(title);
+  if (cached) return cached;
+  const found = (await chrome.bookmarks.search({ title })).find((n) => !n.url);
+  const id = found ? found.id : (await chrome.bookmarks.create({ parentId: "1", title })).id;
+  cache.set(title, id);
+  return id;
+}
+
+/** Execute approved actions. Per-action try/catch so one failure isn't fatal. */
+export async function applyActions(actions: Action[]): Promise<{ applied: number; failed: number }> {
+  let applied = 0;
+  let failed = 0;
+  const folderCache = new Map<string, string>();
+  for (const action of actions) {
+    try {
+      if (action.kind === "remove") {
+        await chrome.bookmarks.remove(action.bmId);
+      } else if (action.kind === "reorder") {
+        for (let i = 0; i < action.orderedIds.length; i++) {
+          await chrome.bookmarks.move(action.orderedIds[i], { parentId: action.folderId, index: i });
+        }
+      } else {
+        const folderId = await ensureFolder(action.toFolderPath, folderCache);
+        await chrome.bookmarks.move(action.bmId, { parentId: folderId });
+      }
+      applied++;
+    } catch {
+      failed++;
+    }
+  }
+  return { applied, failed };
+}
