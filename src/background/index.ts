@@ -20,7 +20,7 @@ import {
 } from "@/lib/selection-actions";
 import { loadConfig } from "@/lib/storage";
 import { loadBookmarks } from "@/lib/bookmarks";
-import { loadMarketSettings, MARKET_ALARM, runMarketReport, saveReport } from "@/lib/market-report";
+import { downloadReport, loadMarketSettings, MARKET_ALARM, runMarketReport, saveReport } from "@/lib/market-report";
 import { isLang, LANG_KEY } from "@/lib/i18n";
 
 /** Post a message to a port, ignoring failures from a closed port. */
@@ -128,6 +128,13 @@ async function runScheduledMarketReport(): Promise<void> {
   const lang = isLang(storedLang) ? storedLang : "ko";
   const report = await runMarketReport({ nodes, folderId: settings.folderId, folderTitle, config, lang });
   await saveReport(report);
+  if (settings.autoSave && report.synthesis) {
+    try {
+      await downloadReport(report, settings.saveFolder);
+    } catch {
+      /* download failed (e.g. no synthesis / permission) — keep the in-app report */
+    }
+  }
   const ok = report.sites.filter((s) => !s.error).length;
   chrome.notifications.create({
     type: "basic",
