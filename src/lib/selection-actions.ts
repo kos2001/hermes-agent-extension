@@ -53,9 +53,10 @@ export function buildSelectionMessages(
 
 const SYSTEM_PROMPTS: Record<SelectionActionKey, (targetLang: string) => string> = {
   translate: (lang) =>
-    `Translate the user's text into ${lang}. Maintain the tone and style of the ` +
-    "original text as much as possible. Return ONLY the translation — no quotes, " +
-    "no explanations, no source-language label.",
+    `Translate the user's text into ${lang}. If the text is ALREADY written in ` +
+    `${lang}, return it unchanged — do not translate or rephrase it. Maintain the ` +
+    "tone and style of the original text as much as possible. Return ONLY the " +
+    "translation — no quotes, no explanations, no source-language label.",
   summary: () =>
     "Provide a concise summary of the user's text, capturing its main ideas and " +
     "key points. Summarize in no more than 3-4 sentences. Return only the summary.",
@@ -68,6 +69,42 @@ const SYSTEM_PROMPTS: Record<SelectionActionKey, (targetLang: string) => string>
     "but using alternative vocabulary and sentence structures. Return ONLY the " +
     "rephrased text.",
 };
+
+/**
+ * Detect the dominant writing script of `text`. Hangul → ko, kana → ja,
+ * Han (without kana) → zh, ASCII/Latin letters → latin, else "other".
+ * Checked in order so Japanese (kana + kanji) isn't misread as Chinese.
+ */
+export function detectScript(text: string): "ko" | "ja" | "zh" | "latin" | "other" {
+  if (/[가-힣ᄀ-ᇿ㄰-㆏]/.test(text)) return "ko";
+  if (/[぀-ゟ゠-ヿ]/.test(text)) return "ja";
+  if (/[一-鿿㐀-䶿]/.test(text)) return "zh";
+  if (/[A-Za-z]/.test(text)) return "latin";
+  return "other";
+}
+
+const LANG_SCRIPT: Record<string, "ko" | "ja" | "zh" | "latin"> = {
+  Korean: "ko",
+  Japanese: "ja",
+  Chinese: "zh",
+  English: "latin",
+  Spanish: "latin",
+  French: "latin",
+  German: "latin",
+};
+
+/**
+ * Whether `text` is confidently already in `targetLang`, so a mouse-triggered
+ * translation should be skipped. Only returns true for the unambiguous CJK
+ * scripts — Latin-script languages (English/Spanish/French/German) can't be
+ * distinguished by script, so those are left to the model's "return unchanged
+ * if already in the target language" instruction.
+ */
+export function isSameLanguage(text: string, targetLang: string): boolean {
+  const target = LANG_SCRIPT[targetLang];
+  if (target === "ko" || target === "ja" || target === "zh") return detectScript(text) === target;
+  return false;
+}
 
 const TRANSLATE_TARGET_KEY = "hermes.translateTarget";
 
