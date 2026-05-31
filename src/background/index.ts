@@ -14,6 +14,7 @@ import { checkHealth, streamChat } from "@/lib/hermes-client";
 import {
   buildSelectionMessages,
   getTranslateTarget,
+  isSameLanguage,
   SELECTION_PORT,
   type SelectionRequest,
   type SelectionResponse,
@@ -53,9 +54,16 @@ chrome.runtime.onConnect.addListener((port) => {
         safePost(port, msg);
       };
       try {
+        const target = req.targetLang || (await getTranslateTarget());
+        // Mouse-triggered translate: skip when the selection is already in the
+        // target language (don't translate same-language text).
+        if (req.action === "translate" && isSameLanguage(req.text, target)) {
+          safePost(port, { type: "chunk", delta: `이미 ${target} 텍스트입니다 — 번역하지 않았습니다.` });
+          finish({ type: "done" });
+          return;
+        }
         const cfg = await loadConfig();
         if (!cfg.apiKey) throw new Error("No API key configured — open extension options");
-        const target = req.targetLang || (await getTranslateTarget());
         const messages = buildSelectionMessages(req.action, req.text, target);
         let produced = false;
         let lastError = "";
