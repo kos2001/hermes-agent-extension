@@ -6,6 +6,9 @@ import path from "node:path";
 // Reuses the shared cloud data layer under src/lib/cloud via the `@` alias.
 export default defineConfig({
   root: path.resolve(__dirname, "web"),
+  // Load .env from the project root (shared with the extension build), not from
+  // `root` (web/) which is where Vite would look by default.
+  envDir: __dirname,
   plugins: [react()],
   resolve: {
     alias: {
