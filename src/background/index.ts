@@ -64,7 +64,7 @@ chrome.runtime.onConnect.addListener((port) => {
         }
         const cfg = await loadConfig();
         if (!cfg.apiKey) throw new Error("No API key configured — open extension options");
-        const messages = buildSelectionMessages(req.action, req.text, target);
+        const messages = buildSelectionMessages(req.action, req.text, target, req.context);
         let produced = false;
         let lastError = "";
         await streamChat(

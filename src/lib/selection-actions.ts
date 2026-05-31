@@ -43,12 +43,49 @@ export function buildSelectionMessages(
   action: SelectionActionKey,
   text: string,
   targetLang: string,
+  context?: string,
 ): ChatMessage[] {
-  const system = SYSTEM_PROMPTS[action](targetLang);
+  const system = action === "explain" ? explainSystem(text, context) : SYSTEM_PROMPTS[action](targetLang);
   return [
     { role: "system", content: system },
     { role: "user", content: text },
   ];
+}
+
+/**
+ * Is the selection a bare abbreviation/acronym (so Explain should lean on the
+ * surrounding text)? True for all-caps tokens (API, FDE), caps+digit (MV3,
+ * H2O), or dotted forms (e.g., i.e.) — but NOT ordinary Capitalized words.
+ */
+export function isAbbreviation(text: string): boolean {
+  const t = text.trim();
+  if (!t || /\s/.test(t) || t.length > 12 || !/[A-Za-z]/.test(t)) return false;
+  const letters = t.replace(/[^A-Za-z]/g, "");
+  const uppers = t.replace(/[^A-Z]/g, "").length;
+  const allCaps = letters.length > 0 && uppers === letters.length;
+  const dotted = /\w\.\w/.test(t) || /[A-Za-z]\.$/.test(t);
+  const capsWithDigit = /[A-Z]/.test(t) && /\d/.test(t);
+  return allCaps || dotted || capsWithDigit;
+}
+
+const BASE_EXPLAIN =
+  "Provide a clear explanation of the user's text. Clarify any complex terms or " +
+  "ideas, give relevant background, and discuss the significance or implications " +
+  "of the content so that someone with little prior knowledge can understand it.";
+
+/** Explain prompt — context-aware for bare abbreviations. */
+function explainSystem(text: string, context?: string): string {
+  if (context && context.trim() && isAbbreviation(text)) {
+    return (
+      `The user selected the abbreviation/acronym "${text}" on a web page. Use the ` +
+      "surrounding text below to infer what it stands for in THIS context, then " +
+      "explain it clearly and briefly. If the surrounding text does not make its " +
+      `meaning clear, DO NOT guess — say you are not sure what "${text}" means here ` +
+      "and ask the user to clarify (e.g. the full term or the topic).\n\n" +
+      `Surrounding text:\n"""${context.trim()}"""`
+    );
+  }
+  return BASE_EXPLAIN;
 }
 
 const SYSTEM_PROMPTS: Record<SelectionActionKey, (targetLang: string) => string> = {
@@ -60,10 +97,7 @@ const SYSTEM_PROMPTS: Record<SelectionActionKey, (targetLang: string) => string>
   summary: () =>
     "Provide a concise summary of the user's text, capturing its main ideas and " +
     "key points. Summarize in no more than 3-4 sentences. Return only the summary.",
-  explain: () =>
-    "Provide a clear explanation of the user's text. Clarify any complex terms or " +
-    "ideas, give relevant background, and discuss the significance or implications " +
-    "of the content so that someone with little prior knowledge can understand it.",
+  explain: () => BASE_EXPLAIN,
   rephrase: () =>
     "Rewrite the user's text in a different way, preserving its original meaning " +
     "but using alternative vocabulary and sentence structures. Return ONLY the " +
@@ -134,6 +168,8 @@ export interface SelectionRequest {
   text: string;
   /** Target language for the Translate action; falls back to the stored target. */
   targetLang?: string;
+  /** Surrounding page text — used by Explain to disambiguate abbreviations. */
+  context?: string;
 }
 
 /** Messages the service worker streams back over the port. */
