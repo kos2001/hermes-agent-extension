@@ -10,11 +10,11 @@ export type Lang = "ko" | "en" | "zh";
 
 export const LANG_KEY = "hermes.lang";
 
-/** Buttons shown in the language switcher. */
-export const LANGS: { code: Lang; label: string }[] = [
-  { code: "ko", label: "한" },
-  { code: "en", label: "EN" },
-  { code: "zh", label: "中" },
+/** Buttons shown in the language switcher (`name` is the hover description). */
+export const LANGS: { code: Lang; label: string; name: string }[] = [
+  { code: "ko", label: "한", name: "한국어" },
+  { code: "en", label: "EN", name: "English" },
+  { code: "zh", label: "中", name: "中文" },
 ];
 
 type Entry = Record<Lang, string>;
@@ -22,8 +22,12 @@ type Entry = Record<Lang, string>;
 const STR: Record<string, Entry> = {
   online: { ko: "● 온라인", en: "● online", zh: "● 在线" },
   offline: { ko: "● 오프라인", en: "● offline", zh: "● 离线" },
+  statusTitle: { ko: "Hermes 서버 연결 상태", en: "Hermes server connection status", zh: "Hermes 服务器连接状态" },
+  switchLang: { ko: "UI 언어: {name}", en: "UI language: {name}", zh: "界面语言：{name}" },
   translateTo: { ko: "번역 →", en: "Translate →", zh: "翻译 →" },
   translate: { ko: "번역", en: "Translate", zh: "翻译" },
+  translateTitle: { ko: "현재 페이지를 선택한 언어로 번역", en: "Translate the current page into the selected language", zh: "将当前页面翻译为所选语言" },
+  translateLangTitle: { ko: "번역 대상 언어 선택", en: "Choose the target language", zh: "选择目标语言" },
   translating: { ko: "번역 중…", en: "Translating…", zh: "翻译中…" },
   stop: { ko: "중지", en: "Stop", zh: "停止" },
   restore: { ko: "원복", en: "Restore", zh: "还原" },

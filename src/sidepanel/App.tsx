@@ -401,7 +401,7 @@ export default function App() {
     <div className="app">
       {/* Top row: online status + language selection + settings-related controls. */}
       <div className="topbar">
-        <span className={`status ${health}`}>
+        <span className={`status ${health}`} title={t(lang, "statusTitle")}>
           {health === "online" ? t(lang, "online") : health === "offline" ? t(lang, "offline") : "…"}
         </span>
         <span className="lang-switch">
@@ -410,7 +410,7 @@ export default function App() {
               key={l.code}
               className={`lang-btn${lang === l.code ? " active" : ""}`}
               onClick={() => setLang(l.code)}
-              title={l.code}
+              title={t(lang, "switchLang").replace("{name}", l.name)}
             >
               {l.label}
             </button>
@@ -463,6 +463,7 @@ export default function App() {
           value={targetLang}
           onChange={(e) => setTargetLang(e.target.value)}
           disabled={translateBusy}
+          title={t(lang, "translateLangTitle")}
         >
           <option>English</option>
           <option>Korean</option>
@@ -477,7 +478,7 @@ export default function App() {
             {t(lang, "stop")}
           </button>
         ) : (
-          <button className="tx-go" onClick={() => void runTranslate()} disabled={!config}>
+          <button className="tx-go" onClick={() => void runTranslate()} disabled={!config} title={t(lang, "translateTitle")}>
             {t(lang, "translate")}
           </button>
         )}
