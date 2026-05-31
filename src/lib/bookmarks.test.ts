@@ -2,32 +2,56 @@ import { describe, expect, it } from "vitest";
 import {
   buildCategorizePrompt,
   buildCleanupPrompt,
+  canonicalUrl,
   findDuplicates,
-  normalizeUrl,
   parseCategorization,
   parseCleanupRemovals,
 } from "./bookmarks";
 
-describe("normalizeUrl", () => {
-  it("lowercases protocol and host but not the path", () => {
-    expect(normalizeUrl("HTTPS://Example.COM/Path")).toBe("https://example.com/path");
+describe("canonicalUrl", () => {
+  it("lowercases, drops the fragment, and is scheme-agnostic", () => {
+    expect(canonicalUrl("HTTPS://Example.COM/Path")).toBe("example.com/path");
+    expect(canonicalUrl("http://a.com/x")).toBe(canonicalUrl("https://a.com/x"));
   });
 
-  it("drops the fragment", () => {
-    expect(normalizeUrl("https://a.com/x#section")).toBe("https://a.com/x");
+  it("strips a www. prefix", () => {
+    expect(canonicalUrl("https://www.a.com/x")).toBe("a.com/x");
   });
 
   it("strips a trailing slash except on the root", () => {
-    expect(normalizeUrl("https://a.com/x/")).toBe("https://a.com/x");
-    expect(normalizeUrl("https://a.com/")).toBe("https://a.com/");
+    expect(canonicalUrl("https://a.com/x/")).toBe("a.com/x");
+    expect(canonicalUrl("https://a.com/")).toBe("a.com/");
+  });
+
+  it("collapses default documents", () => {
+    expect(canonicalUrl("https://a.com/index.html")).toBe("a.com/");
+    expect(canonicalUrl("https://a.com/sub/index.php")).toBe("a.com/sub");
+  });
+
+  it("removes tracking params and sorts the rest", () => {
+    expect(canonicalUrl("https://a.com/x?utm_source=t&id=5&fbclid=z")).toBe("a.com/x?id=5");
+    expect(canonicalUrl("https://a.com/x?b=2&a=1")).toBe("a.com/x?a=1&b=2");
+    expect(canonicalUrl("https://a.com/x?utm_campaign=c")).toBe("a.com/x");
   });
 
   it("treats a lone '?' as no query", () => {
-    expect(normalizeUrl("https://a.com/x?")).toBe("https://a.com/x");
+    expect(canonicalUrl("https://a.com/x?")).toBe("a.com/x");
   });
 
   it("falls back to a trimmed lowercase string for non-URLs", () => {
-    expect(normalizeUrl("  Not A URL ")).toBe("not a url");
+    expect(canonicalUrl("  Not A URL ")).toBe("not a url");
+  });
+});
+
+describe("findDuplicates — semantic", () => {
+  it("folds www/scheme/tracking-param/param-order variants of the same page", () => {
+    const nodes = [
+      bm("keep", "https://a.com/p?x=1", 100),
+      bm("www", "http://www.a.com/p?x=1", 200),
+      bm("utm", "https://a.com/p?x=1&utm_source=news", 300),
+    ];
+    const actions = findDuplicates(nodes);
+    expect(actions.map((a) => a.id).sort()).toEqual(["remove-utm", "remove-www"]);
   });
 });
 
