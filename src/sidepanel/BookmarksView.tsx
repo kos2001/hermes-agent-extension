@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useRef, useState } from "react";
 import type { ConnectionConfig } from "@/lib/types";
 import { t, type Lang } from "@/lib/i18n";
 import { collectChat } from "@/lib/hermes-client";
@@ -43,6 +43,38 @@ function describe(a: Action, lang: Lang): string {
   }
   return `📁 ${a.toFolderPath} ← ${a.title || a.url}${why ? ` — ${why}` : ""}`;
 }
+
+/**
+ * One preview row. Memoized so toggling a single checkbox (or Select-all) only
+ * re-renders the rows whose `checked` actually changed, and `describe` runs
+ * once per row instead of on every list re-render — matters for large results.
+ */
+const BookmarkRow = memo(function BookmarkRow({
+  action,
+  checked,
+  lang,
+  onToggle,
+  onOpen,
+}: {
+  action: Action;
+  checked: boolean;
+  lang: Lang;
+  onToggle: (id: string) => void;
+  onOpen: (url: string) => void;
+}) {
+  const label = describe(action, lang);
+  return (
+    <div className="bm-row">
+      <label className="bm-row-label">
+        <input type="checkbox" checked={checked} onChange={() => onToggle(action.id)} />
+        <span className="bm-row-main" title={label}>{label}</span>
+      </label>
+      <button className="bm-open" title={`${t(lang, "bm.open")}: ${action.url}`} onClick={() => onOpen(action.url)}>
+        ↗
+      </button>
+    </div>
+  );
+});
 
 export default function BookmarksView({
   config,
@@ -279,15 +311,7 @@ export default function BookmarksView({
       <div className="bm-list">
         {actions.length === 0 && !disabled && <div className="bm-empty">{t(lang, "bm.empty")}</div>}
         {actions.map((a) => (
-          <div key={a.id} className="bm-row">
-            <label className="bm-row-label">
-              <input type="checkbox" checked={checked.has(a.id)} onChange={() => toggle(a.id)} />
-              <span className="bm-row-main" title={describe(a, lang)}>{describe(a, lang)}</span>
-            </label>
-            <button className="bm-open" title={`${t(lang, "bm.open")}: ${a.url}`} onClick={() => openOne(a.url)}>
-              ↗
-            </button>
-          </div>
+          <BookmarkRow key={a.id} action={a} checked={checked.has(a.id)} lang={lang} onToggle={toggle} onOpen={openOne} />
         ))}
       </div>
 
