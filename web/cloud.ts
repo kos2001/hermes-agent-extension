@@ -15,7 +15,10 @@ export const supabase: SupabaseClient = createClient(url ?? "http://invalid.loca
   auth: {
     persistSession: true,
     autoRefreshToken: true,
-    detectSessionInUrl: false,
+    // Accept the magic-link in the email too (not just the typed code): when the
+    // confirmation link redirects back here, supabase-js parses the session from
+    // the URL. Lets web users skip the code entirely — no email-template change.
+    detectSessionInUrl: true,
   },
 });
 
