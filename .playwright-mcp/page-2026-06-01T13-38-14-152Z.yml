@@ -1,0 +1,73 @@
+- generic [ref=e3]:
+  - banner [ref=e4]:
+    - generic [ref=e5]: 🐝 Hive
+    - generic [ref=e6]:
+      - generic [ref=e7]: 김오석
+      - button "Sign out" [ref=e8] [cursor=pointer]
+  - main [ref=e9]:
+    - generic [ref=e31]:
+      - button "← Back to feed" [ref=e32] [cursor=pointer]
+      - heading "북마크바/통신" [level=2] [ref=e33]
+      - paragraph [ref=e34] [cursor=pointer]: A collection of resources on telecommunications technologies including 5G, SDN/NFV, LTE, NR, SIP, DSRC, and ITS.
+      - generic [ref=e35]:
+        - generic [ref=e36]: "#5g"
+        - generic [ref=e37]: "#sdn"
+        - generic [ref=e38]: "#nfv"
+        - generic [ref=e39]: "#lte"
+        - generic [ref=e40]: "#nr"
+        - generic [ref=e41]: "#sip"
+        - generic [ref=e42]: "#dsrc"
+        - generic [ref=e43]: "#its"
+      - list [ref=e44]:
+        - listitem [ref=e45]:
+          - link "5G 시대 SDN/NFV (2) - 다가올 5G 시대의 핵심? SDN 기반 가상 네트워크를 이용한 NFV | NETMANIAS" [ref=e46] [cursor=pointer]:
+            - /url: https://www.netmanias.com/ko/?m=view&id=blog&no=13361
+          - generic [ref=e47]: — SDN and NFV in 5G era.
+        - listitem [ref=e48]:
+          - 'link "CoMP (1): CoMP 종류 - CS, CB, JT and DPS | NETMANIAS" [ref=e49] [cursor=pointer]':
+            - /url: https://www.netmanias.com/ko/post/blog/6477/comp-lte-lte-a/comp-1-comp-categories-cs-cb-jt-and-dps
+          - generic [ref=e50]: — Types of CoMP in LTE.
+        - listitem [ref=e51]:
+          - link "5G/NR - Techplayon" [ref=e52] [cursor=pointer]:
+            - /url: http://www.techplayon.com/5gnr/
+          - generic [ref=e53]: — 5G NR technology overview.
+        - listitem [ref=e54]:
+          - link "SIP 개념 잡기 (펌글)" [ref=e55] [cursor=pointer]:
+            - /url: https://marlboroyw.tistory.com/249
+          - generic [ref=e56]: — Understanding SIP protocol.
+        - listitem [ref=e57]:
+          - link "3GPP releases 16 & 17 overview – the 5G NR evolution - Ericsson" [ref=e58] [cursor=pointer]:
+            - /url: https://www.ericsson.com/en/reports-and-papers/ericsson-technology-review/articles/5g-nr-evolution
+          - generic [ref=e59]: — 5G NR evolution in 3GPP releases.
+        - listitem [ref=e60]:
+          - link "Further enhancing 5G NR mobile broadband design" [ref=e61] [cursor=pointer]:
+            - /url: https://www.qualcomm.com/media/documents/files/propelling-5g-forward-a-closer-look-at-release-16.pdf
+          - generic [ref=e62]: — Enhancing 5G NR mobile broadband.
+        - listitem [ref=e63]:
+          - link "(PDF) Overview of LTE-NR Dual Connectivity" [ref=e64] [cursor=pointer]:
+            - /url: https://www.researchgate.net/publication/333407907_Overview_of_LTE-NR_Dual_Connectivity
+          - generic [ref=e65]: — LTE-NR dual connectivity overview.
+        - listitem [ref=e66]:
+          - link "silent" [ref=e67] [cursor=pointer]:
+            - /url: https://carrier.huawei.com/en/technical-topics/wireless-network/VoLTE/2
+          - generic [ref=e68]: — VoLTE technology from Huawei.
+        - listitem [ref=e69]:
+          - link "Welcome to Ericsson Blog" [ref=e70] [cursor=pointer]:
+            - /url: https://www.ericsson.com/en/blog?locs=68304
+          - generic [ref=e71]: — Ericsson blog on telecom topics.
+        - listitem [ref=e72]:
+          - link "Software-defined networking - Wikipedia" [ref=e73] [cursor=pointer]:
+            - /url: https://en.wikipedia.org/wiki/Software-defined_networking
+          - generic [ref=e74]: — SDN definition and concepts.
+        - listitem [ref=e75]:
+          - 'link "지금 이 순간 :: ITS 서비스를 제공하기 위한 DSRC의 특징, 통신 방식 및 요구사항을 설명" [ref=e76] [cursor=pointer]':
+            - /url: https://ensxoddl.tistory.com/38
+          - generic [ref=e77]: — DSRC for ITS services.
+        - listitem [ref=e78]:
+          - link "Microsoft PowerPoint - PATIL_QUALCOMM.pptx" [ref=e79] [cursor=pointer]:
+            - /url: https://docbox.etsi.org/Workshop/2019/201903_ITSWS/SESSION04/QUALCOMM_PATIL.pdf
+          - generic [ref=e80]: — Qualcomm ITS presentation.
+        - listitem [ref=e81]:
+          - link "ETRI Electronics and Telecommunications Trends" [ref=e82] [cursor=pointer]:
+            - /url: https://ettrends.etri.re.kr/ettrends/199/
+          - generic [ref=e83]: — Telecommunications trends from ETRI.

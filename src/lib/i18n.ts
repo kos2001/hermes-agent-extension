@@ -126,13 +126,23 @@ const STR: Record<string, Entry> = {
   "skill.explain.user": { ko: "이 페이지를 쉽게 설명해줘", en: "Explain this page simply", zh: "请通俗解释此页面" },
   "skill.links.user": { ko: "🔗 링크 추출", en: "🔗 Extract links", zh: "🔗 提取链接" },
 
-  // Hive (cloud) sign-in
+  // Hive (cloud) sign-in — email one-time code
   hiveSignIn: { ko: "Hive 로그인", en: "Sign in to Hive", zh: "登录 Hive" },
-  hiveSignInTitle: { ko: "Google로 Hive에 로그인", en: "Sign in to Hive with Google", zh: "使用 Google 登录 Hive" },
+  hiveSignInTitle: { ko: "이메일 코드로 Hive에 로그인", en: "Sign in to Hive with an email code", zh: "使用邮箱验证码登录 Hive" },
   hiveSignOut: { ko: "로그아웃", en: "Sign out", zh: "退出登录" },
   hiveSignedInAs: { ko: "{name} 님으로 로그인됨", en: "Signed in as {name}", zh: "已登录：{name}" },
   hiveSignInError: { ko: "로그인 실패. 다시 시도하세요.", en: "Sign-in failed. Please try again.", zh: "登录失败，请重试。" },
   hiveNotConfigured: { ko: "Hive가 구성되지 않았습니다.", en: "Hive is not configured.", zh: "Hive 尚未配置。" },
+  hiveEmail: { ko: "이메일", en: "Email", zh: "邮箱" },
+  hiveEmailInvalid: { ko: "올바른 이메일을 입력하세요.", en: "Enter a valid email.", zh: "请输入有效邮箱。" },
+  hiveSendCode: { ko: "코드 받기", en: "Send code", zh: "获取验证码" },
+  hiveSending: { ko: "보내는 중…", en: "Sending…", zh: "发送中…" },
+  hiveCode: { ko: "인증 코드", en: "Verification code", zh: "验证码" },
+  hiveCodeSent: { ko: "{email}로 코드를 보냈어요.", en: "Code sent to {email}.", zh: "验证码已发送至 {email}。" },
+  hiveVerify: { ko: "확인", en: "Verify", zh: "验证" },
+  hiveVerifying: { ko: "확인 중…", en: "Verifying…", zh: "验证中…" },
+  hiveResend: { ko: "다시 보내기", en: "Resend", zh: "重新发送" },
+  hiveCancel: { ko: "취소", en: "Cancel", zh: "取消" },
 };
 
 export function t(lang: Lang, key: string): string {

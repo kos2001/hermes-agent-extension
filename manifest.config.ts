@@ -35,7 +35,7 @@ export default defineManifest({
       all_frames: false,
     },
   ],
-  permissions: ["storage", "sidePanel", "activeTab", "scripting", "tabs", "bookmarks", "alarms", "notifications", "downloads", "identity"],
+  permissions: ["storage", "sidePanel", "activeTab", "scripting", "tabs", "bookmarks", "alarms", "notifications", "downloads"],
   // Broad host access granted at install so the side panel can read page
   // content and run page translation on any site (chrome.scripting / chrome.tabs)
   // without a separate runtime "grant access" step. Covers the openrouter /

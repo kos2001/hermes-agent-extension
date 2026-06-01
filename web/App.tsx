@@ -3,7 +3,8 @@ import type { Session } from "@supabase/supabase-js";
 import { listFeed, react, unreact } from "@/lib/cloud/feed";
 import { getFolder } from "@/lib/cloud/folders";
 import type { FeedEntry, SharedFolder, SharedItem } from "@/lib/cloud/types";
-import { cloudConfigured, getSession, onAuthChange, signInWithGoogle, signOut, supabase } from "./cloud";
+import { isValidEmail } from "@/lib/cloud/email";
+import { cloudConfigured, getSession, onAuthChange, sendEmailOtp, signOut, supabase, verifyEmailOtp } from "./cloud";
 
 type ReactionKind = "like" | "save";
 
@@ -39,18 +40,90 @@ export function App() {
   if (!session) {
     return (
       <Shell>
-        <div className="signin">
-          <h2>Discover what others are reading</h2>
-          <p className="hint">Sign in to browse folders members have shared.</p>
-          <button className="primary" onClick={() => void signInWithGoogle()}>
-            Sign in with Google
-          </button>
-        </div>
+        <SignIn onSignedIn={setSession} />
       </Shell>
     );
   }
 
   return <SignedIn session={session} />;
+}
+
+function SignIn({ onSignedIn }: { onSignedIn: (s: Session) => void }) {
+  const [phase, setPhase] = useState<"email" | "code">("email");
+  const [email, setEmail] = useState("");
+  const [code, setCode] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  async function send() {
+    if (!isValidEmail(email)) {
+      setError("Enter a valid email.");
+      return;
+    }
+    setBusy(true);
+    setError("");
+    try {
+      await sendEmailOtp(email);
+      setPhase("code");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not send the code.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function verify() {
+    if (!code.trim()) return;
+    setBusy(true);
+    setError("");
+    try {
+      onSignedIn(await verifyEmailOtp(email, code));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Invalid or expired code.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="signin">
+      <h2>Discover what others are reading</h2>
+      <p className="hint">Sign in with an email code to browse what members have shared.</p>
+      {phase === "email" ? (
+        <div className="signin-form">
+          <input
+            type="email"
+            placeholder="you@example.com"
+            value={email}
+            disabled={busy}
+            onChange={(e) => setEmail(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && void send()}
+          />
+          <button className="primary" onClick={() => void send()} disabled={busy}>
+            {busy ? "Sending…" : "Send code"}
+          </button>
+        </div>
+      ) : (
+        <div className="signin-form">
+          <p className="hint">Code sent to {email}.</p>
+          <input
+            inputMode="numeric"
+            placeholder="6-digit code"
+            value={code}
+            disabled={busy}
+            autoFocus
+            onChange={(e) => setCode(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && void verify()}
+          />
+          <button className="primary" onClick={() => void verify()} disabled={busy}>
+            {busy ? "Verifying…" : "Verify"}
+          </button>
+          <button onClick={() => void send()} disabled={busy}>Resend</button>
+        </div>
+      )}
+      {error && <p className="hint err">⚠ {error}</p>}
+    </div>
+  );
 }
 
 function SignedIn({ session }: { session: Session }) {
