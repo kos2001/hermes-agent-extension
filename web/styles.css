@@ -89,3 +89,38 @@ code { background: var(--panel-2); padding: 1px 5px; border-radius: 4px; }
   padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px;
   background: var(--panel-2); color: inherit; font-size: 15px;
 }
+
+/* Collective-intelligence overview: stats + topic cloud */
+.collective {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px;
+  margin-bottom: 18px;
+}
+.stats { display: flex; gap: 22px; margin-bottom: 14px; }
+.stat { display: flex; flex-direction: column; line-height: 1.1; }
+.stat-n { font-size: 22px; font-weight: 700; color: var(--accent); }
+.stat-label { font-size: 12px; color: var(--muted); }
+.cloud { display: flex; flex-wrap: wrap; gap: 8px; align-items: baseline; }
+.cloud-chip {
+  border: 1px solid var(--border);
+  background: var(--panel-2);
+  color: var(--muted);
+  border-radius: 999px;
+  padding: 3px 11px;
+  cursor: pointer;
+  line-height: 1.4;
+}
+.cloud-chip:hover { color: #e6e8ec; border-color: var(--accent); }
+.cloud-chip.active { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
+/* weight buckets 1..5 size the cloud by how many folders share a topic */
+.cloud-chip.w1 { font-size: 12px; opacity: 0.8; }
+.cloud-chip.w2 { font-size: 13px; }
+.cloud-chip.w3 { font-size: 15px; }
+.cloud-chip.w4 { font-size: 17px; font-weight: 600; }
+.cloud-chip.w5 { font-size: 20px; font-weight: 700; }
+.filter-bar {
+  display: flex; justify-content: space-between; align-items: center;
+  margin-bottom: 14px; font-size: 13px; color: var(--muted);
+}

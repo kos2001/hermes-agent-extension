@@ -4,6 +4,7 @@ import { listFeed, react, unreact } from "@/lib/cloud/feed";
 import { getFolder } from "@/lib/cloud/folders";
 import type { FeedEntry, SharedFolder, SharedItem } from "@/lib/cloud/types";
 import { isValidEmail } from "@/lib/cloud/email";
+import { feedStats, topicCounts, topicWeight } from "@/lib/cloud/feed-stats";
 import { cloudConfigured, getSession, onAuthChange, sendEmailOtp, signOut, supabase, verifyEmailOtp } from "./cloud";
 
 type ReactionKind = "like" | "save";
@@ -147,6 +148,7 @@ function SignedIn({ session }: { session: Session }) {
 function Feed({ onOpen }: { onOpen: (id: string) => void }) {
   const [entries, setEntries] = useState<FeedEntry[] | null>(null);
   const [error, setError] = useState("");
+  const [topic, setTopic] = useState<string | null>(null);
 
   useEffect(() => {
     listFeed(supabase)
@@ -158,12 +160,60 @@ function Feed({ onOpen }: { onOpen: (id: string) => void }) {
   if (!entries) return <p className="hint">Loading feed…</p>;
   if (entries.length === 0) return <p className="hint">No shared folders yet. Be the first to share one from the extension.</p>;
 
+  const stats = feedStats(entries);
+  const counts = topicCounts(entries);
+  const maxCount = counts.length ? counts[0].count : 1;
+  const shown = topic ? entries.filter((e) => e.topics.some((t) => t.toLowerCase() === topic)) : entries;
+
   return (
-    <div className="feed">
-      {entries.map((e) => (
-        <FolderCard key={e.id} entry={e} onOpen={() => onOpen(e.id)} />
-      ))}
-    </div>
+    <>
+      <section className="collective">
+        <div className="stats">
+          <Stat n={stats.folders} label="folders" />
+          <Stat n={stats.members} label="members" />
+          <Stat n={stats.items} label="links" />
+          <Stat n={stats.topics} label="topics" />
+        </div>
+        {counts.length > 0 && (
+          <div className="cloud">
+            {counts.map((c) => (
+              <button
+                key={c.topic}
+                className={`cloud-chip w${topicWeight(c.count, maxCount)}${topic === c.topic ? " active" : ""}`}
+                title={`${c.count} folder${c.count > 1 ? "s" : ""}`}
+                onClick={() => setTopic((cur) => (cur === c.topic ? null : c.topic))}
+              >
+                #{c.topic}
+              </button>
+            ))}
+          </div>
+        )}
+      </section>
+
+      {topic && (
+        <div className="filter-bar">
+          <span>
+            Showing <strong>#{topic}</strong> · {shown.length} of {entries.length}
+          </span>
+          <button onClick={() => setTopic(null)}>Clear</button>
+        </div>
+      )}
+
+      <div className="feed">
+        {shown.map((e) => (
+          <FolderCard key={e.id} entry={e} onOpen={() => onOpen(e.id)} />
+        ))}
+      </div>
+    </>
+  );
+}
+
+function Stat({ n, label }: { n: number; label: string }) {
+  return (
+    <span className="stat">
+      <span className="stat-n">{n}</span>
+      <span className="stat-label">{label}</span>
+    </span>
   );
 }
 
