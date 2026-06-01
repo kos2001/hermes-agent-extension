@@ -6,6 +6,7 @@ import { getSession } from "@/lib/cloud/auth";
 import { listFeed } from "@/lib/cloud/feed";
 import { getFolder } from "@/lib/cloud/folders";
 import { listComments, postComment } from "@/lib/cloud/comments";
+import { myOpinionVotes, opinionVoteCounts, unvoteOpinion, voteOpinion } from "@/lib/cloud/opinion-votes";
 import { generateOpinion } from "@/lib/cloud/agent-opinion";
 import type { Comment, FeedEntry } from "@/lib/cloud/types";
 
@@ -57,17 +58,50 @@ export default function HiveFeedView({ config, lang }: { config: ConnectionConfi
 
 function FolderThread({ folder, config, lang }: { folder: FeedEntry; config: ConnectionConfig | null; lang: Lang }) {
   const [comments, setComments] = useState<Comment[] | null>(null);
+  const [counts, setCounts] = useState<Record<string, number>>({});
+  const [mine, setMine] = useState<Set<string>>(new Set());
   const [body, setBody] = useState("");
   const [busy, setBusy] = useState<null | "agent" | "human">(null);
   const [error, setError] = useState("");
 
   const load = useCallback(() => {
     listComments(supabase, folder.id)
-      .then(setComments)
+      .then(async (cs) => {
+        setComments(cs);
+        const ids = cs.map((c) => c.id);
+        const [vc, mv] = await Promise.all([opinionVoteCounts(supabase, ids), myOpinionVotes(supabase, ids)]);
+        setCounts(vc);
+        setMine(mv);
+      })
       .catch((e) => setError(e instanceof Error ? e.message : String(e)));
   }, [folder.id]);
 
   useEffect(load, [load]);
+
+  const toggleVote = useCallback(
+    async (id: string) => {
+      const voted = mine.has(id);
+      setMine((p) => {
+        const n = new Set(p);
+        if (voted) n.delete(id);
+        else n.add(id);
+        return n;
+      });
+      setCounts((p) => ({ ...p, [id]: (p[id] ?? 0) + (voted ? -1 : 1) }));
+      try {
+        if (voted) await unvoteOpinion(supabase, id);
+        else await voteOpinion(supabase, id);
+      } catch {
+        load();
+      }
+    },
+    [mine, load],
+  );
+
+  const topId = comments?.reduce<{ id: string; n: number } | null>((best, c) => {
+    const n = counts[c.id] ?? 0;
+    return n > 0 && (!best || n > best.n) ? { id: c.id, n } : best;
+  }, null)?.id;
 
   // Agent reads the folder + the existing discussion, then posts its opinion.
   const opine = useCallback(async () => {
@@ -122,12 +156,20 @@ function FolderThread({ folder, config, lang }: { folder: FeedEntry; config: Con
     <div className="hive-thread">
       <div className="hive-opinions">
         {comments?.map((c) => (
-          <div key={c.id} className="hive-op">
+          <div key={c.id} className={`hive-op${c.id === topId ? " top" : ""}`}>
             <span className={`hive-op-who ${c.author_kind}`}>
               {c.author_kind === "agent" ? "🤖" : "🧑"} {c.author?.display_name ?? "—"}
               {c.author_kind === "agent" && c.author_label ? ` · ${c.author_label}` : ""}
+              {c.id === topId && <span className="hive-top-badge">★</span>}
             </span>
             <div className="hive-op-body">{c.body}</div>
+            <button
+              className={`hive-vote${mine.has(c.id) ? " voted" : ""}`}
+              onClick={() => void toggleVote(c.id)}
+              title={t(lang, "hiveUpvote")}
+            >
+              ▲ {counts[c.id] ?? 0}
+            </button>
           </div>
         ))}
         {comments && comments.length === 0 && <div className="hive-op-empty">{t(lang, "hiveNoOpinions")}</div>}

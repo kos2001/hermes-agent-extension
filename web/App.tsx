@@ -3,6 +3,7 @@ import type { Session } from "@supabase/supabase-js";
 import { listFeed, react, unreact } from "@/lib/cloud/feed";
 import { getFolder } from "@/lib/cloud/folders";
 import { listComments, postComment } from "@/lib/cloud/comments";
+import { myOpinionVotes, opinionVoteCounts, unvoteOpinion, voteOpinion } from "@/lib/cloud/opinion-votes";
 import type { Comment, FeedEntry, SharedFolder, SharedItem } from "@/lib/cloud/types";
 import { isValidEmail } from "@/lib/cloud/email";
 import { feedStats, topicCounts, topicWeight } from "@/lib/cloud/feed-stats";
@@ -309,13 +310,21 @@ function Detail({ folderId, onBack }: { folderId: string; onBack: () => void }) 
 
 function Discussion({ folderId }: { folderId: string }) {
   const [comments, setComments] = useState<Comment[] | null>(null);
+  const [counts, setCounts] = useState<Record<string, number>>({});
+  const [mine, setMine] = useState<Set<string>>(new Set());
   const [body, setBody] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
   const load = useCallback(() => {
     listComments(supabase, folderId)
-      .then(setComments)
+      .then(async (cs) => {
+        setComments(cs);
+        const ids = cs.map((c) => c.id);
+        const [vc, mv] = await Promise.all([opinionVoteCounts(supabase, ids), myOpinionVotes(supabase, ids)]);
+        setCounts(vc);
+        setMine(mv);
+      })
       .catch((e) => setError(e instanceof Error ? e.message : String(e)));
   }, [folderId]);
 
@@ -337,16 +346,50 @@ function Discussion({ folderId }: { folderId: string }) {
     }
   }
 
+  const toggleVote = useCallback(
+    async (id: string) => {
+      const voted = mine.has(id);
+      // optimistic
+      setMine((p) => {
+        const n = new Set(p);
+        voted ? n.delete(id) : n.add(id);
+        return n;
+      });
+      setCounts((p) => ({ ...p, [id]: (p[id] ?? 0) + (voted ? -1 : 1) }));
+      try {
+        if (voted) await unvoteOpinion(supabase, id);
+        else await voteOpinion(supabase, id);
+      } catch {
+        load(); // reconcile on failure
+      }
+    },
+    [mine, load],
+  );
+
+  // Highlight the single top-voted opinion (>=1 vote) to surface the best take.
+  const topId = comments?.reduce<{ id: string; n: number } | null>((best, c) => {
+    const n = counts[c.id] ?? 0;
+    return n > 0 && (!best || n > best.n) ? { id: c.id, n } : best;
+  }, null)?.id;
+
   return (
     <section className="discussion">
       <h3>Discussion {comments ? `(${comments.length})` : ""}</h3>
       {comments?.map((c) => (
-        <div key={c.id} className="opinion">
+        <div key={c.id} className={`opinion${c.id === topId ? " top" : ""}`}>
           <span className={`who ${c.author_kind}`}>
             {c.author_kind === "agent" ? "🤖" : "🧑"} {c.author?.display_name ?? "Someone"}
             {c.author_kind === "agent" && c.author_label ? ` · ${c.author_label}` : ""}
+            {c.id === topId && <span className="top-badge">★ top</span>}
           </span>
           <p className="opinion-body">{c.body}</p>
+          <button
+            className={`vote${mine.has(c.id) ? " voted" : ""}`}
+            onClick={() => void toggleVote(c.id)}
+            title="Upvote this opinion"
+          >
+            ▲ {counts[c.id] ?? 0}
+          </button>
         </div>
       ))}
       {comments && comments.length === 0 && <p className="hint">No opinions yet. Start the conversation.</p>}
