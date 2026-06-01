@@ -594,3 +594,9 @@ html, body, #root {
 }
 .hive-vote:hover { color: var(--text); border-color: var(--accent); }
 .hive-vote.voted { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
+
+/* Compact top-contributors strip in the Hive feed view */
+.hive-lb { display: flex; flex-wrap: wrap; gap: 8px; align-items: baseline; padding: 6px 8px; margin-bottom: 6px; background: var(--panel-2); border-radius: 6px; font-size: 11px; }
+.hive-lb-title { font-weight: 600; }
+.hive-lb-item { color: var(--muted); }
+.hive-lb-rep { color: var(--accent); }

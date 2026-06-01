@@ -4,6 +4,7 @@ import { listFeed, react, unreact } from "@/lib/cloud/feed";
 import { getFolder } from "@/lib/cloud/folders";
 import { listComments, postComment } from "@/lib/cloud/comments";
 import { myOpinionVotes, opinionVoteCounts, unvoteOpinion, voteOpinion } from "@/lib/cloud/opinion-votes";
+import { listLeaderboard, type Contributor } from "@/lib/cloud/leaderboard";
 import type { Comment, FeedEntry, SharedFolder, SharedItem } from "@/lib/cloud/types";
 import { isValidEmail } from "@/lib/cloud/email";
 import { feedStats, topicCounts, topicWeight } from "@/lib/cloud/feed-stats";
@@ -131,6 +132,7 @@ function SignIn({ onSignedIn }: { onSignedIn: (s: Session) => void }) {
 
 function SignedIn({ session }: { session: Session }) {
   const [openId, setOpenId] = useState<string | null>(null);
+  const [tab, setTab] = useState<"feed" | "leaderboard">("feed");
   const name = (session.user.user_metadata?.full_name as string | undefined) ?? session.user.email ?? "";
 
   return (
@@ -142,7 +144,19 @@ function SignedIn({ session }: { session: Session }) {
         </span>
       }
     >
-      {openId ? <Detail folderId={openId} onBack={() => setOpenId(null)} /> : <Feed onOpen={setOpenId} />}
+      {openId ? (
+        <Detail folderId={openId} onBack={() => setOpenId(null)} />
+      ) : (
+        <>
+          <nav className="tabs">
+            <button className={tab === "feed" ? "active" : ""} onClick={() => setTab("feed")}>Feed</button>
+            <button className={tab === "leaderboard" ? "active" : ""} onClick={() => setTab("leaderboard")}>
+              🏆 Leaderboard
+            </button>
+          </nav>
+          {tab === "feed" ? <Feed onOpen={setOpenId} /> : <Leaderboard />}
+        </>
+      )}
     </Shell>
   );
 }
@@ -207,6 +221,40 @@ function Feed({ onOpen }: { onOpen: (id: string) => void }) {
         ))}
       </div>
     </>
+  );
+}
+
+function Leaderboard() {
+  const [rows, setRows] = useState<Contributor[] | null>(null);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    listLeaderboard(supabase)
+      .then(setRows)
+      .catch((e) => setError(e instanceof Error ? e.message : String(e)));
+  }, []);
+
+  if (error) return <p className="hint err">⚠ {error}</p>;
+  if (!rows) return <p className="hint">Loading leaderboard…</p>;
+  if (rows.length === 0) return <p className="hint">No contributors yet — share a folder or post an opinion.</p>;
+
+  return (
+    <div className="leaderboard">
+      <p className="hint">Ranked by upvotes their opinions earned.</p>
+      <ol className="lb-list">
+        {rows.map((r, i) => (
+          <li key={r.user_id} className="lb-row">
+            <span className={`lb-rank r${i + 1}`}>{i + 1}</span>
+            <span className="lb-name">{r.display_name ?? "Someone"}</span>
+            <span className="lb-stats">
+              <span className="lb-rep" title="upvotes received">▲ {r.votes_received}</span>
+              <span title="opinions posted">💬 {r.opinions}</span>
+              <span title="folders shared">📁 {r.folders_shared}</span>
+            </span>
+          </li>
+        ))}
+      </ol>
+    </div>
   );
 }
 

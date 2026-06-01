@@ -154,6 +154,7 @@ const STR: Record<string, Entry> = {
   hivePostFailed: { ko: "게시에 실패했습니다.", en: "Could not post.", zh: "发布失败。" },
   hiveCommentPlaceholder: { ko: "의견을 입력하세요…", en: "Share your opinion…", zh: "分享你的观点…" },
   hiveUpvote: { ko: "이 의견 추천", en: "Upvote this opinion", zh: "为该观点点赞" },
+  hiveTopContributors: { ko: "상위 기여자", en: "Top contributors", zh: "顶级贡献者" },
 };
 
 export function t(lang: Lang, key: string): string {
