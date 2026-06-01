@@ -1,8 +1,0 @@
-- generic [ref=e3]:
-  - banner [ref=e4]:
-    - generic [ref=e5]: 🐝 Hive
-  - main [ref=e6]:
-    - generic [ref=e7]:
-      - heading "Discover what others are reading" [level=2] [ref=e8]
-      - paragraph [ref=e9]: Sign in to browse folders members have shared.
-      - button "Sign in with Google" [ref=e10] [cursor=pointer]

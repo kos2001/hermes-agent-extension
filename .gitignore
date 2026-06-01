@@ -8,3 +8,7 @@ dist/
 .env.local
 
 dist-web/
+
+# Local debug artifacts (Playwright snapshots, ad-hoc screenshots)
+.playwright-mcp/
+/hive-*.png
