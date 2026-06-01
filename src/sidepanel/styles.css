@@ -584,3 +584,13 @@ html, body, #root {
   flex: 1; resize: vertical; padding: 6px 8px; border: 1px solid var(--border);
   border-radius: 6px; background: var(--bg); color: inherit; font: inherit;
 }
+
+/* Opinion votes in the Hive feed view */
+.hive-op.top { background: var(--panel-2); border-radius: 6px; padding: 6px 8px; margin-left: -8px; margin-right: -8px; }
+.hive-top-badge { color: var(--accent); margin-left: 4px; }
+.hive-vote {
+  margin-top: 4px; font-size: 11px; padding: 1px 8px; cursor: pointer;
+  background: transparent; color: var(--muted); border: 1px solid var(--border); border-radius: 10px;
+}
+.hive-vote:hover { color: var(--text); border-color: var(--accent); }
+.hive-vote.voted { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }

@@ -137,3 +137,13 @@ code { background: var(--panel-2); padding: 1px 5px; border-radius: 4px; }
   flex: 1; resize: vertical; padding: 8px 10px; border: 1px solid var(--border);
   border-radius: 8px; background: var(--panel-2); color: inherit; font: inherit;
 }
+
+/* Opinion votes + top highlight */
+.opinion.top { background: var(--panel-2); border-radius: 8px; padding: 8px 10px; }
+.top-badge { color: var(--accent); margin-left: 6px; font-size: 12px; }
+.vote {
+  margin-top: 6px; font-size: 12px; padding: 2px 10px; cursor: pointer;
+  background: transparent; color: var(--muted); border: 1px solid var(--border); border-radius: 999px;
+}
+.vote:hover { color: var(--text); border-color: var(--accent); }
+.vote.voted { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
