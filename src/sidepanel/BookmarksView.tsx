@@ -282,13 +282,21 @@ export default function BookmarksView({
     setResult([]);
     setError("");
     setBusy("share");
+    setProgress({ done: 0, total: items.length });
+    const ctrl = new AbortController();
+    deadAbort.current = ctrl;
     try {
       const session = await getSession();
       if (!session) {
         setError(t(lang, "bm.shareNeedSignIn"));
         return;
       }
-      const summary = await summarizeFolder(config, folder.path, items);
+      // Reads each page (progress) then synthesizes insights via the LLM.
+      const summary = await summarizeFolder(config, folder.path, items, {
+        signal: ctrl.signal,
+        onProgress: (done, total) => setProgress({ done, total }),
+      });
+      setProgress(null);
       await publishFolder(supabase, {
         title: folder.path,
         sourceFolderName: folder.path,
@@ -300,7 +308,9 @@ export default function BookmarksView({
     } catch (e) {
       setError(e instanceof Error ? e.message : t(lang, "bm.shareFailed"));
     } finally {
+      deadAbort.current = null;
       setBusy(null);
+      setProgress(null);
     }
   }, [config, nodes, shareFolderId, lang, setResult]);
 
@@ -379,9 +389,9 @@ export default function BookmarksView({
           </button>
         </div>
       )}
-      {busy === "share" && <div className="bm-status">{t(lang, "bm.sharing")}</div>}
+      {busy === "share" && !progress && <div className="bm-status">{t(lang, "bm.sharing")}</div>}
 
-      {(busy === "dead" || busy === "clean" || busy === "sdup") && progress && (
+      {(busy === "dead" || busy === "clean" || busy === "sdup" || busy === "share") && progress && (
         <div className="bm-status">
           {progress.done} / {progress.total}
           <button className="tx-restore" onClick={() => deadAbort.current?.abort()}>{t(lang, "stop")}</button>
