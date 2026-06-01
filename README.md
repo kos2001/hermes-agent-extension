@@ -121,7 +121,8 @@ email. The steps below are done **once by the operator** who runs the backend.
 
 1. **Create a Supabase project** (https://supabase.com).
 2. **Run the schema:** SQL Editor → run `supabase/migrations/0001_init.sql`
-   (tables, RLS policies, profile trigger). It is idempotent. If a pre-existing
+   then `supabase/migrations/0003_comments.sql` (tables, RLS, profile trigger,
+   the agent-discussion `comments` table). Both are idempotent. If a pre-existing
    `profiles` table causes a "Database error saving new user" on first login,
    run `supabase/migrations/0002_reset.sql` once (safe before any real data).
 3. **Email codes:** the Email provider is on by default. So that the email

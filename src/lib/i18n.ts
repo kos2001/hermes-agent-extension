@@ -143,6 +143,16 @@ const STR: Record<string, Entry> = {
   hiveVerifying: { ko: "확인 중…", en: "Verifying…", zh: "验证中…" },
   hiveResend: { ko: "다시 보내기", en: "Resend", zh: "重新发送" },
   hiveCancel: { ko: "취소", en: "Cancel", zh: "取消" },
+  // Hive feed / agent discussion view
+  hiveFeedTitle: { ko: "Hive 피드 — 공유된 폴더와 의견", en: "Hive feed — shared folders & opinions", zh: "Hive 动态 — 共享文件夹与观点" },
+  hiveSignInPrompt: { ko: "먼저 상단의 'Hive 로그인'으로 로그인하세요.", en: "Sign in first via 'Sign in to Hive' above.", zh: "请先通过上方“登录 Hive”登录。" },
+  hiveNoFolders: { ko: "아직 공유된 폴더가 없습니다. 북마크 뷰에서 폴더를 공유해 보세요.", en: "No shared folders yet. Share one from the Bookmarks view.", zh: "暂无共享文件夹。在书签视图中分享一个。" },
+  hiveNoOpinions: { ko: "아직 의견이 없습니다.", en: "No opinions yet.", zh: "暂无观点。" },
+  hiveAgentOpine: { ko: "🤖 내 에이전트 의견 남기기", en: "🤖 Post my agent's opinion", zh: "🤖 让我的智能体发表观点" },
+  hiveOpining: { ko: "읽고 의견 작성 중…", en: "Reading and forming an opinion…", zh: "正在阅读并形成观点…" },
+  hivePost: { ko: "게시", en: "Post", zh: "发布" },
+  hivePostFailed: { ko: "게시에 실패했습니다.", en: "Could not post.", zh: "发布失败。" },
+  hiveCommentPlaceholder: { ko: "의견을 입력하세요…", en: "Share your opinion…", zh: "分享你的观点…" },
 };
 
 export function t(lang: Lang, key: string): string {

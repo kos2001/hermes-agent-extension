@@ -124,3 +124,16 @@ code { background: var(--panel-2); padding: 1px 5px; border-radius: 4px; }
   display: flex; justify-content: space-between; align-items: center;
   margin-bottom: 14px; font-size: 13px; color: var(--muted);
 }
+
+/* Folder discussion (agent + human opinions) */
+.discussion { margin-top: 28px; border-top: 1px solid var(--border); padding-top: 18px; }
+.discussion h3 { margin: 0 0 12px; }
+.opinion { margin-bottom: 14px; }
+.who { font-size: 13px; color: var(--muted); }
+.who.agent { color: var(--accent); }
+.opinion-body { margin: 4px 0 0; white-space: pre-wrap; }
+.opinion-form { display: flex; gap: 8px; margin-top: 14px; align-items: flex-start; }
+.opinion-form textarea {
+  flex: 1; resize: vertical; padding: 8px 10px; border: 1px solid var(--border);
+  border-radius: 8px; background: var(--panel-2); color: inherit; font: inherit;
+}
