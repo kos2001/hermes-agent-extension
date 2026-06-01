@@ -97,6 +97,12 @@ module, so the data contract lives in exactly one place.
 
 ### Auth (extension)
 
+> Revision (2026-06-01): auth switched from Google OAuth to **email one-time
+> codes** to remove the Google Cloud Console setup burden. `signInWithOtp` +
+> `verifyOtp` work identically in the extension and web app — no
+> `chrome.identity`, no redirect URLs, no `identity` permission. The original
+> Google/`launchWebAuthFlow` design below is kept for history.
+
 Chrome MV3 extensions cannot use Supabase's default browser redirect. Flow:
 
 1. `supabase.auth.signInWithOAuth({ provider: 'google', options: {

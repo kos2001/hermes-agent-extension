@@ -111,45 +111,53 @@ The manifest requests broad host access (`host_permissions: http://*/*`,
 `https://*/*`) at install so the side panel can read page content and translate
 on any site without a separate runtime grant.
 
-## Hive (cloud) setup — optional
+## Hive (cloud) — operator setup (one time)
 
-"Hive" is the collaborative layer: members sign in and (in later sub-projects)
-publish summarized bookmark folders to a shared feed. The foundation
-(sub-project A) ships a Supabase-backed data layer + Google sign-in. Without the
-env vars below, the cloud features stay dormant (the sign-in button is hidden)
-and the extension works exactly as before.
-
-To enable it:
+"Hive" is the collaborative layer: members sign in and publish summarized
+bookmark folders to a shared feed. Auth is **email one-time codes** — no Google
+Cloud, no OAuth client, no redirect URLs. **Members set up nothing**: they
+install the operator-built extension / open the site and sign in with their
+email. The steps below are done **once by the operator** who runs the backend.
 
 1. **Create a Supabase project** (https://supabase.com).
-2. **Run the schema:** open the SQL editor and run
-   `supabase/migrations/0001_init.sql` (creates the tables, RLS policies, and the
-   profile-creation trigger).
-3. **Enable Google auth:** Auth → Providers → Google. Supply a Google OAuth
-   client id/secret (from the Google Cloud console; authorized redirect URI is
-   your Supabase project's `…/auth/v1/callback`).
-4. **Register the extension redirect:** load `dist/` unpacked first
-   (`chrome://extensions` shows the extension id), then in Supabase Auth → URL
-   Configuration → Redirect URLs add `https://<extension-id>.chromiumapp.org/`.
-5. **Add credentials:** copy `.env.example` to `.env` and fill
-   `VITE_SUPABASE_URL` + `VITE_SUPABASE_ANON_KEY` (Settings → API).
-6. **Rebuild** (`npm run build`) and reload the unpacked extension. A
-   "Sign in to Hive" button appears in the side-panel top bar.
+2. **Run the schema:** SQL Editor → run `supabase/migrations/0001_init.sql`
+   (tables, RLS policies, profile trigger). It is idempotent. If a pre-existing
+   `profiles` table causes a "Database error saving new user" on first login,
+   run `supabase/migrations/0002_reset.sql` once (safe before any real data).
+3. **Email codes:** the Email provider is on by default. So that the email
+   contains a **6-digit code** (not just a magic link), set
+   Authentication → Emails → **Magic Link** template to include the token, e.g.:
+   ```
+   <h2>Your Hive code</h2>
+   <p>{{ .Token }}</p>
+   ```
+   (For real volume, configure SMTP under Authentication → Emails → SMTP; the
+   built-in sender is rate-limited and fine for testing.)
+4. **Add credentials:** copy `.env.example` to `.env` and fill
+   `VITE_SUPABASE_URL` + `VITE_SUPABASE_ANON_KEY` (Settings → API → Project URL +
+   the **Publishable**/`anon` key). The anon/publishable key is browser-safe —
+   RLS protects the data.
+5. **Build & distribute:**
+   ```sh
+   npm run build        # extension → dist/  (creds baked in at build time)
+   npm run package      # → hermes-agent-extension.zip for distribution
+   npm run build:web    # feed site → dist-web/  (deploy as a static site)
+   ```
+   The `.env` is gitignored and only needs to exist on the operator's build
+   machine; the published artifacts carry the (public) anon key. Members just
+   load the extension / open the site and sign in — no env, no Supabase account.
 
 ### The feed site (sub-project C)
 
-The shared feed is a separate web app under `web/` (its own Vite config). It
-reuses the same Supabase project + env vars:
+The shared feed is a separate web app under `web/` (its own Vite config), using
+the same Supabase project + env:
 
 ```sh
 npm run dev:web      # vite dev server (http://localhost:5180)
-npm run build:web    # production build → dist-web/
+npm run build:web    # production build → dist-web/  (deploy to any static host)
 ```
 
-Add the web app's origin (e.g. `http://localhost:5180` in dev, your deployed
-origin in prod) to Supabase Auth → URL Configuration → Redirect URLs, alongside
-the extension's `chromiumapp.org` URL. Sign in there to browse the folders
-members publish from the extension.
+No redirect-URL registration is needed (email codes don't redirect).
 
 Design + plan docs live under `docs/superpowers/`
 (`specs/2026-05-31-collective-bookmarks-platform-design.md`,

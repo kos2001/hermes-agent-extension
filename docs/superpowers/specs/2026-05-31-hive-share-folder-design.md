@@ -6,9 +6,15 @@ Status: Proposed (design)
 ## Goal
 
 Let a signed-in member publish one of their bookmark folders to Hive. The
-extension summarizes the folder client-side (reusing the existing LLM pipeline +
-the user's API key), then publishes the folder-level summary, derived topics,
-and per-item entries via the sub-project A data layer (`publishFolder`).
+extension **reads each page's actual content** and shares **insight** — not a
+mere link/title description. It fetches every bookmark's page text client-side,
+asks the LLM to read it and produce a genuine takeaway per item plus a
+folder-level synthesis, then publishes the summary, topics, and per-item
+insights via the sub-project A data layer (`publishFolder`).
+
+> Revision (2026-06-01): the first cut summarized from title+URL only (the model
+> guessed from metadata). Per the "share insight from reading the page, not just
+> a link" goal, B now fetches and reads each page's content before summarizing.
 
 Depends on: sub-project A (Supabase, auth, `publishFolder`).
 

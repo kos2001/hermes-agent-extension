@@ -1,32 +1,29 @@
 import type { Session } from "@supabase/supabase-js";
 import { supabase } from "./client";
-import { parseTokensFromRedirect } from "./oauth";
 
 /**
- * Sign in with Google via chrome.identity.launchWebAuthFlow. Asks Supabase for
- * an authorize URL (no browser redirect), runs the interactive flow, then sets
- * the captured session on the client.
+ * Email one-time-code sign-in. Step 1: send a 6-digit code to the address.
+ * No external OAuth provider, no redirect — works the same in the extension and
+ * the web app. (Supabase's Email provider is enabled by default.)
  */
-export async function signInWithGoogle(): Promise<Session> {
-  const redirectUri = chrome.identity.getRedirectURL();
-  const { data, error } = await supabase.auth.signInWithOAuth({
-    provider: "google",
-    options: { skipBrowserRedirect: true, redirectTo: redirectUri },
+export async function sendEmailOtp(email: string): Promise<void> {
+  const { error } = await supabase.auth.signInWithOtp({
+    email: email.trim(),
+    options: { shouldCreateUser: true },
   });
   if (error) throw error;
-  if (!data?.url) throw new Error("Supabase did not return an authorize URL");
+}
 
-  const redirect = await chrome.identity.launchWebAuthFlow({ url: data.url, interactive: true });
-  if (!redirect) throw new Error("Sign-in was cancelled");
-
-  const { accessToken, refreshToken } = parseTokensFromRedirect(redirect);
-  const { data: sessionData, error: setErr } = await supabase.auth.setSession({
-    access_token: accessToken,
-    refresh_token: refreshToken,
+/** Step 2: verify the emailed code and establish the session. */
+export async function verifyEmailOtp(email: string, token: string): Promise<Session> {
+  const { data, error } = await supabase.auth.verifyOtp({
+    email: email.trim(),
+    token: token.trim(),
+    type: "email",
   });
-  if (setErr) throw setErr;
-  if (!sessionData.session) throw new Error("Failed to establish a session");
-  return sessionData.session;
+  if (error) throw error;
+  if (!data.session) throw new Error("No session after verification");
+  return data.session;
 }
 
 export async function signOut(): Promise<void> {

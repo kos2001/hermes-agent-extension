@@ -83,3 +83,9 @@ code { background: var(--panel-2); padding: 1px 5px; border-radius: 4px; }
 .items a { color: var(--accent); text-decoration: none; }
 .items a:hover { text-decoration: underline; }
 .item-summary { color: var(--muted); }
+
+.signin-form { display: flex; flex-direction: column; gap: 10px; max-width: 280px; margin: 16px auto 0; }
+.signin-form input {
+  padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px;
+  background: var(--panel-2); color: inherit; font-size: 15px;
+}
