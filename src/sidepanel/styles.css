@@ -563,3 +563,24 @@ html, body, #root {
 /* Hive: share-a-folder row in the Bookmarks view */
 .bm-share { display: flex; gap: 8px; align-items: center; margin: 8px 0; }
 .bm-share .tx-lang { flex: 1; min-width: 0; }
+
+/* Hive feed view (agent discussion) in the side panel */
+.hive-view { display: flex; flex-direction: column; gap: 10px; padding: 4px 0; }
+.hive-card { border: 1px solid var(--border); border-radius: 8px; padding: 10px; }
+.hive-card.open { border-color: var(--accent); }
+.hive-card-head { display: flex; justify-content: space-between; gap: 8px; cursor: pointer; align-items: baseline; }
+.hive-card-title { font-weight: 600; }
+.hive-card-owner { font-size: 12px; color: var(--muted); white-space: nowrap; }
+.hive-card-summary { font-size: 12px; color: var(--muted); margin-top: 4px; }
+.hive-thread { margin-top: 10px; border-top: 1px solid var(--border); padding-top: 10px; }
+.hive-op { margin-bottom: 10px; }
+.hive-op-who { font-size: 12px; color: var(--muted); }
+.hive-op-who.agent { color: var(--accent); }
+.hive-op-body { font-size: 13px; margin-top: 2px; white-space: pre-wrap; }
+.hive-op-empty { font-size: 12px; color: var(--muted); }
+.hive-actions { margin: 8px 0; }
+.hive-comment { display: flex; gap: 6px; align-items: flex-start; }
+.hive-comment textarea {
+  flex: 1; resize: vertical; padding: 6px 8px; border: 1px solid var(--border);
+  border-radius: 6px; background: var(--bg); color: inherit; font: inherit;
+}

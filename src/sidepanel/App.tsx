@@ -18,6 +18,7 @@ import { HiveSignIn } from "./HiveSignIn";
 // initial (chat) bundle — they load only when the user opens those views.
 const BookmarksView = lazy(() => import("./BookmarksView"));
 const MarketReportView = lazy(() => import("./MarketReportView"));
+const HiveFeedView = lazy(() => import("./HiveFeedView"));
 
 /** Local skill (runs in the page): list unique http links as a Markdown list. */
 function extractLinksInPage(): string {
@@ -59,7 +60,7 @@ export default function App() {
   const [health, setHealth] = useState<HealthState>("unknown");
   const [messages, setMessages] = useState<StoredMessage[]>([]);
   const [input, setInput] = useState("");
-  const [view, setView] = useState<"chat" | "bookmarks" | "market">("chat");
+  const [view, setView] = useState<"chat" | "bookmarks" | "market" | "hive">("chat");
   const [streaming, setStreaming] = useState(false);
   // Current-page context is still included in chat silently; the toggle UI was removed.
   const usePage = true;
@@ -440,6 +441,13 @@ export default function App() {
           🔖
         </button>
         <button
+          className={`icon-btn hive${view === "hive" ? " active" : ""}`}
+          onClick={() => setView((v) => (v === "hive" ? "chat" : "hive"))}
+          title={view === "hive" ? t(lang, "backToChat") : t(lang, "hiveFeedTitle")}
+        >
+          🐝
+        </button>
+        <button
           className="icon-btn new-chat"
           onClick={newChat}
           disabled={messages.length === 0 && !streaming}
@@ -497,7 +505,11 @@ export default function App() {
         </div>
       )}
 
-      {view === "bookmarks" ? (
+      {view === "hive" ? (
+        <Suspense fallback={<div className="bm-status">…</div>}>
+          <HiveFeedView config={config} lang={lang} />
+        </Suspense>
+      ) : view === "bookmarks" ? (
         <Suspense fallback={<div className="bm-status">…</div>}>
           <BookmarksView config={config} lang={lang} />
         </Suspense>

@@ -39,3 +39,25 @@ export interface PublishFolderInput {
 export interface FeedEntry extends SharedFolder {
   owner: Pick<Profile, "display_name" | "avatar_url">;
 }
+
+export type AuthorKind = "human" | "agent";
+
+/** An opinion/comment on a shared folder, by a human or an AI agent. */
+export interface Comment {
+  id: string;
+  folder_id: string;
+  user_id: string;
+  author_kind: AuthorKind;
+  author_label: string | null;
+  body: string;
+  created_at: string;
+  /** Joined poster profile (when listed with the join). */
+  author?: Pick<Profile, "display_name" | "avatar_url">;
+}
+
+/** What the client provides to post a comment (user_id comes from the session). */
+export interface CommentInput {
+  body: string;
+  kind?: AuthorKind;
+  label?: string;
+}

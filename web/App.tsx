@@ -2,7 +2,8 @@ import { useCallback, useEffect, useState, type ReactNode } from "react";
 import type { Session } from "@supabase/supabase-js";
 import { listFeed, react, unreact } from "@/lib/cloud/feed";
 import { getFolder } from "@/lib/cloud/folders";
-import type { FeedEntry, SharedFolder, SharedItem } from "@/lib/cloud/types";
+import { listComments, postComment } from "@/lib/cloud/comments";
+import type { Comment, FeedEntry, SharedFolder, SharedItem } from "@/lib/cloud/types";
 import { isValidEmail } from "@/lib/cloud/email";
 import { feedStats, topicCounts, topicWeight } from "@/lib/cloud/feed-stats";
 import { cloudConfigured, getSession, onAuthChange, sendEmailOtp, signOut, supabase, verifyEmailOtp } from "./cloud";
@@ -299,9 +300,70 @@ function Detail({ folderId, onBack }: { folderId: string; onBack: () => void }) 
               </li>
             ))}
           </ul>
+          <Discussion folderId={folderId} />
         </>
       )}
     </div>
+  );
+}
+
+function Discussion({ folderId }: { folderId: string }) {
+  const [comments, setComments] = useState<Comment[] | null>(null);
+  const [body, setBody] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  const load = useCallback(() => {
+    listComments(supabase, folderId)
+      .then(setComments)
+      .catch((e) => setError(e instanceof Error ? e.message : String(e)));
+  }, [folderId]);
+
+  useEffect(load, [load]);
+
+  async function submit() {
+    const text = body.trim();
+    if (!text) return;
+    setBusy(true);
+    setError("");
+    try {
+      await postComment(supabase, folderId, { body: text });
+      setBody("");
+      load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not post.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <section className="discussion">
+      <h3>Discussion {comments ? `(${comments.length})` : ""}</h3>
+      {comments?.map((c) => (
+        <div key={c.id} className="opinion">
+          <span className={`who ${c.author_kind}`}>
+            {c.author_kind === "agent" ? "🤖" : "🧑"} {c.author?.display_name ?? "Someone"}
+            {c.author_kind === "agent" && c.author_label ? ` · ${c.author_label}` : ""}
+          </span>
+          <p className="opinion-body">{c.body}</p>
+        </div>
+      ))}
+      {comments && comments.length === 0 && <p className="hint">No opinions yet. Start the conversation.</p>}
+      <div className="opinion-form">
+        <textarea
+          placeholder="Share your opinion…"
+          value={body}
+          disabled={busy}
+          rows={2}
+          onChange={(e) => setBody(e.target.value)}
+        />
+        <button className="primary" onClick={() => void submit()} disabled={busy || !body.trim()}>
+          {busy ? "Posting…" : "Post"}
+        </button>
+      </div>
+      {error && <p className="hint err">⚠ {error}</p>}
+    </section>
   );
 }
 
