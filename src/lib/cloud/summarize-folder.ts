@@ -1,10 +1,16 @@
 import type { ChatMessage, ConnectionConfig } from "@/lib/types";
 import { collectChat } from "@/lib/hermes-client";
+import { fetchSiteText } from "@/lib/market-report";
 
 /** A bookmark within the folder being shared. */
 export interface FolderItem {
   title: string;
   url: string;
+}
+
+/** A folder item paired with the readable text fetched from its page. */
+export interface ItemWithContent extends FolderItem {
+  content: string;
 }
 
 /** The summarized body of a publish payload (caller adds title/sourceFolderName). */
@@ -14,31 +20,44 @@ export interface FolderSummary {
   items: { title: string; url: string; itemSummary: string }[];
 }
 
-/** Cap items per folder to bound token use. */
-const MAX_ITEMS = 60;
+/** Cap items per folder to bound fetch fan-out + token use. */
+export const MAX_ITEMS = 30;
 /** Cap topics so a folder's tag set stays focused. */
-const MAX_TOPICS = 8;
+export const MAX_TOPICS = 8;
+/** Page text kept per item — enough to ground an insight, bounds tokens. */
+export const CONTENT_CHARS = 2500;
+/** Concurrent page fetches. */
+const FETCH_CONCURRENCY = 6;
 
 /**
- * Build the LLM request that summarizes a bookmark folder for sharing. Asks for
- * a strict JSON object: a folder-level summary, topic tags, and a one-line
- * summary per item URL. Returns how many items were actually sent.
+ * Build the LLM request that READS each page and shares insight. The model is
+ * given each bookmark's page text (not just title/url) and must produce a
+ * genuine takeaway per item plus a folder-level synthesis — not a restatement
+ * of the link. Returns how many items were included.
  */
-export function buildFolderSummaryPrompt(
+export function buildFolderInsightPrompt(
   folderPath: string,
-  items: FolderItem[],
+  items: ItemWithContent[],
 ): { messages: ChatMessage[]; sent: number } {
   const picked = items.slice(0, MAX_ITEMS);
   const system =
-    "You summarize a user's bookmark folder so others can discover it. You are " +
-    "given the folder path and its bookmarks ({title, url}). Produce: a concise " +
-    "1-2 sentence `summary` of what the folder is about; up to 8 short `topics` " +
-    "(lowercase tags); and for each bookmark a one-line `summary` (<=15 words). " +
-    'Reply with JSON only: {"summary": "...", "topics": ["..."], "items": ' +
-    '[{"url": "<url>", "summary": "..."}]}. No prose outside the JSON.';
+    "You are given a folder of web bookmarks, each with the READABLE TEXT of its " +
+    "page. Actually read each page's content and share INSIGHT — the key takeaway, " +
+    "what one would learn, or why it's worth reading — never a mere description of " +
+    "the link or a restatement of the title. Produce: a concise 1-2 sentence " +
+    "`summary` of what the whole folder is about and the through-line across the " +
+    "pages; up to 8 short lowercase `topics`; and for each page an `insight` " +
+    "(<=30 words) grounded in its actual content. If a page's text is empty or " +
+    "unreadable, base the insight on the title and keep it modest. Reply with " +
+    'JSON only: {"summary":"...","topics":["..."],"items":[{"url":"<url>",' +
+    '"insight":"..."}]}. No prose outside the JSON.';
   const user = JSON.stringify({
     folder: folderPath,
-    bookmarks: picked.map((it) => ({ title: it.title, url: it.url })),
+    pages: picked.map((it) => ({
+      title: it.title,
+      url: it.url,
+      content: (it.content || "").slice(0, CONTENT_CHARS),
+    })),
   });
   return {
     messages: [
@@ -79,11 +98,12 @@ function cleanTopics(raw: unknown): string[] {
 }
 
 /**
- * Parse a folder-summary response into a FolderSummary. The item list is driven
+ * Parse a folder-insight response into a FolderSummary. The item list is driven
  * by the real `items` (capped to what was sent), so the published items always
  * match the user's actual bookmarks; the model only contributes per-URL
- * summaries (falling back to the bookmark title when absent). Throws when the
- * response carries no usable JSON object with a summary.
+ * insights — accepted under either `insight` or `summary`, falling back to the
+ * bookmark title when absent. Throws when the response carries no usable JSON
+ * object with a folder summary.
  */
 export function parseFolderSummary(text: string, items: FolderItem[]): FolderSummary {
   const obj = extractJsonObject(text);
@@ -95,11 +115,10 @@ export function parseFolderSummary(text: string, items: FolderItem[]): FolderSum
   if (Array.isArray(obj.items)) {
     for (const it of obj.items) {
       if (it && typeof it === "object") {
-        const url = (it as Record<string, unknown>).url;
-        const summary = (it as Record<string, unknown>).summary;
-        if (typeof url === "string" && typeof summary === "string" && summary.trim()) {
-          byUrl.set(url.trim(), summary.trim());
-        }
+        const r = it as Record<string, unknown>;
+        const url = r.url;
+        const insight = typeof r.insight === "string" ? r.insight : typeof r.summary === "string" ? r.summary : "";
+        if (typeof url === "string" && insight.trim()) byUrl.set(url.trim(), insight.trim());
       }
     }
   }
@@ -116,14 +135,48 @@ export function parseFolderSummary(text: string, items: FolderItem[]): FolderSum
   };
 }
 
-/** Summarize a folder via the configured LLM, then parse the result. */
+export interface SummarizeOpts {
+  signal?: AbortSignal;
+  /** Reports page-fetch progress (done, total) so the UI can show it. */
+  onProgress?: (done: number, total: number) => void;
+}
+
+/**
+ * Read a folder's pages and summarize them into insights. Fetches each page's
+ * text concurrently (reusing market-report's fetcher; failures yield empty
+ * text, handled by the prompt), then asks the LLM for the folder summary +
+ * per-item insights.
+ */
 export async function summarizeFolder(
   config: ConnectionConfig,
   folderPath: string,
   items: FolderItem[],
-  signal?: AbortSignal,
+  opts: SummarizeOpts = {},
 ): Promise<FolderSummary> {
-  const { messages } = buildFolderSummaryPrompt(folderPath, items);
-  const text = await collectChat({ config, messages, model: config.model, signal });
-  return parseFolderSummary(text, items);
+  const picked = items.slice(0, MAX_ITEMS);
+  const withContent: ItemWithContent[] = new Array(picked.length);
+  const total = picked.length;
+  let done = 0;
+  let i = 0;
+  const worker = async () => {
+    while (i < picked.length && !opts.signal?.aborted) {
+      const idx = i++;
+      const it = picked[idx];
+      const content = await fetchSiteText(it.url, opts.signal);
+      withContent[idx] = { ...it, content };
+      done++;
+      opts.onProgress?.(done, total);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(FETCH_CONCURRENCY, picked.length) }, worker));
+
+  const { messages } = buildFolderInsightPrompt(folderPath, withContent.filter(Boolean));
+  const text = await collectChat({
+    config,
+    messages,
+    model: config.model,
+    responseFormat: { type: "json_object" },
+    signal: opts.signal,
+  });
+  return parseFolderSummary(text, picked);
 }
