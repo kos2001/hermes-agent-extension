@@ -162,6 +162,21 @@ npm run build:web    # production build → dist-web/  (deploy to any static hos
 
 No redirect-URL registration is needed (email codes don't redirect).
 
+**Deploy the feed site.** `dist-web/` is a plain static bundle — host it anywhere.
+Build with the env present (`npm run build:web`), then deploy that folder. The
+SPA needs a catch-all rewrite to `index.html`.
+
+```sh
+# Vercel:  vercel deploy --prod dist-web
+# Netlify: netlify deploy --prod --dir dist-web
+# Cloudflare Pages: wrangler pages deploy dist-web
+# GitHub Pages / any static host: serve the contents of dist-web/
+```
+
+Set `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` as build-time env on the host
+(or build locally and upload `dist-web/`). After deploying, the only Supabase
+change is optional: nothing — email codes don't need redirect URLs.
+
 Design + plan docs live under `docs/superpowers/`
 (`specs/2026-05-31-collective-bookmarks-platform-design.md`,
 `plans/2026-05-31-hive-platform-foundation.md`). Sub-projects B (share folder),
