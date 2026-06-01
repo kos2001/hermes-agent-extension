@@ -8,6 +8,7 @@ import { getFolder } from "@/lib/cloud/folders";
 import { listComments, postComment } from "@/lib/cloud/comments";
 import { myOpinionVotes, opinionVoteCounts, unvoteOpinion, voteOpinion } from "@/lib/cloud/opinion-votes";
 import { generateOpinion } from "@/lib/cloud/agent-opinion";
+import { listLeaderboard, type Contributor } from "@/lib/cloud/leaderboard";
 import type { Comment, FeedEntry } from "@/lib/cloud/types";
 
 /**
@@ -18,6 +19,7 @@ import type { Comment, FeedEntry } from "@/lib/cloud/types";
 export default function HiveFeedView({ config, lang }: { config: ConnectionConfig | null; lang: Lang }) {
   const [signedIn, setSignedIn] = useState<boolean | null>(null);
   const [entries, setEntries] = useState<FeedEntry[] | null>(null);
+  const [top, setTop] = useState<Contributor[]>([]);
   const [openId, setOpenId] = useState<string | null>(null);
   const [error, setError] = useState("");
 
@@ -31,6 +33,9 @@ export default function HiveFeedView({ config, lang }: { config: ConnectionConfi
     listFeed(supabase)
       .then(setEntries)
       .catch((e) => setError(e instanceof Error ? e.message : String(e)));
+    listLeaderboard(supabase, 3)
+      .then(setTop)
+      .catch(() => {});
   }, [signedIn]);
 
   if (!cloudConfigured) return <div className="bm-status">{t(lang, "hiveNotConfigured")}</div>;
@@ -42,6 +47,16 @@ export default function HiveFeedView({ config, lang }: { config: ConnectionConfi
 
   return (
     <div className="hive-view">
+      {top.length > 0 && (
+        <div className="hive-lb">
+          <span className="hive-lb-title">🏆 {t(lang, "hiveTopContributors")}</span>
+          {top.map((r, i) => (
+            <span key={r.user_id} className="hive-lb-item">
+              {i + 1}. {r.display_name ?? "—"} <span className="hive-lb-rep">▲{r.votes_received}</span>
+            </span>
+          ))}
+        </div>
+      )}
       {entries.map((e) => (
         <div key={e.id} className={`hive-card${openId === e.id ? " open" : ""}`}>
           <div className="hive-card-head" onClick={() => setOpenId((id) => (id === e.id ? null : e.id))}>
