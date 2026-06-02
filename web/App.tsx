@@ -8,6 +8,7 @@ import { getContributor, listLeaderboard, type Contributor } from "@/lib/cloud/l
 import { createCommunity, joinCommunity, leaveCommunity, listCommunities, myCommunityIds } from "@/lib/cloud/communities";
 import { buildConversations, getProfileNames, listMyMessages, markRead, sendMessage } from "@/lib/cloud/messages";
 import { loadActivity, unseenCount } from "@/lib/cloud/activity";
+import { eqFilter, onTableInserts } from "@/lib/cloud/realtime";
 import type { ActivityItem, Comment, Community, DirectMessage, FeedEntry, SharedFolder, SharedItem } from "@/lib/cloud/types";
 import { isValidEmail } from "@/lib/cloud/email";
 import { feedStats, topicCounts, topicWeight } from "@/lib/cloud/feed-stats";
@@ -436,11 +437,14 @@ function Feed({
   const [error, setError] = useState("");
   const [topic, setTopic] = useState<string | null>(null);
 
-  useEffect(() => {
+  const load = useCallback(() => {
     listFeed(supabase, 50, communityId)
       .then(setEntries)
       .catch((e) => setError(errMsg(e)));
   }, [communityId]);
+  useEffect(load, [load]);
+  // Live: a newly shared (or re-shared) folder appears without a refresh.
+  useEffect(() => onTableInserts(supabase, "shared_folders", undefined, load), [load]);
 
   if (error) return <p className="hint err">⚠ {error}</p>;
   if (!entries) return <p className="hint">Loading feed…</p>;
@@ -757,6 +761,8 @@ function Discussion({ folderId }: { folderId: string }) {
   }, [folderId]);
 
   useEffect(load, [load]);
+  // Live: refresh when anyone posts an opinion/reply on this folder.
+  useEffect(() => onTableInserts(supabase, "comments", eqFilter("folder_id", folderId), load), [folderId, load]);
 
   async function submit() {
     const text = body.trim();
