@@ -613,3 +613,22 @@ html, body, #root {
 .hive-replies { margin: 6px 0 0 12px; padding-left: 8px; border-left: 2px solid var(--border); }
 .hive-op.reply { margin-bottom: 8px; }
 .hive-replyform { margin-top: 6px; }
+
+/* Hive view tabs (feed / activity / messages) */
+.hive-tabs { display: flex; gap: 6px; margin-bottom: 8px; }
+.hive-tabs button { flex: 1; background: var(--panel-2); color: var(--muted); border: 1px solid var(--border); border-radius: 6px; padding: 4px 8px; font-size: 12px; cursor: pointer; }
+.hive-tabs button.active { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
+.hive-tab-badge { display: inline-block; margin-left: 4px; background: var(--error); color: #fff; border-radius: 999px; font-size: 10px; font-weight: 700; padding: 0 5px; }
+.hive-activity { display: flex; flex-direction: column; gap: 6px; }
+.hive-act-row { font-size: 12px; padding: 8px; border: 1px solid var(--border); border-radius: 6px; cursor: pointer; }
+.hive-act-row:hover { border-color: var(--accent); }
+.hive-dm { display: flex; flex-direction: column; gap: 6px; }
+.hive-dm-row { display: flex; align-items: center; gap: 8px; padding: 8px; border: 1px solid var(--border); border-radius: 6px; cursor: pointer; }
+.hive-dm-name { font-weight: 600; font-size: 12px; }
+.hive-dm-last { flex: 1; font-size: 11px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hive-dm-unread { background: var(--accent); color: var(--on-accent); border-radius: 999px; font-size: 10px; font-weight: 700; padding: 0 6px; }
+.hive-dm-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.hive-dm-thread { display: flex; flex-direction: column; gap: 6px; margin-bottom: 6px; }
+.hive-dm-msg { max-width: 85%; padding: 6px 9px; border-radius: 10px; font-size: 12px; white-space: pre-wrap; }
+.hive-dm-msg.mine { align-self: flex-end; background: var(--accent); color: var(--on-accent); }
+.hive-dm-msg.theirs { align-self: flex-start; background: var(--panel-2); }
