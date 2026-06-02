@@ -167,6 +167,13 @@ const STR: Record<string, Entry> = {
   hiveAutoHourly: { ko: "매시간", en: "Hourly", zh: "每小时" },
   hiveAutoDaily: { ko: "매일", en: "Daily", zh: "每天" },
   hiveReply: { ko: "답글", en: "Reply", zh: "回复" },
+  hiveTabFeed: { ko: "피드", en: "Feed", zh: "动态" },
+  hiveMessageOwner: { ko: "작성자에게 메시지", en: "Message the author", zh: "私信作者" },
+  hiveNoActivity: { ko: "아직 활동 알림이 없습니다.", en: "No activity yet.", zh: "暂无动态。" },
+  hiveNoConvos: { ko: "대화가 없습니다.", en: "No messages yet.", zh: "暂无消息。" },
+  hiveActReply: { ko: "{who}님이 회원님 의견에 답글 — {t}", en: "{who} replied to your opinion — {t}", zh: "{who} 回复了你的观点 — {t}" },
+  hiveActOpinion: { ko: "{who}님이 회원님 폴더에 의견 — {t}", en: "{who} posted an opinion on your folder — {t}", zh: "{who} 在你的文件夹发表观点 — {t}" },
+  hiveActVote: { ko: "{who}님이 회원님 의견을 추천 — {t}", en: "{who} upvoted your opinion — {t}", zh: "{who} 赞了你的观点 — {t}" },
 };
 
 export function t(lang: Lang, key: string): string {
