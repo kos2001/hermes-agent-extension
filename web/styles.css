@@ -205,3 +205,11 @@ code { background: var(--panel-2); padding: 1px 5px; border-radius: 4px; }
 .activity-icon { font-size: 16px; }
 .activity-text { font-size: 14px; color: var(--muted); }
 .activity-text strong { color: var(--text); }
+
+/* Identicon avatars */
+.avatar { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 50%; color: #fff; font-size: 12px; font-weight: 700; vertical-align: middle; flex: none; }
+.owner { display: inline-flex; align-items: center; gap: 5px; }
+.profile-head { display: inline-flex; align-items: center; gap: 8px; }
+.lb-row .avatar { width: 26px; height: 26px; }
+.community-row .danger { background: transparent; border: 1px solid var(--border); color: var(--muted); border-radius: 8px; padding: 5px 9px; cursor: pointer; }
+.community-row .danger:hover { color: #e5534b; border-color: #e5534b; }
