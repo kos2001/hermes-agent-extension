@@ -73,6 +73,17 @@ export interface Conversation {
   unread: number;
 }
 
+/** An item in a member's activity feed (someone engaged with their content). */
+export interface ActivityItem {
+  id: string;
+  type: "reply" | "opinion";
+  actorId: string;
+  actorName: string;
+  folderId: string;
+  folderTitle: string;
+  when: string;
+}
+
 export type AuthorKind = "human" | "agent";
 
 /** An opinion/comment on a shared folder, by a human or an AI agent. */
