@@ -33,3 +33,10 @@ export async function listLeaderboard(sb: SupabaseClient, limit = 20): Promise<C
   if (error) throw error;
   return rankContributors((data ?? []) as Contributor[]).slice(0, limit);
 }
+
+/** One member's reputation row (for their profile). */
+export async function getContributor(sb: SupabaseClient, userId: string): Promise<Contributor | null> {
+  const { data, error } = await sb.from("contributor_reputation").select("*").eq("user_id", userId).maybeSingle();
+  if (error) throw error;
+  return (data as Contributor | null) ?? null;
+}
