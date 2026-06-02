@@ -12,6 +12,15 @@ import { cloudConfigured, getSession, onAuthChange, sendEmailOtp, signOut, supab
 
 type ReactionKind = "like" | "save";
 
+/** Readable message from any thrown value — Supabase errors are plain objects. */
+function errMsg(e: unknown): string {
+  if (e instanceof Error) return e.message;
+  if (e && typeof e === "object" && typeof (e as { message?: unknown }).message === "string") {
+    return (e as { message: string }).message;
+  }
+  return String(e);
+}
+
 export function App() {
   const [session, setSession] = useState<Session | null>(null);
   const [ready, setReady] = useState(false);
@@ -70,7 +79,7 @@ function SignIn({ onSignedIn }: { onSignedIn: (s: Session) => void }) {
       await sendEmailOtp(email);
       setPhase("code");
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not send the code.");
+      setError(errMsg(e));
     } finally {
       setBusy(false);
     }
@@ -83,7 +92,7 @@ function SignIn({ onSignedIn }: { onSignedIn: (s: Session) => void }) {
     try {
       onSignedIn(await verifyEmailOtp(email, code));
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Invalid or expired code.");
+      setError(errMsg(e));
     } finally {
       setBusy(false);
     }
@@ -169,7 +178,7 @@ function Feed({ onOpen }: { onOpen: (id: string) => void }) {
   useEffect(() => {
     listFeed(supabase)
       .then(setEntries)
-      .catch((e) => setError(e instanceof Error ? e.message : String(e)));
+      .catch((e) => setError(errMsg(e)));
   }, []);
 
   if (error) return <p className="hint err">⚠ {error}</p>;
@@ -231,7 +240,7 @@ function Leaderboard() {
   useEffect(() => {
     listLeaderboard(supabase)
       .then(setRows)
-      .catch((e) => setError(e instanceof Error ? e.message : String(e)));
+      .catch((e) => setError(errMsg(e)));
   }, []);
 
   if (error) return <p className="hint err">⚠ {error}</p>;
@@ -324,7 +333,7 @@ function Detail({ folderId, onBack }: { folderId: string; onBack: () => void }) 
   useEffect(() => {
     getFolder(supabase, folderId)
       .then(setData)
-      .catch((e) => setError(e instanceof Error ? e.message : String(e)));
+      .catch((e) => setError(errMsg(e)));
   }, [folderId]);
 
   return (
@@ -373,7 +382,7 @@ function Discussion({ folderId }: { folderId: string }) {
         setCounts(vc);
         setMine(mv);
       })
-      .catch((e) => setError(e instanceof Error ? e.message : String(e)));
+      .catch((e) => setError(errMsg(e)));
   }, [folderId]);
 
   useEffect(load, [load]);
@@ -388,7 +397,7 @@ function Discussion({ folderId }: { folderId: string }) {
       setBody("");
       load();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not post.");
+      setError(errMsg(e));
     } finally {
       setBusy(false);
     }
