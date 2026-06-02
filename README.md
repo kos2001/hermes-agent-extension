@@ -111,6 +111,77 @@ The manifest requests broad host access (`host_permissions: http://*/*`,
 `https://*/*`) at install so the side panel can read page content and translate
 on any site without a separate runtime grant.
 
+## Hive (cloud) — operator setup (one time)
+
+"Hive" is the collaborative layer: members sign in and publish summarized
+bookmark folders to a shared feed. Auth is **email one-time codes** — no Google
+Cloud, no OAuth client, no redirect URLs. **Members set up nothing**: they
+install the operator-built extension / open the site and sign in with their
+email. The steps below are done **once by the operator** who runs the backend.
+
+1. **Create a Supabase project** (https://supabase.com).
+2. **Run the schema:** SQL Editor → run `supabase/migrations/0001_init.sql`,
+   then `0003_comments.sql`, `0004_opinion_votes.sql`, and `0005_reputation.sql`
+   (tables, RLS, profile trigger, agent-discussion `comments`, opinion upvotes,
+   and the `contributor_reputation` leaderboard view). All idempotent.
+   If a pre-existing
+   `profiles` table causes a "Database error saving new user" on first login,
+   run `supabase/migrations/0002_reset.sql` once (safe before any real data).
+3. **Email codes:** the Email provider is on by default. So that the email
+   contains a **6-digit code** (not just a magic link), set
+   Authentication → Emails → **Magic Link** template to include the token, e.g.:
+   ```
+   <h2>Your Hive code</h2>
+   <p>{{ .Token }}</p>
+   ```
+   (For real volume, configure SMTP under Authentication → Emails → SMTP; the
+   built-in sender is rate-limited and fine for testing.)
+4. **Add credentials:** copy `.env.example` to `.env` and fill
+   `VITE_SUPABASE_URL` + `VITE_SUPABASE_ANON_KEY` (Settings → API → Project URL +
+   the **Publishable**/`anon` key). The anon/publishable key is browser-safe —
+   RLS protects the data.
+5. **Build & distribute:**
+   ```sh
+   npm run build        # extension → dist/  (creds baked in at build time)
+   npm run package      # → hermes-agent-extension.zip for distribution
+   npm run build:web    # feed site → dist-web/  (deploy as a static site)
+   ```
+   The `.env` is gitignored and only needs to exist on the operator's build
+   machine; the published artifacts carry the (public) anon key. Members just
+   load the extension / open the site and sign in — no env, no Supabase account.
+
+### The feed site (sub-project C)
+
+The shared feed is a separate web app under `web/` (its own Vite config), using
+the same Supabase project + env:
+
+```sh
+npm run dev:web      # vite dev server (http://localhost:5180)
+npm run build:web    # production build → dist-web/  (deploy to any static host)
+```
+
+No redirect-URL registration is needed (email codes don't redirect).
+
+**Deploy the feed site.** `dist-web/` is a plain static bundle — host it anywhere.
+Build with the env present (`npm run build:web`), then deploy that folder. The
+SPA needs a catch-all rewrite to `index.html`.
+
+```sh
+# Vercel:  vercel deploy --prod dist-web
+# Netlify: netlify deploy --prod --dir dist-web
+# Cloudflare Pages: wrangler pages deploy dist-web
+# GitHub Pages / any static host: serve the contents of dist-web/
+```
+
+Set `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` as build-time env on the host
+(or build locally and upload `dist-web/`). After deploying, the only Supabase
+change is optional: nothing — email codes don't need redirect URLs.
+
+Design + plan docs live under `docs/superpowers/`
+(`specs/2026-05-31-collective-bookmarks-platform-design.md`,
+`plans/2026-05-31-hive-platform-foundation.md`). Sub-projects B (share folder),
+C (feed web app), and D (collective-intelligence features) build on this layer.
+
 ## Tests
 
 `npm test` runs Node/vitest suites: SSE parsing, the HTTP client helpers
