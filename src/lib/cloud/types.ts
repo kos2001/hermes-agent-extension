@@ -76,7 +76,7 @@ export interface Conversation {
 /** An item in a member's activity feed (someone engaged with their content). */
 export interface ActivityItem {
   id: string;
-  type: "reply" | "opinion" | "vote";
+  type: "reply" | "opinion" | "vote" | "mention";
   actorId: string;
   actorName: string;
   folderId: string;

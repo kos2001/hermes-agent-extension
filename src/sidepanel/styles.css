@@ -632,3 +632,5 @@ html, body, #root {
 .hive-dm-msg { max-width: 85%; padding: 6px 9px; border-radius: 10px; font-size: 12px; white-space: pre-wrap; }
 .hive-dm-msg.mine { align-self: flex-end; background: var(--accent); color: var(--on-accent); }
 .hive-dm-msg.theirs { align-self: flex-start; background: var(--panel-2); }
+
+.hive-mention { color: var(--accent); font-weight: 600; }

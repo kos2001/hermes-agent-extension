@@ -10,6 +10,13 @@ import { buildConversations, getProfileNames, listMyMessages, markRead, sendMess
 import { loadActivity, unseenCount } from "@/lib/cloud/activity";
 import { eqFilter, onTableInserts } from "@/lib/cloud/realtime";
 import { avatarFor } from "@/lib/cloud/avatar";
+import { extractMentionTokens, postMentions, resolveMentions, type MentionCandidate } from "@/lib/cloud/mentions";
+
+/** Render text with @mentions highlighted. */
+function renderBody(text: string): ReactNode {
+  const parts = text.split(/(@[\p{L}\p{N}_]+)/gu);
+  return parts.map((p, i) => (/^@[\p{L}\p{N}_]+$/u.test(p) ? <span key={i} className="mention">{p}</span> : p));
+}
 import type { ActivityItem, Comment, Community, DirectMessage, FeedEntry, SharedFolder, SharedItem } from "@/lib/cloud/types";
 import { isValidEmail } from "@/lib/cloud/email";
 import { feedStats, topicCounts, topicWeight } from "@/lib/cloud/feed-stats";
@@ -785,13 +792,21 @@ function Discussion({ folderId }: { folderId: string }) {
   // Live: refresh when anyone posts an opinion/reply on this folder.
   useEffect(() => onTableInserts(supabase, "comments", eqFilter("folder_id", folderId), load), [folderId, load]);
 
+  // Resolve @mentions in `text` against thread participants and record them.
+  async function recordMentions(commentId: string, text: string) {
+    const cands: MentionCandidate[] = (comments ?? []).map((c) => ({ id: c.user_id, name: c.author?.display_name ?? "" }));
+    const ids = resolveMentions(extractMentionTokens(text), cands);
+    if (ids.length) await postMentions(supabase, commentId, ids);
+  }
+
   async function submit() {
     const text = body.trim();
     if (!text) return;
     setBusy(true);
     setError("");
     try {
-      await postComment(supabase, folderId, { body: text });
+      const id = await postComment(supabase, folderId, { body: text });
+      await recordMentions(id, text);
       setBody("");
       load();
     } catch (e) {
@@ -827,7 +842,8 @@ function Discussion({ folderId }: { folderId: string }) {
     setBusy(true);
     setError("");
     try {
-      await postComment(supabase, folderId, { body: text, parentId });
+      const id = await postComment(supabase, folderId, { body: text, parentId });
+      await recordMentions(id, text);
       setReplyBody("");
       setReplyOpen(null);
       load();
@@ -851,7 +867,7 @@ function Discussion({ folderId }: { folderId: string }) {
         {c.author_kind === "agent" && c.author_label ? ` · ${c.author_label}` : ""}
         {c.id === topId && <span className="top-badge">★ top</span>}
       </span>
-      <p className="opinion-body">{c.body}</p>
+      <p className="opinion-body">{renderBody(c.body)}</p>
       <span className="opinion-actions">
         <button className={`vote${mine.has(c.id) ? " voted" : ""}`} onClick={() => void toggleVote(c.id)} title="Upvote">
           ▲ {counts[c.id] ?? 0}

@@ -44,12 +44,12 @@ export async function listComments(sb: SupabaseClient, folderId: string): Promis
   });
 }
 
-/** Post an opinion/comment on a folder as the current user (human or agent). */
+/** Post an opinion/comment on a folder as the current user; returns the new id. */
 export async function postComment(
   sb: SupabaseClient,
   folderId: string,
   input: CommentInput,
-): Promise<void> {
+): Promise<string> {
   const body = input.body.trim();
   if (!body) throw new Error("Comment body is empty");
 
@@ -57,15 +57,20 @@ export async function postComment(
   const userId = userData.user?.id;
   if (!userId) throw new Error("Must be signed in to comment");
 
-  const { error } = await sb.from("comments").insert({
-    folder_id: folderId,
-    user_id: userId,
-    author_kind: input.kind ?? "human",
-    author_label: input.label ?? null,
-    body,
-    parent_id: input.parentId ?? null,
-  });
+  const { data, error } = await sb
+    .from("comments")
+    .insert({
+      folder_id: folderId,
+      user_id: userId,
+      author_kind: input.kind ?? "human",
+      author_label: input.label ?? null,
+      body,
+      parent_id: input.parentId ?? null,
+    })
+    .select("id")
+    .single();
   if (error) throw error;
+  return (data as { id: string }).id;
 }
 
 /** Number of comments per folder id (for feed badges). */
