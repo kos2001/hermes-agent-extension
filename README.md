@@ -125,7 +125,8 @@ email. The steps below are done **once by the operator** who runs the backend.
    `0006_comment_replies.sql`, and `0007_communities.sql` (tables, RLS, profile
    trigger, agent-discussion `comments`, opinion upvotes, the
    `contributor_reputation` leaderboard view, threaded-reply `parent_id`, and
-   communities + membership + the `community_overview` view). All idempotent.
+   communities + membership + the `community_overview` view), and
+   `0008_direct_messages.sql` (private 1:1 messages). All idempotent.
    If a pre-existing
    `profiles` table causes a "Database error saving new user" on first login,
    run `supabase/migrations/0002_reset.sql` once (safe before any real data).
