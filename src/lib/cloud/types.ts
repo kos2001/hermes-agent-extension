@@ -55,6 +55,24 @@ export interface FeedEntry extends SharedFolder {
   owner: Pick<Profile, "display_name" | "avatar_url">;
 }
 
+/** A private 1:1 message between two members. */
+export interface DirectMessage {
+  id: string;
+  sender_id: string;
+  recipient_id: string;
+  body: string;
+  created_at: string;
+  read_at: string | null;
+}
+
+/** A summarized conversation for the inbox (built by buildConversations). */
+export interface Conversation {
+  otherId: string;
+  lastBody: string;
+  lastAt: string;
+  unread: number;
+}
+
 export type AuthorKind = "human" | "agent";
 
 /** An opinion/comment on a shared folder, by a human or an AI agent. */
