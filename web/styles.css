@@ -196,3 +196,12 @@ code { background: var(--panel-2); padding: 1px 5px; border-radius: 4px; }
 .dm-msg.mine { align-self: flex-end; background: var(--accent); color: var(--on-accent); }
 .dm-msg.theirs { align-self: flex-start; background: var(--panel-2); }
 .owner { cursor: pointer; }
+
+/* Activity feed + tab badge */
+.tab-badge { display: inline-block; margin-left: 6px; background: var(--accent); color: var(--on-accent); border-radius: 999px; font-size: 11px; font-weight: 700; padding: 0 6px; }
+.activity { display: flex; flex-direction: column; gap: 8px; }
+.activity-row { display: flex; align-items: center; gap: 10px; background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 10px 14px; cursor: pointer; }
+.activity-row:hover { border-color: var(--accent); }
+.activity-icon { font-size: 16px; }
+.activity-text { font-size: 14px; color: var(--muted); }
+.activity-text strong { color: var(--text); }
