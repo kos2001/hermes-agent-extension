@@ -7,7 +7,8 @@ import { myOpinionVotes, opinionVoteCounts, unvoteOpinion, voteOpinion } from "@
 import { getContributor, listLeaderboard, type Contributor } from "@/lib/cloud/leaderboard";
 import { createCommunity, joinCommunity, leaveCommunity, listCommunities, myCommunityIds } from "@/lib/cloud/communities";
 import { buildConversations, getProfileNames, listMyMessages, markRead, sendMessage } from "@/lib/cloud/messages";
-import type { Comment, Community, DirectMessage, FeedEntry, SharedFolder, SharedItem } from "@/lib/cloud/types";
+import { loadActivity, unseenCount } from "@/lib/cloud/activity";
+import type { ActivityItem, Comment, Community, DirectMessage, FeedEntry, SharedFolder, SharedItem } from "@/lib/cloud/types";
 import { isValidEmail } from "@/lib/cloud/email";
 import { feedStats, topicCounts, topicWeight } from "@/lib/cloud/feed-stats";
 import { cloudConfigured, getSession, onAuthChange, sendEmailOtp, signOut, supabase, verifyEmailOtp } from "./cloud";
@@ -143,12 +144,25 @@ function SignIn({ onSignedIn }: { onSignedIn: (s: Session) => void }) {
 
 function SignedIn({ session }: { session: Session }) {
   const [openId, setOpenId] = useState<string | null>(null);
-  const [tab, setTab] = useState<"feed" | "leaderboard" | "communities" | "messages">("feed");
+  const [tab, setTab] = useState<"feed" | "leaderboard" | "communities" | "messages" | "activity">("feed");
   const [community, setCommunity] = useState<{ id: string; name: string } | null>(null);
   const [dmTarget, setDmTarget] = useState<{ id: string; name: string } | null>(null);
   const [profile, setProfile] = useState<{ id: string; name: string } | null>(null);
+  const [activity, setActivity] = useState<ActivityItem[] | null>(null);
+  const [seen, setSeen] = useState<string | null>(() => localStorage.getItem("hive.activity.seen"));
   const myId = session.user.id;
   const name = (session.user.user_metadata?.full_name as string | undefined) ?? session.user.email ?? "";
+
+  useEffect(() => {
+    loadActivity(supabase).then(setActivity).catch(() => {});
+  }, []);
+  const unseen = activity ? unseenCount(activity, seen) : 0;
+  const openActivity = () => {
+    setTab("activity");
+    const now = new Date().toISOString();
+    localStorage.setItem("hive.activity.seen", now);
+    setSeen(now);
+  };
 
   const startDm = (id: string, who: string) => {
     if (id === myId) return;
@@ -203,6 +217,9 @@ function SignedIn({ session }: { session: Session }) {
           <button className={tab === "messages" ? "active" : ""} onClick={() => setTab("messages")}>
             ✉ Messages
           </button>
+          <button className={tab === "activity" ? "active" : ""} onClick={openActivity}>
+            🔔 Activity{unseen > 0 && <span className="tab-badge">{unseen}</span>}
+          </button>
         </nav>
         {tab === "feed" ? (
           <Feed onOpen={setOpenId} onOpenProfile={openProfile} />
@@ -210,8 +227,10 @@ function SignedIn({ session }: { session: Session }) {
           <Leaderboard onOpenProfile={openProfile} />
         ) : tab === "communities" ? (
           <Communities onOpen={setCommunity} />
-        ) : (
+        ) : tab === "messages" ? (
           <Messages myId={myId} initialOther={dmTarget} />
+        ) : (
+          <Activity items={activity} onOpenFolder={setOpenId} />
         )}
       </>
     );
@@ -472,6 +491,26 @@ function Feed({
         ))}
       </div>
     </>
+  );
+}
+
+function Activity({ items, onOpenFolder }: { items: ActivityItem[] | null; onOpenFolder: (id: string) => void }) {
+  if (!items) return <p className="hint">Loading…</p>;
+  if (items.length === 0)
+    return <p className="hint">No activity yet. When others reply to your opinions or post on your folders, it shows here.</p>;
+  return (
+    <div className="activity">
+      {items.map((a) => (
+        <div key={`${a.type}-${a.id}`} className="activity-row" onClick={() => onOpenFolder(a.folderId)}>
+          <span className="activity-icon">{a.type === "reply" ? "↳" : "💬"}</span>
+          <span className="activity-text">
+            <strong>{a.actorName}</strong>{" "}
+            {a.type === "reply" ? "replied to your opinion in" : "shared an opinion on your folder"}{" "}
+            <strong>{a.folderTitle}</strong>
+          </span>
+        </div>
+      ))}
+    </div>
   );
 }
 
