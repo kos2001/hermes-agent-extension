@@ -164,3 +164,12 @@ code { background: var(--panel-2); padding: 1px 5px; border-radius: 4px; }
 .lb-name { flex: 1; font-weight: 600; }
 .lb-stats { display: flex; gap: 12px; font-size: 13px; color: var(--muted); }
 .lb-rep { color: var(--accent); font-weight: 600; }
+
+/* Threaded replies */
+.thread { margin-bottom: 16px; }
+.opinion-actions { display: inline-flex; gap: 8px; align-items: center; }
+.reply-btn { font-size: 12px; padding: 2px 10px; border-radius: 999px; background: transparent; color: var(--muted); border: 1px solid var(--border); cursor: pointer; }
+.reply-btn:hover { color: var(--text); border-color: var(--accent); }
+.replies { margin: 8px 0 0 18px; padding-left: 12px; border-left: 2px solid var(--border); display: flex; flex-direction: column; gap: 10px; }
+.opinion.reply { background: none; padding: 0; }
+.reply-form { margin: 8px 0 0 18px; }

@@ -53,6 +53,7 @@ describe("alreadyOpined", () => {
     author_label: null,
     body: "x",
     created_at: "",
+    parent_id: null,
   });
 
   it("is true when the user already commented (any kind)", () => {

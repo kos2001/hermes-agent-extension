@@ -5,7 +5,7 @@ import { cloudConfigured, supabase } from "@/lib/cloud/client";
 import { getSession } from "@/lib/cloud/auth";
 import { listFeed } from "@/lib/cloud/feed";
 import { getFolder } from "@/lib/cloud/folders";
-import { listComments, postComment } from "@/lib/cloud/comments";
+import { listComments, postComment, threadComments } from "@/lib/cloud/comments";
 import { myOpinionVotes, opinionVoteCounts, unvoteOpinion, voteOpinion } from "@/lib/cloud/opinion-votes";
 import { generateOpinion } from "@/lib/cloud/agent-opinion";
 import { listLeaderboard, type Contributor } from "@/lib/cloud/leaderboard";
@@ -98,7 +98,9 @@ function FolderThread({ folder, config, lang }: { folder: FeedEntry; config: Con
   const [counts, setCounts] = useState<Record<string, number>>({});
   const [mine, setMine] = useState<Set<string>>(new Set());
   const [body, setBody] = useState("");
-  const [busy, setBusy] = useState<null | "agent" | "human">(null);
+  const [replyOpen, setReplyOpen] = useState<string | null>(null);
+  const [replyBody, setReplyBody] = useState("");
+  const [busy, setBusy] = useState<null | "agent" | "human" | "reply" | "areply">(null);
   const [error, setError] = useState("");
 
   const load = useCallback(() => {
@@ -140,30 +142,29 @@ function FolderThread({ folder, config, lang }: { folder: FeedEntry; config: Con
     return n > 0 && (!best || n > best.n) ? { id: c.id, n } : best;
   }, null)?.id;
 
-  // Agent reads the folder + the existing discussion, then posts its opinion.
+  const priorOf = (list: Comment[]) =>
+    list.map((c) => ({
+      label: c.author_kind === "agent" ? c.author_label ?? "agent" : c.author?.display_name ?? "member",
+      body: c.body,
+    }));
+
+  const folderForOpinion = async () => {
+    const { items } = await getFolder(supabase, folder.id);
+    return {
+      title: folder.title,
+      summary: folder.summary,
+      topics: folder.topics,
+      items: items.map((i) => ({ title: i.title, itemSummary: i.item_summary })),
+    };
+  };
+
+  // Agent reads the folder + the existing discussion, then posts a top-level opinion.
   const opine = useCallback(async () => {
-    if (!config) {
-      setError(t(lang, "bm.needConfig"));
-      return;
-    }
+    if (!config) return setError(t(lang, "bm.needConfig"));
     setBusy("agent");
     setError("");
     try {
-      const { items } = await getFolder(supabase, folder.id);
-      const prior = (comments ?? []).map((c) => ({
-        label: c.author_kind === "agent" ? c.author_label ?? "agent" : c.author?.display_name ?? "member",
-        body: c.body,
-      }));
-      const opinion = await generateOpinion(
-        config,
-        {
-          title: folder.title,
-          summary: folder.summary,
-          topics: folder.topics,
-          items: items.map((i) => ({ title: i.title, itemSummary: i.item_summary })),
-        },
-        prior,
-      );
+      const opinion = await generateOpinion(config, await folderForOpinion(), priorOf(comments ?? []));
       await postComment(supabase, folder.id, { body: opinion, kind: "agent", label: config.model });
       load();
     } catch (e) {
@@ -172,6 +173,25 @@ function FolderThread({ folder, config, lang }: { folder: FeedEntry; config: Con
       setBusy(null);
     }
   }, [config, folder, comments, lang, load]);
+
+  // Agent replies to ONE specific opinion (threaded).
+  const agentReply = useCallback(
+    async (parent: Comment) => {
+      if (!config) return setError(t(lang, "bm.needConfig"));
+      setBusy("areply");
+      setError("");
+      try {
+        const opinion = await generateOpinion(config, await folderForOpinion(), priorOf([parent]));
+        await postComment(supabase, folder.id, { body: opinion, kind: "agent", label: config.model, parentId: parent.id });
+        load();
+      } catch (e) {
+        setError(e instanceof Error ? e.message : t(lang, "hivePostFailed"));
+      } finally {
+        setBusy(null);
+      }
+    },
+    [config, folder, lang, load],
+  );
 
   const postHuman = useCallback(async () => {
     const text = body.trim();
@@ -189,24 +209,79 @@ function FolderThread({ folder, config, lang }: { folder: FeedEntry; config: Con
     }
   }, [body, folder.id, lang, load]);
 
+  const humanReply = useCallback(
+    async (parentId: string) => {
+      const text = replyBody.trim();
+      if (!text) return;
+      setBusy("reply");
+      setError("");
+      try {
+        await postComment(supabase, folder.id, { body: text, parentId });
+        setReplyBody("");
+        setReplyOpen(null);
+        load();
+      } catch (e) {
+        setError(e instanceof Error ? e.message : t(lang, "hivePostFailed"));
+      } finally {
+        setBusy(null);
+      }
+    },
+    [replyBody, folder.id, lang, load],
+  );
+
+  const opRow = (c: Comment, isReply: boolean) => (
+    <div key={c.id} className={`hive-op${c.id === topId ? " top" : ""}${isReply ? " reply" : ""}`}>
+      <span className={`hive-op-who ${c.author_kind}`}>
+        {c.author_kind === "agent" ? "🤖" : "🧑"} {c.author?.display_name ?? "—"}
+        {c.author_kind === "agent" && c.author_label ? ` · ${c.author_label}` : ""}
+        {c.id === topId && <span className="hive-top-badge">★</span>}
+      </span>
+      <div className="hive-op-body">{c.body}</div>
+      <span className="hive-op-actions">
+        <button
+          className={`hive-vote${mine.has(c.id) ? " voted" : ""}`}
+          onClick={() => void toggleVote(c.id)}
+          title={t(lang, "hiveUpvote")}
+        >
+          ▲ {counts[c.id] ?? 0}
+        </button>
+        {!isReply && (
+          <>
+            <button className="hive-replybtn" disabled={busy !== null} onClick={() => setReplyOpen((id) => (id === c.id ? null : c.id))}>
+              ↳ {t(lang, "hiveReply")}
+            </button>
+            <button className="hive-replybtn" disabled={busy !== null || !config} onClick={() => void agentReply(c)}>
+              🤖
+            </button>
+          </>
+        )}
+      </span>
+      {!isReply && replyOpen === c.id && (
+        <div className="hive-comment hive-replyform">
+          <textarea
+            rows={2}
+            placeholder={t(lang, "hiveCommentPlaceholder")}
+            value={replyBody}
+            disabled={busy !== null}
+            onChange={(e) => setReplyBody(e.target.value)}
+          />
+          <button className="tx-restore" disabled={busy !== null || !replyBody.trim()} onClick={() => void humanReply(c.id)}>
+            {busy === "reply" ? "…" : t(lang, "hiveReply")}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+
+  const threads = comments ? threadComments(comments) : [];
+
   return (
     <div className="hive-thread">
       <div className="hive-opinions">
-        {comments?.map((c) => (
-          <div key={c.id} className={`hive-op${c.id === topId ? " top" : ""}`}>
-            <span className={`hive-op-who ${c.author_kind}`}>
-              {c.author_kind === "agent" ? "🤖" : "🧑"} {c.author?.display_name ?? "—"}
-              {c.author_kind === "agent" && c.author_label ? ` · ${c.author_label}` : ""}
-              {c.id === topId && <span className="hive-top-badge">★</span>}
-            </span>
-            <div className="hive-op-body">{c.body}</div>
-            <button
-              className={`hive-vote${mine.has(c.id) ? " voted" : ""}`}
-              onClick={() => void toggleVote(c.id)}
-              title={t(lang, "hiveUpvote")}
-            >
-              ▲ {counts[c.id] ?? 0}
-            </button>
+        {threads.map((th) => (
+          <div key={th.id} className="hive-tree">
+            {opRow(th, false)}
+            {th.replies.length > 0 && <div className="hive-replies">{th.replies.map((r) => opRow(r, true))}</div>}
           </div>
         ))}
         {comments && comments.length === 0 && <div className="hive-op-empty">{t(lang, "hiveNoOpinions")}</div>}
