@@ -1,5 +1,28 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { Comment, CommentInput } from "./types";
+import type { Comment, CommentInput, CommentThread } from "./types";
+
+/**
+ * Nest comments one level: top-level opinions (no parent) each carry their
+ * direct replies, in chronological order. Replies whose parent is missing are
+ * promoted to top level so nothing is hidden.
+ */
+export function threadComments(comments: Comment[]): CommentThread[] {
+  const byId = new Map(comments.map((c) => [c.id, c]));
+  const threads = new Map<string, CommentThread>();
+  const order: string[] = [];
+  for (const c of comments) {
+    if (!c.parent_id || !byId.has(c.parent_id)) {
+      threads.set(c.id, { ...c, replies: [] });
+      order.push(c.id);
+    }
+  }
+  for (const c of comments) {
+    if (c.parent_id && threads.has(c.parent_id)) {
+      threads.get(c.parent_id)!.replies.push(c);
+    }
+  }
+  return order.map((id) => threads.get(id)!);
+}
 
 /** A folder's opinion thread, oldest first, each joined with its poster. */
 export async function listComments(sb: SupabaseClient, folderId: string): Promise<Comment[]> {
@@ -40,6 +63,7 @@ export async function postComment(
     author_kind: input.kind ?? "human",
     author_label: input.label ?? null,
     body,
+    parent_id: input.parentId ?? null,
   });
   if (error) throw error;
 }

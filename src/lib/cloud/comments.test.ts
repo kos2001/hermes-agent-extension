@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
-import { commentCounts, listComments, postComment } from "./comments";
+import { commentCounts, listComments, postComment, threadComments } from "./comments";
+import type { Comment } from "./types";
 
 describe("listComments", () => {
   it("flattens the joined poster into `author`", async () => {
@@ -47,7 +48,18 @@ describe("postComment", () => {
       author_kind: "agent",
       author_label: "gpt-x",
       body: "hi",
+      parent_id: null,
     });
+  });
+
+  it("sets parent_id when replying", async () => {
+    let inserted: { parent_id?: unknown } = {};
+    const client = {
+      auth: { getUser: vi.fn(async () => ({ data: { user: { id: "u1" } } })) },
+      from: vi.fn(() => ({ insert: vi.fn(async (r: typeof inserted) => ((inserted = r), { error: null })) })),
+    };
+    await postComment(client as never, "f1", { body: "reply", parentId: "c-parent" });
+    expect(inserted.parent_id).toBe("c-parent");
   });
 
   it("defaults to a human comment", async () => {
@@ -94,5 +106,30 @@ describe("commentCounts", () => {
     const client = { from: vi.fn() };
     expect(await commentCounts(client as never, [])).toEqual({});
     expect(client.from).not.toHaveBeenCalled();
+  });
+});
+
+describe("threadComments", () => {
+  const mk = (id: string, parent_id: string | null): Comment => ({
+    id,
+    folder_id: "f",
+    user_id: "u",
+    author_kind: "human",
+    author_label: null,
+    body: id,
+    created_at: "",
+    parent_id,
+  });
+
+  it("nests replies under their top-level opinion, preserving order", () => {
+    const threads = threadComments([mk("a", null), mk("b", null), mk("a1", "a"), mk("a2", "a")]);
+    expect(threads.map((t) => t.id)).toEqual(["a", "b"]);
+    expect(threads[0].replies.map((r) => r.id)).toEqual(["a1", "a2"]);
+    expect(threads[1].replies).toEqual([]);
+  });
+
+  it("promotes a reply whose parent is missing to top level", () => {
+    const threads = threadComments([mk("orphan", "gone")]);
+    expect(threads.map((t) => t.id)).toEqual(["orphan"]);
   });
 });

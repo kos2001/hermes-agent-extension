@@ -164,6 +164,7 @@ const STR: Record<string, Entry> = {
   hiveAutoOff: { ko: "끔", en: "Off", zh: "关闭" },
   hiveAutoHourly: { ko: "매시간", en: "Hourly", zh: "每小时" },
   hiveAutoDaily: { ko: "매일", en: "Daily", zh: "每天" },
+  hiveReply: { ko: "답글", en: "Reply", zh: "回复" },
 };
 
 export function t(lang: Lang, key: string): string {

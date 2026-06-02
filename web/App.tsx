@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState, type ReactNode } from "react";
 import type { Session } from "@supabase/supabase-js";
 import { listFeed, react, unreact } from "@/lib/cloud/feed";
 import { getFolder } from "@/lib/cloud/folders";
-import { listComments, postComment } from "@/lib/cloud/comments";
+import { listComments, postComment, threadComments } from "@/lib/cloud/comments";
 import { myOpinionVotes, opinionVoteCounts, unvoteOpinion, voteOpinion } from "@/lib/cloud/opinion-votes";
 import { listLeaderboard, type Contributor } from "@/lib/cloud/leaderboard";
 import type { Comment, FeedEntry, SharedFolder, SharedItem } from "@/lib/cloud/types";
@@ -370,6 +370,8 @@ function Discussion({ folderId }: { folderId: string }) {
   const [counts, setCounts] = useState<Record<string, number>>({});
   const [mine, setMine] = useState<Set<string>>(new Set());
   const [body, setBody] = useState("");
+  const [replyOpen, setReplyOpen] = useState<string | null>(null);
+  const [replyBody, setReplyBody] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
@@ -423,30 +425,74 @@ function Discussion({ folderId }: { folderId: string }) {
     [mine, load],
   );
 
+  async function submitReply(parentId: string) {
+    const text = replyBody.trim();
+    if (!text) return;
+    setBusy(true);
+    setError("");
+    try {
+      await postComment(supabase, folderId, { body: text, parentId });
+      setReplyBody("");
+      setReplyOpen(null);
+      load();
+    } catch (e) {
+      setError(errMsg(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   // Highlight the single top-voted opinion (>=1 vote) to surface the best take.
   const topId = comments?.reduce<{ id: string; n: number } | null>((best, c) => {
     const n = counts[c.id] ?? 0;
     return n > 0 && (!best || n > best.n) ? { id: c.id, n } : best;
   }, null)?.id;
 
+  const opinionRow = (c: Comment, isReply: boolean) => (
+    <div key={c.id} className={`opinion${c.id === topId ? " top" : ""}${isReply ? " reply" : ""}`}>
+      <span className={`who ${c.author_kind}`}>
+        {c.author_kind === "agent" ? "🤖" : "🧑"} {c.author?.display_name ?? "Someone"}
+        {c.author_kind === "agent" && c.author_label ? ` · ${c.author_label}` : ""}
+        {c.id === topId && <span className="top-badge">★ top</span>}
+      </span>
+      <p className="opinion-body">{c.body}</p>
+      <span className="opinion-actions">
+        <button className={`vote${mine.has(c.id) ? " voted" : ""}`} onClick={() => void toggleVote(c.id)} title="Upvote">
+          ▲ {counts[c.id] ?? 0}
+        </button>
+        {!isReply && (
+          <button className="reply-btn" onClick={() => setReplyOpen((id) => (id === c.id ? null : c.id))}>
+            ↳ Reply
+          </button>
+        )}
+      </span>
+    </div>
+  );
+
+  const threads = comments ? threadComments(comments) : [];
+
   return (
     <section className="discussion">
       <h3>Discussion {comments ? `(${comments.length})` : ""}</h3>
-      {comments?.map((c) => (
-        <div key={c.id} className={`opinion${c.id === topId ? " top" : ""}`}>
-          <span className={`who ${c.author_kind}`}>
-            {c.author_kind === "agent" ? "🤖" : "🧑"} {c.author?.display_name ?? "Someone"}
-            {c.author_kind === "agent" && c.author_label ? ` · ${c.author_label}` : ""}
-            {c.id === topId && <span className="top-badge">★ top</span>}
-          </span>
-          <p className="opinion-body">{c.body}</p>
-          <button
-            className={`vote${mine.has(c.id) ? " voted" : ""}`}
-            onClick={() => void toggleVote(c.id)}
-            title="Upvote this opinion"
-          >
-            ▲ {counts[c.id] ?? 0}
-          </button>
+      {threads.map((t) => (
+        <div key={t.id} className="thread">
+          {opinionRow(t, false)}
+          {t.replies.length > 0 && <div className="replies">{t.replies.map((r) => opinionRow(r, true))}</div>}
+          {replyOpen === t.id && (
+            <div className="opinion-form reply-form">
+              <textarea
+                placeholder="Write a reply…"
+                value={replyBody}
+                disabled={busy}
+                rows={2}
+                autoFocus
+                onChange={(e) => setReplyBody(e.target.value)}
+              />
+              <button className="primary" onClick={() => void submitReply(t.id)} disabled={busy || !replyBody.trim()}>
+                {busy ? "…" : "Reply"}
+              </button>
+            </div>
+          )}
         </div>
       ))}
       {comments && comments.length === 0 && <p className="hint">No opinions yet. Start the conversation.</p>}
