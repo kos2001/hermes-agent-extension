@@ -5,9 +5,11 @@ import { getFolder } from "@/lib/cloud/folders";
 import { listComments, postComment, threadComments } from "@/lib/cloud/comments";
 import { myOpinionVotes, opinionVoteCounts, unvoteOpinion, voteOpinion } from "@/lib/cloud/opinion-votes";
 import { getContributor, listLeaderboard, type Contributor } from "@/lib/cloud/leaderboard";
-import { createCommunity, joinCommunity, leaveCommunity, listCommunities, myCommunityIds } from "@/lib/cloud/communities";
+import { createCommunity, deleteCommunity, joinCommunity, leaveCommunity, listCommunities, myCommunityIds } from "@/lib/cloud/communities";
 import { buildConversations, getProfileNames, listMyMessages, markRead, sendMessage } from "@/lib/cloud/messages";
 import { loadActivity, unseenCount } from "@/lib/cloud/activity";
+import { eqFilter, onTableInserts } from "@/lib/cloud/realtime";
+import { avatarFor } from "@/lib/cloud/avatar";
 import type { ActivityItem, Comment, Community, DirectMessage, FeedEntry, SharedFolder, SharedItem } from "@/lib/cloud/types";
 import { isValidEmail } from "@/lib/cloud/email";
 import { feedStats, topicCounts, topicWeight } from "@/lib/cloud/feed-stats";
@@ -226,7 +228,7 @@ function SignedIn({ session }: { session: Session }) {
         ) : tab === "leaderboard" ? (
           <Leaderboard onOpenProfile={openProfile} />
         ) : tab === "communities" ? (
-          <Communities onOpen={setCommunity} />
+          <Communities onOpen={setCommunity} myId={myId} />
         ) : tab === "messages" ? (
           <Messages myId={myId} initialOther={dmTarget} />
         ) : (
@@ -250,7 +252,7 @@ function SignedIn({ session }: { session: Session }) {
   );
 }
 
-function Communities({ onOpen }: { onOpen: (c: { id: string; name: string }) => void }) {
+function Communities({ onOpen, myId }: { onOpen: (c: { id: string; name: string }) => void; myId: string }) {
   const [rows, setRows] = useState<Community[] | null>(null);
   const [mine, setMine] = useState<Set<string>>(new Set());
   const [name, setName] = useState("");
@@ -299,6 +301,16 @@ function Communities({ onOpen }: { onOpen: (c: { id: string; name: string }) => 
     }
   }
 
+  async function remove(id: string, cname: string) {
+    if (!window.confirm(`Delete community "${cname}"? Folders stay but leave the community.`)) return;
+    try {
+      await deleteCommunity(supabase, id);
+      load();
+    } catch (e) {
+      setError(errMsg(e));
+    }
+  }
+
   return (
     <div className="communities">
       <div className="community-create">
@@ -322,6 +334,11 @@ function Communities({ onOpen }: { onOpen: (c: { id: string; name: string }) => 
             <button className={mine.has(c.id) ? "active" : ""} onClick={() => void toggleJoin(c.id)}>
               {mine.has(c.id) ? "Joined" : "Join"}
             </button>
+            {c.created_by === myId && (
+              <button className="danger" title="Delete community" onClick={() => void remove(c.id, c.name)}>
+                🗑
+              </button>
+            )}
           </div>
         ))}
       </div>
@@ -436,11 +453,14 @@ function Feed({
   const [error, setError] = useState("");
   const [topic, setTopic] = useState<string | null>(null);
 
-  useEffect(() => {
+  const load = useCallback(() => {
     listFeed(supabase, 50, communityId)
       .then(setEntries)
       .catch((e) => setError(errMsg(e)));
   }, [communityId]);
+  useEffect(load, [load]);
+  // Live: a newly shared (or re-shared) folder appears without a refresh.
+  useEffect(() => onTableInserts(supabase, "shared_folders", undefined, load), [load]);
 
   if (error) return <p className="hint err">⚠ {error}</p>;
   if (!entries) return <p className="hint">Loading feed…</p>;
@@ -501,11 +521,15 @@ function Activity({ items, onOpenFolder }: { items: ActivityItem[] | null; onOpe
   return (
     <div className="activity">
       {items.map((a) => (
-        <div key={`${a.type}-${a.id}`} className="activity-row" onClick={() => onOpenFolder(a.folderId)}>
-          <span className="activity-icon">{a.type === "reply" ? "↳" : "💬"}</span>
+        <div key={a.id} className="activity-row" onClick={() => onOpenFolder(a.folderId)}>
+          <span className="activity-icon">{a.type === "reply" ? "↳" : a.type === "vote" ? "▲" : "💬"}</span>
           <span className="activity-text">
             <strong>{a.actorName}</strong>{" "}
-            {a.type === "reply" ? "replied to your opinion in" : "shared an opinion on your folder"}{" "}
+            {a.type === "reply"
+              ? "replied to your opinion in"
+              : a.type === "vote"
+                ? "upvoted your opinion in"
+                : "shared an opinion on your folder"}{" "}
             <strong>{a.folderTitle}</strong>
           </span>
         </div>
@@ -547,7 +571,7 @@ function Profile({
   return (
     <div className="profile">
       <div className="filter-bar">
-        <span>👤 <strong>{who}</strong></span>
+        <span className="profile-head"><Avatar seed={userId} label={who} /> <strong>{who}</strong></span>
         <button onClick={onBack}>← Back</button>
       </div>
       {error && <p className="hint err">⚠ {error}</p>}
@@ -605,6 +629,7 @@ function Leaderboard({ onOpenProfile }: { onOpenProfile: (id: string, name: stri
         {rows.map((r, i) => (
           <li key={r.user_id} className="lb-row" onClick={() => onOpenProfile(r.user_id, r.display_name ?? "Someone")} style={{ cursor: "pointer" }}>
             <span className={`lb-rank r${i + 1}`}>{i + 1}</span>
+            <Avatar seed={r.user_id} label={r.display_name ?? "Someone"} />
             <span className="lb-name">{r.display_name ?? "Someone"}</span>
             <span className="lb-stats">
               <span className="lb-rep" title="upvotes received">▲ {r.votes_received}</span>
@@ -649,7 +674,7 @@ function FolderCard({
             onOpenProfile(entry.owner_id, owner);
           }}
         >
-          {owner}
+          <Avatar seed={entry.owner_id} label={owner} /> {owner}
         </span>
       </header>
       {entry.summary && <p className="summary" onClick={onOpen}>{entry.summary}</p>}
@@ -757,6 +782,8 @@ function Discussion({ folderId }: { folderId: string }) {
   }, [folderId]);
 
   useEffect(load, [load]);
+  // Live: refresh when anyone posts an opinion/reply on this folder.
+  useEffect(() => onTableInserts(supabase, "comments", eqFilter("folder_id", folderId), load), [folderId, load]);
 
   async function submit() {
     const text = body.trim();
@@ -879,6 +906,15 @@ function Discussion({ folderId }: { folderId: string }) {
       </div>
       {error && <p className="hint err">⚠ {error}</p>}
     </section>
+  );
+}
+
+function Avatar({ seed, label }: { seed: string; label: string }) {
+  const { bg, initial } = avatarFor(seed, label);
+  return (
+    <span className="avatar" style={{ background: bg }} aria-hidden>
+      {initial}
+    </span>
   );
 }
 
