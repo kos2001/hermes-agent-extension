@@ -51,8 +51,15 @@ export interface Comment {
   author_label: string | null;
   body: string;
   created_at: string;
+  /** Parent comment id when this is a reply; null for a top-level opinion. */
+  parent_id: string | null;
   /** Joined poster profile (when listed with the join). */
   author?: Pick<Profile, "display_name" | "avatar_url">;
+}
+
+/** A top-level opinion with its direct replies (built by threadComments). */
+export interface CommentThread extends Comment {
+  replies: Comment[];
 }
 
 /** What the client provides to post a comment (user_id comes from the session). */
@@ -60,4 +67,6 @@ export interface CommentInput {
   body: string;
   kind?: AuthorKind;
   label?: string;
+  /** Set to reply to an existing comment. */
+  parentId?: string;
 }

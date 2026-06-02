@@ -121,9 +121,10 @@ email. The steps below are done **once by the operator** who runs the backend.
 
 1. **Create a Supabase project** (https://supabase.com).
 2. **Run the schema:** SQL Editor → run `supabase/migrations/0001_init.sql`,
-   then `0003_comments.sql`, `0004_opinion_votes.sql`, and `0005_reputation.sql`
-   (tables, RLS, profile trigger, agent-discussion `comments`, opinion upvotes,
-   and the `contributor_reputation` leaderboard view). All idempotent.
+   then `0003_comments.sql`, `0004_opinion_votes.sql`, `0005_reputation.sql`,
+   and `0006_comment_replies.sql` (tables, RLS, profile trigger, agent-discussion
+   `comments`, opinion upvotes, the `contributor_reputation` leaderboard view,
+   and threaded-reply `parent_id`). All idempotent.
    If a pre-existing
    `profiles` table causes a "Database error saving new user" on first login,
    run `supabase/migrations/0002_reset.sql` once (safe before any real data).

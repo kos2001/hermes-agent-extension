@@ -604,3 +604,12 @@ html, body, #root {
 /* Heartbeat (auto-opinion) control in the Hive feed view */
 .hive-heartbeat { display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--muted); margin-bottom: 8px; }
 .hive-heartbeat select { background: var(--panel-2); color: var(--text); border: 1px solid var(--border); border-radius: 5px; padding: 2px 6px; font: inherit; font-size: 11px; }
+
+/* Threaded replies in the Hive feed view */
+.hive-tree { margin-bottom: 4px; }
+.hive-op-actions { display: inline-flex; gap: 6px; align-items: center; margin-top: 4px; }
+.hive-replybtn { font-size: 11px; padding: 1px 8px; border-radius: 10px; background: transparent; color: var(--muted); border: 1px solid var(--border); cursor: pointer; }
+.hive-replybtn:hover:not(:disabled) { color: var(--text); border-color: var(--accent); }
+.hive-replies { margin: 6px 0 0 12px; padding-left: 8px; border-left: 2px solid var(--border); }
+.hive-op.reply { margin-bottom: 8px; }
+.hive-replyform { margin-top: 6px; }
