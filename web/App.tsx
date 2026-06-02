@@ -6,7 +6,8 @@ import { listComments, postComment, threadComments } from "@/lib/cloud/comments"
 import { myOpinionVotes, opinionVoteCounts, unvoteOpinion, voteOpinion } from "@/lib/cloud/opinion-votes";
 import { listLeaderboard, type Contributor } from "@/lib/cloud/leaderboard";
 import { createCommunity, joinCommunity, leaveCommunity, listCommunities, myCommunityIds } from "@/lib/cloud/communities";
-import type { Comment, Community, FeedEntry, SharedFolder, SharedItem } from "@/lib/cloud/types";
+import { buildConversations, getProfileNames, listMyMessages, markRead, sendMessage } from "@/lib/cloud/messages";
+import type { Comment, Community, DirectMessage, FeedEntry, SharedFolder, SharedItem } from "@/lib/cloud/types";
 import { isValidEmail } from "@/lib/cloud/email";
 import { feedStats, topicCounts, topicWeight } from "@/lib/cloud/feed-stats";
 import { cloudConfigured, getSession, onAuthChange, sendEmailOtp, signOut, supabase, verifyEmailOtp } from "./cloud";
@@ -142,9 +143,19 @@ function SignIn({ onSignedIn }: { onSignedIn: (s: Session) => void }) {
 
 function SignedIn({ session }: { session: Session }) {
   const [openId, setOpenId] = useState<string | null>(null);
-  const [tab, setTab] = useState<"feed" | "leaderboard" | "communities">("feed");
+  const [tab, setTab] = useState<"feed" | "leaderboard" | "communities" | "messages">("feed");
   const [community, setCommunity] = useState<{ id: string; name: string } | null>(null);
+  const [dmTarget, setDmTarget] = useState<{ id: string; name: string } | null>(null);
+  const myId = session.user.id;
   const name = (session.user.user_metadata?.full_name as string | undefined) ?? session.user.email ?? "";
+
+  const startDm = (id: string, who: string) => {
+    if (id === myId) return;
+    setDmTarget({ id, name: who });
+    setTab("messages");
+    setOpenId(null);
+    setCommunity(null);
+  };
 
   let content: ReactNode;
   if (openId) {
@@ -158,7 +169,7 @@ function SignedIn({ session }: { session: Session }) {
           </span>
           <button onClick={() => setCommunity(null)}>← All communities</button>
         </div>
-        <Feed onOpen={setOpenId} communityId={community.id} />
+        <Feed onOpen={setOpenId} onMessage={startDm} communityId={community.id} />
       </>
     );
   } else {
@@ -172,8 +183,19 @@ function SignedIn({ session }: { session: Session }) {
           <button className={tab === "communities" ? "active" : ""} onClick={() => setTab("communities")}>
             👥 Communities
           </button>
+          <button className={tab === "messages" ? "active" : ""} onClick={() => setTab("messages")}>
+            ✉ Messages
+          </button>
         </nav>
-        {tab === "feed" ? <Feed onOpen={setOpenId} /> : tab === "leaderboard" ? <Leaderboard /> : <Communities onOpen={setCommunity} />}
+        {tab === "feed" ? (
+          <Feed onOpen={setOpenId} onMessage={startDm} />
+        ) : tab === "leaderboard" ? (
+          <Leaderboard />
+        ) : tab === "communities" ? (
+          <Communities onOpen={setCommunity} />
+        ) : (
+          <Messages myId={myId} initialOther={dmTarget} />
+        )}
       </>
     );
   }
@@ -271,7 +293,109 @@ function Communities({ onOpen }: { onOpen: (c: { id: string; name: string }) => 
   );
 }
 
-function Feed({ onOpen, communityId }: { onOpen: (id: string) => void; communityId?: string }) {
+function Messages({ myId, initialOther }: { myId: string; initialOther: { id: string; name: string } | null }) {
+  const [messages, setMessages] = useState<DirectMessage[] | null>(null);
+  const [names, setNames] = useState<Record<string, string>>(() =>
+    initialOther ? { [initialOther.id]: initialOther.name } : {},
+  );
+  const [openOther, setOpenOther] = useState<string | null>(initialOther?.id ?? null);
+  const [body, setBody] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  const load = useCallback(() => {
+    listMyMessages(supabase)
+      .then(async (msgs) => {
+        setMessages(msgs);
+        const ids = new Set<string>();
+        for (const m of msgs) ids.add(m.sender_id === myId ? m.recipient_id : m.sender_id);
+        if (initialOther) ids.add(initialOther.id);
+        ids.delete(myId);
+        const fetched = ids.size ? await getProfileNames(supabase, [...ids]) : {};
+        setNames((prev) => ({ ...prev, ...fetched }));
+      })
+      .catch((e) => setError(errMsg(e)));
+  }, [myId, initialOther]);
+  useEffect(load, [load]);
+
+  useEffect(() => {
+    if (openOther) void markRead(supabase, openOther).then(load).catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openOther]);
+
+  async function send() {
+    const text = body.trim();
+    if (!text || !openOther) return;
+    setBusy(true);
+    setError("");
+    try {
+      await sendMessage(supabase, openOther, text);
+      setBody("");
+      load();
+    } catch (e) {
+      setError(errMsg(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (error) return <p className="hint err">⚠ {error}</p>;
+  if (!messages) return <p className="hint">Loading…</p>;
+
+  const convos = buildConversations(messages, myId);
+  if (openOther && !convos.some((c) => c.otherId === openOther)) {
+    convos.unshift({ otherId: openOther, lastBody: "", lastAt: "", unread: 0 });
+  }
+
+  if (openOther) {
+    const thread = messages
+      .filter((m) => m.sender_id === openOther || m.recipient_id === openOther)
+      .filter((m) => m.sender_id === myId || m.recipient_id === myId);
+    return (
+      <div className="messages">
+        <div className="filter-bar">
+          <span>✉ <strong>{names[openOther] ?? "…"}</strong></span>
+          <button onClick={() => setOpenOther(null)}>← All messages</button>
+        </div>
+        <div className="dm-thread">
+          {thread.map((m) => (
+            <div key={m.id} className={`dm-msg ${m.sender_id === myId ? "mine" : "theirs"}`}>{m.body}</div>
+          ))}
+          {thread.length === 0 && <p className="hint">No messages yet — say hello.</p>}
+        </div>
+        <div className="opinion-form">
+          <textarea rows={2} placeholder="Message…" value={body} disabled={busy} onChange={(e) => setBody(e.target.value)} />
+          <button className="primary" onClick={() => void send()} disabled={busy || !body.trim()}>Send</button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="messages">
+      {convos.length === 0 && <p className="hint">No conversations yet. Use ✉ on a folder to message its author.</p>}
+      <div className="dm-list">
+        {convos.map((c) => (
+          <div key={c.otherId} className="dm-row" onClick={() => setOpenOther(c.otherId)}>
+            <span className="dm-name">{names[c.otherId] ?? "Someone"}</span>
+            <span className="dm-last">{c.lastBody}</span>
+            {c.unread > 0 && <span className="dm-unread">{c.unread}</span>}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function Feed({
+  onOpen,
+  onMessage,
+  communityId,
+}: {
+  onOpen: (id: string) => void;
+  onMessage: (id: string, name: string) => void;
+  communityId?: string;
+}) {
   const [entries, setEntries] = useState<FeedEntry[] | null>(null);
   const [error, setError] = useState("");
   const [topic, setTopic] = useState<string | null>(null);
@@ -327,7 +451,7 @@ function Feed({ onOpen, communityId }: { onOpen: (id: string) => void; community
 
       <div className="feed">
         {shown.map((e) => (
-          <FolderCard key={e.id} entry={e} onOpen={() => onOpen(e.id)} />
+          <FolderCard key={e.id} entry={e} onOpen={() => onOpen(e.id)} onMessage={onMessage} />
         ))}
       </div>
     </>
@@ -377,12 +501,30 @@ function Stat({ n, label }: { n: number; label: string }) {
   );
 }
 
-function FolderCard({ entry, onOpen }: { entry: FeedEntry; onOpen: () => void }) {
+function FolderCard({
+  entry,
+  onOpen,
+  onMessage,
+}: {
+  entry: FeedEntry;
+  onOpen: () => void;
+  onMessage: (id: string, name: string) => void;
+}) {
+  const owner = entry.owner.display_name ?? "Someone";
   return (
     <article className="card">
       <header className="card-head" onClick={onOpen}>
         <h3>{entry.title}</h3>
-        <span className="owner">{entry.owner.display_name ?? "Someone"}</span>
+        <span
+          className="owner"
+          title={`Message ${owner}`}
+          onClick={(e) => {
+            e.stopPropagation();
+            onMessage(entry.owner_id, owner);
+          }}
+        >
+          ✉ {owner}
+        </span>
       </header>
       {entry.summary && <p className="summary" onClick={onOpen}>{entry.summary}</p>}
       <div className="topics">
