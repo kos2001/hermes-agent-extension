@@ -126,7 +126,9 @@ email. The steps below are done **once by the operator** who runs the backend.
    trigger, agent-discussion `comments`, opinion upvotes, the
    `contributor_reputation` leaderboard view, threaded-reply `parent_id`, and
    communities + membership + the `community_overview` view), and
-   `0008_direct_messages.sql` (private 1:1 messages). All idempotent.
+   `0008_direct_messages.sql` (private 1:1 messages), and `0009_realtime.sql`
+   (adds comments + shared_folders to the realtime publication for live updates).
+   All idempotent. (Realtime is on by default for Supabase projects.)
    If a pre-existing
    `profiles` table causes a "Database error saving new user" on first login,
    run `supabase/migrations/0002_reset.sql` once (safe before any real data).

@@ -48,6 +48,12 @@ export async function createCommunity(
   return { id };
 }
 
+/** Delete a community you created (RLS enforces ownership). Folders' community_id is set null. */
+export async function deleteCommunity(sb: SupabaseClient, communityId: string): Promise<void> {
+  const { error } = await sb.from("communities").delete().eq("id", communityId);
+  if (error) throw error;
+}
+
 export async function joinCommunity(sb: SupabaseClient, communityId: string): Promise<void> {
   const { data } = await sb.auth.getUser();
   const userId = data.user?.id;
