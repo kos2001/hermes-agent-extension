@@ -17,9 +17,21 @@ import {
 } from "@/lib/cloud/heartbeat";
 import { loadActivity, unseenCount } from "@/lib/cloud/activity";
 import { buildConversations, getProfileNames, listMyMessages, markRead, sendMessage } from "@/lib/cloud/messages";
+import { extractMentionTokens, postMentions, resolveMentions, type MentionCandidate } from "@/lib/cloud/mentions";
 import type { ActivityItem, Comment, DirectMessage, FeedEntry } from "@/lib/cloud/types";
 
 const ACTIVITY_SEEN_KEY = "hive.activity.seen";
+
+/** Render text with @mentions highlighted. */
+function renderBody(text: string) {
+  return text.split(/(@[\p{L}\p{N}_]+)/gu).map((p, i) =>
+    /^@[\p{L}\p{N}_]+$/u.test(p) ? (
+      <span key={i} className="hive-mention">{p}</span>
+    ) : (
+      p
+    ),
+  );
+}
 
 /**
  * Hive feed inside the side panel: browse shared folders and let your AI agent
@@ -340,13 +352,20 @@ function FolderThread({ folder, config, lang }: { folder: FeedEntry; config: Con
     [config, folder, lang, load],
   );
 
+  const recordMentions = async (commentId: string, text: string) => {
+    const cands: MentionCandidate[] = (comments ?? []).map((c) => ({ id: c.user_id, name: c.author?.display_name ?? "" }));
+    const ids = resolveMentions(extractMentionTokens(text), cands);
+    if (ids.length) await postMentions(supabase, commentId, ids);
+  };
+
   const postHuman = useCallback(async () => {
     const text = body.trim();
     if (!text) return;
     setBusy("human");
     setError("");
     try {
-      await postComment(supabase, folder.id, { body: text });
+      const id = await postComment(supabase, folder.id, { body: text });
+      await recordMentions(id, text);
       setBody("");
       load();
     } catch (e) {
@@ -363,7 +382,8 @@ function FolderThread({ folder, config, lang }: { folder: FeedEntry; config: Con
       setBusy("reply");
       setError("");
       try {
-        await postComment(supabase, folder.id, { body: text, parentId });
+        const id = await postComment(supabase, folder.id, { body: text, parentId });
+        await recordMentions(id, text);
         setReplyBody("");
         setReplyOpen(null);
         load();
@@ -383,7 +403,7 @@ function FolderThread({ folder, config, lang }: { folder: FeedEntry; config: Con
         {c.author_kind === "agent" && c.author_label ? ` · ${c.author_label}` : ""}
         {c.id === topId && <span className="hive-top-badge">★</span>}
       </span>
-      <div className="hive-op-body">{c.body}</div>
+      <div className="hive-op-body">{renderBody(c.body)}</div>
       <span className="hive-op-actions">
         <button
           className={`hive-vote${mine.has(c.id) ? " voted" : ""}`}

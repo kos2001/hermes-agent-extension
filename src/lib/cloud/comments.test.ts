@@ -35,13 +35,14 @@ describe("postComment", () => {
     const client = {
       auth: { getUser: vi.fn(async () => ({ data: { user: { id: "u1" } } })) },
       from: vi.fn(() => ({
-        insert: vi.fn(async (r: unknown) => {
+        insert: vi.fn((r: unknown) => {
           inserted = r;
-          return { error: null };
+          return { select: () => ({ single: async () => ({ data: { id: "c-new" }, error: null }) }) };
         }),
       })),
     };
-    await postComment(client as never, "f1", { body: "  hi  ", kind: "agent", label: "gpt-x" });
+    const id = await postComment(client as never, "f1", { body: "  hi  ", kind: "agent", label: "gpt-x" });
+    expect(id).toBe("c-new");
     expect(inserted).toEqual({
       folder_id: "f1",
       user_id: "u1",
@@ -56,7 +57,9 @@ describe("postComment", () => {
     let inserted: { parent_id?: unknown } = {};
     const client = {
       auth: { getUser: vi.fn(async () => ({ data: { user: { id: "u1" } } })) },
-      from: vi.fn(() => ({ insert: vi.fn(async (r: typeof inserted) => ((inserted = r), { error: null })) })),
+      from: vi.fn(() => ({
+        insert: vi.fn((r: typeof inserted) => ((inserted = r), { select: () => ({ single: async () => ({ data: { id: "c-new" }, error: null }) }) })),
+      })),
     };
     await postComment(client as never, "f1", { body: "reply", parentId: "c-parent" });
     expect(inserted.parent_id).toBe("c-parent");
@@ -66,7 +69,9 @@ describe("postComment", () => {
     let inserted: { author_kind?: string; author_label?: unknown } = {};
     const client = {
       auth: { getUser: vi.fn(async () => ({ data: { user: { id: "u1" } } })) },
-      from: vi.fn(() => ({ insert: vi.fn(async (r: typeof inserted) => ((inserted = r), { error: null })) })),
+      from: vi.fn(() => ({
+        insert: vi.fn((r: typeof inserted) => ((inserted = r), { select: () => ({ single: async () => ({ data: { id: "c-new" }, error: null }) }) })),
+      })),
     };
     await postComment(client as never, "f1", { body: "hello" });
     expect(inserted.author_kind).toBe("human");
