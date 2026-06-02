@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { ActivityItem } from "./types";
 import { getProfileNames } from "./messages";
+import { mentionsForMe } from "./mentions";
 
 /** A raw engagement row (a comment by someone else, on my comment or folder). */
 export interface RawEngagement {
@@ -21,6 +22,7 @@ export interface ActivitySources {
   replies: RawEngagement[];
   opinions: RawEngagement[];
   votes: RawVote[];
+  mentions: RawEngagement[];
 }
 
 export interface ActivityContext {
@@ -52,6 +54,9 @@ export function buildActivity(src: ActivitySources, ctx: ActivityContext): Activ
       const fid = commentFolder[v.comment_id] ?? "";
       return { id: `vote-${v.comment_id}-${v.user_id}`, type: "vote", actorId: v.user_id, actorName: name(v.user_id), folderId: fid, folderTitle: title(fid), when: v.created_at };
     }),
+    ...src.mentions.map(
+      (r): ActivityItem => ({ id: `mention-${r.id}`, type: "mention", actorId: r.user_id, actorName: name(r.user_id), folderId: r.folder_id, folderTitle: title(r.folder_id), when: r.created_at }),
+    ),
   ];
   return items.filter((a) => a.actorId !== myId).sort((a, b) => (a.when < b.when ? 1 : a.when > b.when ? -1 : 0));
 }
@@ -107,16 +112,22 @@ export async function loadActivity(sb: SupabaseClient): Promise<ActivityItem[]> 
     opinions = (data ?? []) as RawEngagement[];
   }
 
-  // Resolve titles for any folders not already known (reply folders / vote folders).
-  const involved = new Set<string>([...replies.map((r) => r.folder_id), ...votes.map((v) => commentFolder[v.comment_id]).filter(Boolean)]);
+  const mentions = await mentionsForMe(sb);
+
+  // Resolve titles for any folders not already known (reply / vote / mention folders).
+  const involved = new Set<string>([
+    ...replies.map((r) => r.folder_id),
+    ...votes.map((v) => commentFolder[v.comment_id]).filter(Boolean),
+    ...mentions.map((r) => r.folder_id).filter(Boolean),
+  ]);
   const missing = [...involved].filter((id) => id && !titles[id]);
   if (missing.length) {
     const { data } = await sb.from("shared_folders").select("id, title").in("id", missing);
     for (const f of (data ?? []) as { id: string; title: string }[]) titles[f.id] = f.title;
   }
 
-  const actorIds = [...new Set([...replies, ...opinions, ...votes].map((r) => r.user_id))];
+  const actorIds = [...new Set([...replies, ...opinions, ...votes, ...mentions].map((r) => r.user_id))];
   const names = await getProfileNames(sb, actorIds);
 
-  return buildActivity({ replies, opinions, votes }, { myId, names, titles, commentFolder });
+  return buildActivity({ replies, opinions, votes, mentions }, { myId, names, titles, commentFolder });
 }
