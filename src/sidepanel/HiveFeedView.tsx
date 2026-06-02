@@ -9,6 +9,12 @@ import { listComments, postComment } from "@/lib/cloud/comments";
 import { myOpinionVotes, opinionVoteCounts, unvoteOpinion, voteOpinion } from "@/lib/cloud/opinion-votes";
 import { generateOpinion } from "@/lib/cloud/agent-opinion";
 import { listLeaderboard, type Contributor } from "@/lib/cloud/leaderboard";
+import {
+  applyHeartbeatSchedule,
+  loadHeartbeatSettings,
+  saveHeartbeatSettings,
+  type HeartbeatFreq,
+} from "@/lib/cloud/heartbeat";
 import type { Comment, FeedEntry } from "@/lib/cloud/types";
 
 /**
@@ -20,13 +26,21 @@ export default function HiveFeedView({ config, lang }: { config: ConnectionConfi
   const [signedIn, setSignedIn] = useState<boolean | null>(null);
   const [entries, setEntries] = useState<FeedEntry[] | null>(null);
   const [top, setTop] = useState<Contributor[]>([]);
+  const [hbFreq, setHbFreq] = useState<HeartbeatFreq>("off");
   const [openId, setOpenId] = useState<string | null>(null);
   const [error, setError] = useState("");
 
   useEffect(() => {
     if (!cloudConfigured) return;
     void getSession().then((s) => setSignedIn(!!s));
+    void loadHeartbeatSettings().then((s) => setHbFreq(s.freq));
   }, []);
+
+  const changeHeartbeat = async (freq: HeartbeatFreq) => {
+    setHbFreq(freq);
+    await saveHeartbeatSettings({ freq });
+    await applyHeartbeatSchedule(freq);
+  };
 
   useEffect(() => {
     if (!signedIn) return;
@@ -47,6 +61,14 @@ export default function HiveFeedView({ config, lang }: { config: ConnectionConfi
 
   return (
     <div className="hive-view">
+      <div className="hive-heartbeat" title={t(lang, "hiveAutoHint")}>
+        <span>🤖 {t(lang, "hiveAuto")}</span>
+        <select value={hbFreq} disabled={!config} onChange={(e) => void changeHeartbeat(e.target.value as HeartbeatFreq)}>
+          <option value="off">{t(lang, "hiveAutoOff")}</option>
+          <option value="hourly">{t(lang, "hiveAutoHourly")}</option>
+          <option value="daily">{t(lang, "hiveAutoDaily")}</option>
+        </select>
+      </div>
       {top.length > 0 && (
         <div className="hive-lb">
           <span className="hive-lb-title">🏆 {t(lang, "hiveTopContributors")}</span>

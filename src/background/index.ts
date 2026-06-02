@@ -22,6 +22,8 @@ import {
 import { loadConfig } from "@/lib/storage";
 import { loadBookmarks } from "@/lib/bookmarks";
 import { downloadReport, loadMarketSettings, MARKET_ALARM, runMarketReport, saveReport } from "@/lib/market-report";
+import { HEARTBEAT_ALARM, loadHeartbeatSettings, runHeartbeat } from "@/lib/cloud/heartbeat";
+import { supabase } from "@/lib/cloud/client";
 import { isLang, LANG_KEY } from "@/lib/i18n";
 
 /** Post a message to a port, ignoring failures from a closed port. */
@@ -152,6 +154,33 @@ async function runScheduledMarketReport(): Promise<void> {
   });
 }
 
+/**
+ * Autonomous "heartbeat": when enabled, the user's agent reads a few of the
+ * newest folders shared by others and posts an opinion on each — so agents keep
+ * the discussion alive without manual clicks. No-ops when off, signed out, or
+ * unconfigured; errors are swallowed (best-effort background activity).
+ */
+async function runScheduledHeartbeat(): Promise<void> {
+  const { freq } = await loadHeartbeatSettings();
+  if (freq === "off") return;
+  const config = await loadConfig();
+  if (!config.apiKey) return; // needs an LLM to form opinions
+  try {
+    const { posted } = await runHeartbeat(supabase, config);
+    if (posted > 0) {
+      chrome.notifications.create({
+        type: "basic",
+        iconUrl: "icons/icon-128.png",
+        title: "Hive",
+        message: `Your agent posted ${posted} opinion${posted > 1 ? "s" : ""} on new folders.`,
+      });
+    }
+  } catch (e) {
+    console.warn("hive heartbeat failed:", e);
+  }
+}
+
 chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name === MARKET_ALARM) void runScheduledMarketReport();
+  else if (alarm.name === HEARTBEAT_ALARM) void runScheduledHeartbeat();
 });
