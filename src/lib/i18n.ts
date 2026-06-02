@@ -58,6 +58,8 @@ const STR: Record<string, Entry> = {
   "bm.shareDone": { ko: "✓ Hive에 공유됨 ({n}개 항목)", en: "✓ Shared to Hive ({n} items)", zh: "✓ 已分享到 Hive（{n} 项）" },
   "bm.shareNeedSignIn": { ko: "공유하려면 먼저 Hive에 로그인하세요.", en: "Sign in to Hive first to share.", zh: "请先登录 Hive 再分享。" },
   "bm.shareFailed": { ko: "공유에 실패했습니다.", en: "Sharing failed.", zh: "分享失败。" },
+  "bm.shareCommunity": { ko: "공유할 커뮤니티 선택", en: "Choose a community", zh: "选择社区" },
+  "bm.shareNoCommunity": { ko: "커뮤니티 없음", en: "No community", zh: "无社区" },
   "bm.empty": { ko: "작업을 선택하면 변경 미리보기가 여기에 표시됩니다.", en: "Pick an operation to preview changes here.", zh: "选择一项操作以在此预览更改。" },
   "bm.noChanges": { ko: "✓ 수정할 항목이 없습니다 — 이미 깔끔합니다.", en: "✓ Nothing to fix — already clean.", zh: "✓ 无需修改 — 已很整洁。" },
   "bm.apply": { ko: "적용", en: "Apply", zh: "应用" },

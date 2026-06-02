@@ -5,7 +5,8 @@ import { getFolder } from "@/lib/cloud/folders";
 import { listComments, postComment, threadComments } from "@/lib/cloud/comments";
 import { myOpinionVotes, opinionVoteCounts, unvoteOpinion, voteOpinion } from "@/lib/cloud/opinion-votes";
 import { listLeaderboard, type Contributor } from "@/lib/cloud/leaderboard";
-import type { Comment, FeedEntry, SharedFolder, SharedItem } from "@/lib/cloud/types";
+import { createCommunity, joinCommunity, leaveCommunity, listCommunities, myCommunityIds } from "@/lib/cloud/communities";
+import type { Comment, Community, FeedEntry, SharedFolder, SharedItem } from "@/lib/cloud/types";
 import { isValidEmail } from "@/lib/cloud/email";
 import { feedStats, topicCounts, topicWeight } from "@/lib/cloud/feed-stats";
 import { cloudConfigured, getSession, onAuthChange, sendEmailOtp, signOut, supabase, verifyEmailOtp } from "./cloud";
@@ -141,8 +142,41 @@ function SignIn({ onSignedIn }: { onSignedIn: (s: Session) => void }) {
 
 function SignedIn({ session }: { session: Session }) {
   const [openId, setOpenId] = useState<string | null>(null);
-  const [tab, setTab] = useState<"feed" | "leaderboard">("feed");
+  const [tab, setTab] = useState<"feed" | "leaderboard" | "communities">("feed");
+  const [community, setCommunity] = useState<{ id: string; name: string } | null>(null);
   const name = (session.user.user_metadata?.full_name as string | undefined) ?? session.user.email ?? "";
+
+  let content: ReactNode;
+  if (openId) {
+    content = <Detail folderId={openId} onBack={() => setOpenId(null)} />;
+  } else if (community) {
+    content = (
+      <>
+        <div className="filter-bar">
+          <span>
+            Community · <strong>{community.name}</strong>
+          </span>
+          <button onClick={() => setCommunity(null)}>← All communities</button>
+        </div>
+        <Feed onOpen={setOpenId} communityId={community.id} />
+      </>
+    );
+  } else {
+    content = (
+      <>
+        <nav className="tabs">
+          <button className={tab === "feed" ? "active" : ""} onClick={() => setTab("feed")}>Feed</button>
+          <button className={tab === "leaderboard" ? "active" : ""} onClick={() => setTab("leaderboard")}>
+            🏆 Leaderboard
+          </button>
+          <button className={tab === "communities" ? "active" : ""} onClick={() => setTab("communities")}>
+            👥 Communities
+          </button>
+        </nav>
+        {tab === "feed" ? <Feed onOpen={setOpenId} /> : tab === "leaderboard" ? <Leaderboard /> : <Communities onOpen={setCommunity} />}
+      </>
+    );
+  }
 
   return (
     <Shell
@@ -153,33 +187,100 @@ function SignedIn({ session }: { session: Session }) {
         </span>
       }
     >
-      {openId ? (
-        <Detail folderId={openId} onBack={() => setOpenId(null)} />
-      ) : (
-        <>
-          <nav className="tabs">
-            <button className={tab === "feed" ? "active" : ""} onClick={() => setTab("feed")}>Feed</button>
-            <button className={tab === "leaderboard" ? "active" : ""} onClick={() => setTab("leaderboard")}>
-              🏆 Leaderboard
-            </button>
-          </nav>
-          {tab === "feed" ? <Feed onOpen={setOpenId} /> : <Leaderboard />}
-        </>
-      )}
+      {content}
     </Shell>
   );
 }
 
-function Feed({ onOpen }: { onOpen: (id: string) => void }) {
+function Communities({ onOpen }: { onOpen: (c: { id: string; name: string }) => void }) {
+  const [rows, setRows] = useState<Community[] | null>(null);
+  const [mine, setMine] = useState<Set<string>>(new Set());
+  const [name, setName] = useState("");
+  const [desc, setDesc] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  const load = useCallback(() => {
+    Promise.all([listCommunities(supabase), myCommunityIds(supabase)])
+      .then(([cs, mv]) => {
+        setRows(cs);
+        setMine(mv);
+      })
+      .catch((e) => setError(errMsg(e)));
+  }, []);
+  useEffect(load, [load]);
+
+  async function create() {
+    setBusy(true);
+    setError("");
+    try {
+      await createCommunity(supabase, name, desc);
+      setName("");
+      setDesc("");
+      load();
+    } catch (e) {
+      setError(errMsg(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function toggleJoin(id: string) {
+    const joined = mine.has(id);
+    setMine((p) => {
+      const n = new Set(p);
+      joined ? n.delete(id) : n.add(id);
+      return n;
+    });
+    try {
+      if (joined) await leaveCommunity(supabase, id);
+      else await joinCommunity(supabase, id);
+      load();
+    } catch {
+      load();
+    }
+  }
+
+  return (
+    <div className="communities">
+      <div className="community-create">
+        <input placeholder="New community name" value={name} disabled={busy} onChange={(e) => setName(e.target.value)} />
+        <input placeholder="Description (optional)" value={desc} disabled={busy} onChange={(e) => setDesc(e.target.value)} />
+        <button className="primary" onClick={() => void create()} disabled={busy || name.trim().length < 2}>
+          Create
+        </button>
+      </div>
+      {error && <p className="hint err">⚠ {error}</p>}
+      {!rows && <p className="hint">Loading…</p>}
+      {rows && rows.length === 0 && <p className="hint">No communities yet — create the first one.</p>}
+      <div className="community-list">
+        {rows?.map((c) => (
+          <div key={c.id} className="community-row">
+            <div className="community-main" onClick={() => onOpen({ id: c.id, name: c.name })}>
+              <span className="community-name">{c.name}</span>
+              {c.description && <span className="community-desc">{c.description}</span>}
+              <span className="community-stats">📁 {c.folder_count} · 👥 {c.member_count}</span>
+            </div>
+            <button className={mine.has(c.id) ? "active" : ""} onClick={() => void toggleJoin(c.id)}>
+              {mine.has(c.id) ? "Joined" : "Join"}
+            </button>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function Feed({ onOpen, communityId }: { onOpen: (id: string) => void; communityId?: string }) {
   const [entries, setEntries] = useState<FeedEntry[] | null>(null);
   const [error, setError] = useState("");
   const [topic, setTopic] = useState<string | null>(null);
 
   useEffect(() => {
-    listFeed(supabase)
+    listFeed(supabase, 50, communityId)
       .then(setEntries)
       .catch((e) => setError(errMsg(e)));
-  }, []);
+  }, [communityId]);
 
   if (error) return <p className="hint err">⚠ {error}</p>;
   if (!entries) return <p className="hint">Loading feed…</p>;

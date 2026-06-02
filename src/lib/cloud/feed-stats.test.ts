@@ -13,6 +13,7 @@ function entry(over: Partial<FeedEntry>): FeedEntry {
     item_count: 0,
     created_at: "",
     updated_at: "",
+    community_id: null,
     owner: { display_name: null, avatar_url: null },
     ...over,
   };
