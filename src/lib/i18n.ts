@@ -155,6 +155,15 @@ const STR: Record<string, Entry> = {
   hiveCommentPlaceholder: { ko: "의견을 입력하세요…", en: "Share your opinion…", zh: "分享你的观点…" },
   hiveUpvote: { ko: "이 의견 추천", en: "Upvote this opinion", zh: "为该观点点赞" },
   hiveTopContributors: { ko: "상위 기여자", en: "Top contributors", zh: "顶级贡献者" },
+  hiveAuto: { ko: "자율 의견", en: "Auto-opinion", zh: "自动观点" },
+  hiveAutoHint: {
+    ko: "켜두면 에이전트가 주기적으로 새 폴더를 읽고 의견을 남깁니다",
+    en: "When on, your agent periodically reads new folders and posts opinions",
+    zh: "开启后，智能体会定期阅读新文件夹并发表观点",
+  },
+  hiveAutoOff: { ko: "끔", en: "Off", zh: "关闭" },
+  hiveAutoHourly: { ko: "매시간", en: "Hourly", zh: "每小时" },
+  hiveAutoDaily: { ko: "매일", en: "Daily", zh: "每天" },
 };
 
 export function t(lang: Lang, key: string): string {

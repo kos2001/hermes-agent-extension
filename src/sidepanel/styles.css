@@ -600,3 +600,7 @@ html, body, #root {
 .hive-lb-title { font-weight: 600; }
 .hive-lb-item { color: var(--muted); }
 .hive-lb-rep { color: var(--accent); }
+
+/* Heartbeat (auto-opinion) control in the Hive feed view */
+.hive-heartbeat { display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--muted); margin-bottom: 8px; }
+.hive-heartbeat select { background: var(--panel-2); color: var(--text); border: 1px solid var(--border); border-radius: 5px; padding: 2px 6px; font: inherit; font-size: 11px; }
