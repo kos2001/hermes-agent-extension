@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import type { Session } from "@supabase/supabase-js";
-import { listFeed, react, unreact } from "@/lib/cloud/feed";
+import { listFeed, listOwnerFolders, react, unreact } from "@/lib/cloud/feed";
 import { getFolder } from "@/lib/cloud/folders";
 import { listComments, postComment, threadComments } from "@/lib/cloud/comments";
 import { myOpinionVotes, opinionVoteCounts, unvoteOpinion, voteOpinion } from "@/lib/cloud/opinion-votes";
-import { listLeaderboard, type Contributor } from "@/lib/cloud/leaderboard";
+import { getContributor, listLeaderboard, type Contributor } from "@/lib/cloud/leaderboard";
 import { createCommunity, joinCommunity, leaveCommunity, listCommunities, myCommunityIds } from "@/lib/cloud/communities";
 import { buildConversations, getProfileNames, listMyMessages, markRead, sendMessage } from "@/lib/cloud/messages";
 import type { Comment, Community, DirectMessage, FeedEntry, SharedFolder, SharedItem } from "@/lib/cloud/types";
@@ -146,20 +146,37 @@ function SignedIn({ session }: { session: Session }) {
   const [tab, setTab] = useState<"feed" | "leaderboard" | "communities" | "messages">("feed");
   const [community, setCommunity] = useState<{ id: string; name: string } | null>(null);
   const [dmTarget, setDmTarget] = useState<{ id: string; name: string } | null>(null);
+  const [profile, setProfile] = useState<{ id: string; name: string } | null>(null);
   const myId = session.user.id;
   const name = (session.user.user_metadata?.full_name as string | undefined) ?? session.user.email ?? "";
 
   const startDm = (id: string, who: string) => {
     if (id === myId) return;
     setDmTarget({ id, name: who });
+    setProfile(null);
     setTab("messages");
     setOpenId(null);
     setCommunity(null);
+  };
+  const openProfile = (id: string, who: string) => {
+    setProfile({ id, name: who });
+    setOpenId(null);
   };
 
   let content: ReactNode;
   if (openId) {
     content = <Detail folderId={openId} onBack={() => setOpenId(null)} />;
+  } else if (profile) {
+    content = (
+      <Profile
+        userId={profile.id}
+        fallbackName={profile.name}
+        isMe={profile.id === myId}
+        onBack={() => setProfile(null)}
+        onOpenFolder={setOpenId}
+        onMessage={startDm}
+      />
+    );
   } else if (community) {
     content = (
       <>
@@ -169,7 +186,7 @@ function SignedIn({ session }: { session: Session }) {
           </span>
           <button onClick={() => setCommunity(null)}>← All communities</button>
         </div>
-        <Feed onOpen={setOpenId} onMessage={startDm} communityId={community.id} />
+        <Feed onOpen={setOpenId} onOpenProfile={openProfile} communityId={community.id} />
       </>
     );
   } else {
@@ -188,9 +205,9 @@ function SignedIn({ session }: { session: Session }) {
           </button>
         </nav>
         {tab === "feed" ? (
-          <Feed onOpen={setOpenId} onMessage={startDm} />
+          <Feed onOpen={setOpenId} onOpenProfile={openProfile} />
         ) : tab === "leaderboard" ? (
-          <Leaderboard />
+          <Leaderboard onOpenProfile={openProfile} />
         ) : tab === "communities" ? (
           <Communities onOpen={setCommunity} />
         ) : (
@@ -389,11 +406,11 @@ function Messages({ myId, initialOther }: { myId: string; initialOther: { id: st
 
 function Feed({
   onOpen,
-  onMessage,
+  onOpenProfile,
   communityId,
 }: {
   onOpen: (id: string) => void;
-  onMessage: (id: string, name: string) => void;
+  onOpenProfile: (id: string, name: string) => void;
   communityId?: string;
 }) {
   const [entries, setEntries] = useState<FeedEntry[] | null>(null);
@@ -451,14 +468,84 @@ function Feed({
 
       <div className="feed">
         {shown.map((e) => (
-          <FolderCard key={e.id} entry={e} onOpen={() => onOpen(e.id)} onMessage={onMessage} />
+          <FolderCard key={e.id} entry={e} onOpen={() => onOpen(e.id)} onOpenProfile={onOpenProfile} />
         ))}
       </div>
     </>
   );
 }
 
-function Leaderboard() {
+function Profile({
+  userId,
+  fallbackName,
+  isMe,
+  onBack,
+  onOpenFolder,
+  onMessage,
+}: {
+  userId: string;
+  fallbackName: string;
+  isMe: boolean;
+  onBack: () => void;
+  onOpenFolder: (id: string) => void;
+  onMessage: (id: string, name: string) => void;
+}) {
+  const [rep, setRep] = useState<Contributor | null>(null);
+  const [folders, setFolders] = useState<FeedEntry[] | null>(null);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    Promise.all([getContributor(supabase, userId), listOwnerFolders(supabase, userId)])
+      .then(([r, f]) => {
+        setRep(r);
+        setFolders(f);
+      })
+      .catch((e) => setError(errMsg(e)));
+  }, [userId]);
+
+  const who = rep?.display_name ?? fallbackName;
+
+  return (
+    <div className="profile">
+      <div className="filter-bar">
+        <span>👤 <strong>{who}</strong></span>
+        <button onClick={onBack}>← Back</button>
+      </div>
+      {error && <p className="hint err">⚠ {error}</p>}
+      <div className="stats">
+        <Stat n={rep?.votes_received ?? 0} label="upvotes" />
+        <Stat n={rep?.opinions ?? 0} label="opinions" />
+        <Stat n={rep?.folders_shared ?? 0} label="folders" />
+      </div>
+      {!isMe && (
+        <button className="primary" onClick={() => onMessage(userId, who)} style={{ marginBottom: 16 }}>
+          ✉ Message
+        </button>
+      )}
+      <h3>Shared folders</h3>
+      {!folders && <p className="hint">Loading…</p>}
+      {folders && folders.length === 0 && <p className="hint">No shared folders yet.</p>}
+      <div className="feed">
+        {folders?.map((f) => (
+          <article key={f.id} className="card" onClick={() => onOpenFolder(f.id)} style={{ cursor: "pointer" }}>
+            <header className="card-head">
+              <h3>{f.title}</h3>
+              <span className="count">{f.item_count} items</span>
+            </header>
+            {f.summary && <p className="summary">{f.summary}</p>}
+            <div className="topics">
+              {f.topics.map((t) => (
+                <span key={t} className="chip">#{t}</span>
+              ))}
+            </div>
+          </article>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function Leaderboard({ onOpenProfile }: { onOpenProfile: (id: string, name: string) => void }) {
   const [rows, setRows] = useState<Contributor[] | null>(null);
   const [error, setError] = useState("");
 
@@ -474,10 +561,10 @@ function Leaderboard() {
 
   return (
     <div className="leaderboard">
-      <p className="hint">Ranked by upvotes their opinions earned.</p>
+      <p className="hint">Ranked by upvotes their opinions earned. Click a name for their profile.</p>
       <ol className="lb-list">
         {rows.map((r, i) => (
-          <li key={r.user_id} className="lb-row">
+          <li key={r.user_id} className="lb-row" onClick={() => onOpenProfile(r.user_id, r.display_name ?? "Someone")} style={{ cursor: "pointer" }}>
             <span className={`lb-rank r${i + 1}`}>{i + 1}</span>
             <span className="lb-name">{r.display_name ?? "Someone"}</span>
             <span className="lb-stats">
@@ -504,11 +591,11 @@ function Stat({ n, label }: { n: number; label: string }) {
 function FolderCard({
   entry,
   onOpen,
-  onMessage,
+  onOpenProfile,
 }: {
   entry: FeedEntry;
   onOpen: () => void;
-  onMessage: (id: string, name: string) => void;
+  onOpenProfile: (id: string, name: string) => void;
 }) {
   const owner = entry.owner.display_name ?? "Someone";
   return (
@@ -517,13 +604,13 @@ function FolderCard({
         <h3>{entry.title}</h3>
         <span
           className="owner"
-          title={`Message ${owner}`}
+          title={`View ${owner}'s profile`}
           onClick={(e) => {
             e.stopPropagation();
-            onMessage(entry.owner_id, owner);
+            onOpenProfile(entry.owner_id, owner);
           }}
         >
-          ✉ {owner}
+          {owner}
         </span>
       </header>
       {entry.summary && <p className="summary" onClick={onOpen}>{entry.summary}</p>}
