@@ -15,6 +15,19 @@ export interface SharedFolder {
   item_count: number;
   created_at: string;
   updated_at: string;
+  /** Community this folder is posted into, or null. */
+  community_id: string | null;
+}
+
+/** A topic group folders can be posted into and members can join. */
+export interface Community {
+  id: string;
+  name: string;
+  description: string | null;
+  created_by: string;
+  created_at: string;
+  folder_count: number;
+  member_count: number;
 }
 
 export interface SharedItem {
@@ -33,6 +46,8 @@ export interface PublishFolderInput {
   summary: string;
   topics: string[];
   items: { title: string; url: string; itemSummary?: string }[];
+  /** Optional community to post the folder into. */
+  communityId?: string | null;
 }
 
 /** A feed row joined with its owner profile and item count. */

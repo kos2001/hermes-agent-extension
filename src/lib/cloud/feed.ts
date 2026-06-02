@@ -3,13 +3,11 @@ import type { FeedEntry } from "./types";
 
 type ReactionKind = "like" | "save";
 
-/** Newest shared folders, each joined with its owner profile. */
-export async function listFeed(sb: SupabaseClient, limit = 50): Promise<FeedEntry[]> {
-  const { data, error } = await sb
-    .from("shared_folders")
-    .select("*, profiles!shared_folders_owner_id_fkey(display_name, avatar_url)")
-    .order("updated_at", { ascending: false })
-    .limit(limit);
+/** Newest shared folders, each joined with its owner profile. Optionally scoped to one community. */
+export async function listFeed(sb: SupabaseClient, limit = 50, communityId?: string): Promise<FeedEntry[]> {
+  let query = sb.from("shared_folders").select("*, profiles!shared_folders_owner_id_fkey(display_name, avatar_url)");
+  if (communityId) query = query.eq("community_id", communityId);
+  const { data, error } = await query.order("updated_at", { ascending: false }).limit(limit);
   if (error) throw error;
 
   return (data ?? []).map((row: Record<string, unknown>) => {

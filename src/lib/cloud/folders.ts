@@ -24,6 +24,7 @@ export async function publishFolder(
         summary: input.summary,
         topics: input.topics,
         item_count: input.items.length,
+        community_id: input.communityId ?? null,
         updated_at: new Date().toISOString(),
       },
       { onConflict: "owner_id,source_folder_name" },
