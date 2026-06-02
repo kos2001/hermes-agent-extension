@@ -15,7 +15,11 @@ import {
   saveHeartbeatSettings,
   type HeartbeatFreq,
 } from "@/lib/cloud/heartbeat";
-import type { Comment, FeedEntry } from "@/lib/cloud/types";
+import { loadActivity, unseenCount } from "@/lib/cloud/activity";
+import { buildConversations, getProfileNames, listMyMessages, markRead, sendMessage } from "@/lib/cloud/messages";
+import type { ActivityItem, Comment, DirectMessage, FeedEntry } from "@/lib/cloud/types";
+
+const ACTIVITY_SEEN_KEY = "hive.activity.seen";
 
 /**
  * Hive feed inside the side panel: browse shared folders and let your AI agent
@@ -24,16 +28,25 @@ import type { Comment, FeedEntry } from "@/lib/cloud/types";
  */
 export default function HiveFeedView({ config, lang }: { config: ConnectionConfig | null; lang: Lang }) {
   const [signedIn, setSignedIn] = useState<boolean | null>(null);
+  const [myId, setMyId] = useState("");
   const [entries, setEntries] = useState<FeedEntry[] | null>(null);
   const [top, setTop] = useState<Contributor[]>([]);
   const [hbFreq, setHbFreq] = useState<HeartbeatFreq>("off");
   const [openId, setOpenId] = useState<string | null>(null);
   const [error, setError] = useState("");
+  const [tab, setTab] = useState<"feed" | "activity" | "messages">("feed");
+  const [dmTarget, setDmTarget] = useState<{ id: string; name: string } | null>(null);
+  const [activity, setActivity] = useState<ActivityItem[] | null>(null);
+  const [seen, setSeen] = useState<string | null>(null);
 
   useEffect(() => {
     if (!cloudConfigured) return;
-    void getSession().then((s) => setSignedIn(!!s));
+    void getSession().then((s) => {
+      setSignedIn(!!s);
+      setMyId(s?.user?.id ?? "");
+    });
     void loadHeartbeatSettings().then((s) => setHbFreq(s.freq));
+    void chrome.storage.local.get(ACTIVITY_SEEN_KEY).then((r) => setSeen(r[ACTIVITY_SEEN_KEY] ?? null));
   }, []);
 
   const changeHeartbeat = async (freq: HeartbeatFreq) => {
@@ -50,43 +63,177 @@ export default function HiveFeedView({ config, lang }: { config: ConnectionConfi
     listLeaderboard(supabase, 3)
       .then(setTop)
       .catch(() => {});
+    loadActivity(supabase).then(setActivity).catch(() => {});
   }, [signedIn]);
+
+  const unseen = activity ? unseenCount(activity, seen) : 0;
+  const openActivity = () => {
+    setTab("activity");
+    const now = new Date().toISOString();
+    void chrome.storage.local.set({ [ACTIVITY_SEEN_KEY]: now });
+    setSeen(now);
+  };
+  const startDm = (id: string, who: string) => {
+    if (!id || id === myId) return;
+    setDmTarget({ id, name: who });
+    setTab("messages");
+  };
 
   if (!cloudConfigured) return <div className="bm-status">{t(lang, "hiveNotConfigured")}</div>;
   if (signedIn === null) return <div className="bm-status">…</div>;
   if (!signedIn) return <div className="bm-status">{t(lang, "hiveSignInPrompt")}</div>;
   if (error) return <div className="bm-status err">⚠ {error}</div>;
-  if (!entries) return <div className="bm-status">…</div>;
-  if (entries.length === 0) return <div className="bm-empty">{t(lang, "hiveNoFolders")}</div>;
 
   return (
     <div className="hive-view">
-      <div className="hive-heartbeat" title={t(lang, "hiveAutoHint")}>
-        <span>🤖 {t(lang, "hiveAuto")}</span>
-        <select value={hbFreq} disabled={!config} onChange={(e) => void changeHeartbeat(e.target.value as HeartbeatFreq)}>
-          <option value="off">{t(lang, "hiveAutoOff")}</option>
-          <option value="hourly">{t(lang, "hiveAutoHourly")}</option>
-          <option value="daily">{t(lang, "hiveAutoDaily")}</option>
-        </select>
+      <div className="hive-tabs">
+        <button className={tab === "feed" ? "active" : ""} onClick={() => setTab("feed")}>{t(lang, "hiveTabFeed")}</button>
+        <button className={tab === "activity" ? "active" : ""} onClick={openActivity}>
+          🔔{unseen > 0 && <span className="hive-tab-badge">{unseen}</span>}
+        </button>
+        <button className={tab === "messages" ? "active" : ""} onClick={() => setTab("messages")}>✉</button>
       </div>
-      {top.length > 0 && (
-        <div className="hive-lb">
-          <span className="hive-lb-title">🏆 {t(lang, "hiveTopContributors")}</span>
-          {top.map((r, i) => (
-            <span key={r.user_id} className="hive-lb-item">
-              {i + 1}. {r.display_name ?? "—"} <span className="hive-lb-rep">▲{r.votes_received}</span>
-            </span>
-          ))}
-        </div>
-      )}
-      {entries.map((e) => (
-        <div key={e.id} className={`hive-card${openId === e.id ? " open" : ""}`}>
-          <div className="hive-card-head" onClick={() => setOpenId((id) => (id === e.id ? null : e.id))}>
-            <span className="hive-card-title">{e.title}</span>
-            <span className="hive-card-owner">{e.owner.display_name ?? "—"}</span>
+
+      {tab === "feed" && (
+        <>
+          <div className="hive-heartbeat" title={t(lang, "hiveAutoHint")}>
+            <span>🤖 {t(lang, "hiveAuto")}</span>
+            <select value={hbFreq} disabled={!config} onChange={(e) => void changeHeartbeat(e.target.value as HeartbeatFreq)}>
+              <option value="off">{t(lang, "hiveAutoOff")}</option>
+              <option value="hourly">{t(lang, "hiveAutoHourly")}</option>
+              <option value="daily">{t(lang, "hiveAutoDaily")}</option>
+            </select>
           </div>
-          {e.summary && <div className="hive-card-summary">{e.summary}</div>}
-          {openId === e.id && <FolderThread folder={e} config={config} lang={lang} />}
+          {top.length > 0 && (
+            <div className="hive-lb">
+              <span className="hive-lb-title">🏆 {t(lang, "hiveTopContributors")}</span>
+              {top.map((r, i) => (
+                <span key={r.user_id} className="hive-lb-item">
+                  {i + 1}. {r.display_name ?? "—"} <span className="hive-lb-rep">▲{r.votes_received}</span>
+                </span>
+              ))}
+            </div>
+          )}
+          {!entries && <div className="bm-status">…</div>}
+          {entries && entries.length === 0 && <div className="bm-empty">{t(lang, "hiveNoFolders")}</div>}
+          {entries?.map((e) => (
+            <div key={e.id} className={`hive-card${openId === e.id ? " open" : ""}`}>
+              <div className="hive-card-head" onClick={() => setOpenId((id) => (id === e.id ? null : e.id))}>
+                <span className="hive-card-title">{e.title}</span>
+                <span
+                  className="hive-card-owner"
+                  title={t(lang, "hiveMessageOwner")}
+                  onClick={(ev) => {
+                    ev.stopPropagation();
+                    startDm(e.owner_id, e.owner.display_name ?? "—");
+                  }}
+                >
+                  ✉ {e.owner.display_name ?? "—"}
+                </span>
+              </div>
+              {e.summary && <div className="hive-card-summary">{e.summary}</div>}
+              {openId === e.id && <FolderThread folder={e} config={config} lang={lang} />}
+            </div>
+          ))}
+        </>
+      )}
+
+      {tab === "activity" && <HiveActivity items={activity} lang={lang} onOpen={(fid) => { setTab("feed"); setOpenId(fid); }} />}
+      {tab === "messages" && <HiveMessages myId={myId} initial={dmTarget} lang={lang} />}
+    </div>
+  );
+}
+
+function HiveActivity({ items, lang, onOpen }: { items: ActivityItem[] | null; lang: Lang; onOpen: (folderId: string) => void }) {
+  if (!items) return <div className="bm-status">…</div>;
+  if (items.length === 0) return <div className="bm-empty">{t(lang, "hiveNoActivity")}</div>;
+  const key = (a: ActivityItem) => (a.type === "reply" ? "hiveActReply" : a.type === "vote" ? "hiveActVote" : "hiveActOpinion");
+  return (
+    <div className="hive-activity">
+      {items.map((a) => (
+        <div key={a.id} className="hive-act-row" onClick={() => a.folderId && onOpen(a.folderId)}>
+          {t(lang, key(a)).replace("{who}", a.actorName).replace("{t}", a.folderTitle)}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function HiveMessages({ myId, initial, lang }: { myId: string; initial: { id: string; name: string } | null; lang: Lang }) {
+  const [messages, setMessages] = useState<DirectMessage[] | null>(null);
+  const [names, setNames] = useState<Record<string, string>>(() => (initial ? { [initial.id]: initial.name } : {}));
+  const [openOther, setOpenOther] = useState<string | null>(initial?.id ?? null);
+  const [body, setBody] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const load = useCallback(() => {
+    listMyMessages(supabase)
+      .then(async (msgs) => {
+        setMessages(msgs);
+        const ids = new Set<string>();
+        for (const m of msgs) ids.add(m.sender_id === myId ? m.recipient_id : m.sender_id);
+        if (initial) ids.add(initial.id);
+        ids.delete(myId);
+        const fetched = ids.size ? await getProfileNames(supabase, [...ids]) : {};
+        setNames((prev) => ({ ...prev, ...fetched }));
+      })
+      .catch(() => {});
+  }, [myId, initial]);
+  useEffect(load, [load]);
+  useEffect(() => {
+    if (openOther) void markRead(supabase, openOther).then(load).catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openOther]);
+
+  async function send() {
+    const text = body.trim();
+    if (!text || !openOther) return;
+    setBusy(true);
+    try {
+      await sendMessage(supabase, openOther, text);
+      setBody("");
+      load();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (!messages) return <div className="bm-status">…</div>;
+  const convos = buildConversations(messages, myId);
+  if (openOther && !convos.some((c) => c.otherId === openOther)) {
+    convos.unshift({ otherId: openOther, lastBody: "", lastAt: "", unread: 0 });
+  }
+
+  if (openOther) {
+    const thread = messages.filter((m) => m.sender_id === openOther || m.recipient_id === openOther);
+    return (
+      <div className="hive-dm">
+        <div className="hive-dm-head">
+          <button className="tx-restore" onClick={() => setOpenOther(null)}>←</button>
+          <strong>{names[openOther] ?? "—"}</strong>
+        </div>
+        <div className="hive-dm-thread">
+          {thread.map((m) => (
+            <div key={m.id} className={`hive-dm-msg ${m.sender_id === myId ? "mine" : "theirs"}`}>{m.body}</div>
+          ))}
+          {thread.length === 0 && <div className="hive-op-empty">{t(lang, "hiveNoConvos")}</div>}
+        </div>
+        <div className="hive-comment">
+          <textarea rows={2} placeholder={t(lang, "hiveCommentPlaceholder")} value={body} disabled={busy} onChange={(e) => setBody(e.target.value)} />
+          <button className="tx-go" disabled={busy || !body.trim()} onClick={() => void send()}>{t(lang, "hivePost")}</button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="hive-dm">
+      {convos.length === 0 && <div className="bm-empty">{t(lang, "hiveNoConvos")}</div>}
+      {convos.map((c) => (
+        <div key={c.otherId} className="hive-dm-row" onClick={() => setOpenOther(c.otherId)}>
+          <span className="hive-dm-name">{names[c.otherId] ?? "—"}</span>
+          <span className="hive-dm-last">{c.lastBody}</span>
+          {c.unread > 0 && <span className="hive-dm-unread">{c.unread}</span>}
         </div>
       ))}
     </div>
