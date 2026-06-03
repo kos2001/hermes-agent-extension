@@ -11,7 +11,7 @@ import {
 } from "@/lib/page-context";
 import { restoreOriginals, translatePage } from "@/lib/translator";
 import { buildSkillMessages, PROMPT_SKILLS, type PromptSkill } from "@/lib/skills";
-import { isLang, LANG_KEY, LANGS, replyLanguageInstruction, t, type Lang } from "@/lib/i18n";
+import { isLang, LANG_KEY, replyLanguageInstruction, t, type Lang } from "@/lib/i18n";
 import { isEnterSubmit } from "@/lib/keyboard";
 import { HiveSignIn } from "./HiveSignIn";
 import { HIVE_ENABLED } from "@/lib/cloud/client";
@@ -77,11 +77,9 @@ export default function App() {
     applyTheme(next);
     void chrome.storage.local.set({ [THEME_KEY]: next });
   }, []);
+  // UI language is loaded from storage and kept in sync via the storage
+  // onChanged listener below; it's *set* in the options page, not here.
   const [lang, setLangState] = useState<Lang>("ko");
-  const setLang = useCallback((next: Lang) => {
-    setLangState(next);
-    void chrome.storage.local.set({ [LANG_KEY]: next });
-  }, []);
   const [translateBusy, setTranslateBusy] = useState(false);
   const [translateProgress, setTranslateProgress] = useState<{ done: number; total: number } | null>(null);
   const [translateError, setTranslateError] = useState<string | null>(null);
@@ -446,22 +444,11 @@ export default function App() {
 
   return (
     <div className="app">
-      {/* Top row: online status + language selection + settings-related controls. */}
+      {/* Top row: online status + settings-related controls. UI language is set
+          in the options page (Hermes Agent — Settings). */}
       <div className="topbar">
         <span className={`status ${health}`} title={t(lang, "statusTitle")}>
           {health === "online" ? t(lang, "online") : health === "offline" ? t(lang, "offline") : "…"}
-        </span>
-        <span className="lang-switch">
-          {LANGS.map((l) => (
-            <button
-              key={l.code}
-              className={`lang-btn${lang === l.code ? " active" : ""}`}
-              onClick={() => setLang(l.code)}
-              title={t(lang, "switchLang").replace("{name}", l.name)}
-            >
-              {l.label}
-            </button>
-          ))}
         </span>
         <button
           className="icon-btn theme"
