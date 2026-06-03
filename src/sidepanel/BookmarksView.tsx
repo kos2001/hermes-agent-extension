@@ -17,7 +17,7 @@ import {
   parseCleanupRemovals,
 } from "@/lib/bookmarks";
 import { runSemanticDedup } from "@/lib/semantic-dedup";
-import { cloudConfigured, supabase } from "@/lib/cloud/client";
+import { cloudConfigured, HIVE_ENABLED, supabase } from "@/lib/cloud/client";
 import { getSession } from "@/lib/cloud/auth";
 import { publishFolder } from "@/lib/cloud/folders";
 import { summarizeFolder } from "@/lib/cloud/summarize-folder";
@@ -370,7 +370,7 @@ export default function BookmarksView({
         <button className="skill" onClick={() => void runAi()} disabled={disabled || !config}>{t(lang, "bm.ai")}</button>
       </div>
 
-      {cloudConfigured && (
+      {HIVE_ENABLED && cloudConfigured && (
         <div className="bm-share" title={t(lang, "bm.shareTitle")}>
           <select
             className="tx-lang"

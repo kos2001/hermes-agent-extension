@@ -8,6 +8,13 @@ const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
 export const cloudConfigured = Boolean(url && anonKey);
 
 /**
+ * Master switch for the Hive (collective bookmarks) feature. Held OFF until the
+ * feature stabilizes — this hides every Hive entry point (feed icon, sign-in,
+ * share-to-Hive) without removing the code. Flip to `true` to re-enable.
+ */
+export const HIVE_ENABLED: boolean = false;
+
+/**
  * Shared Supabase client. Uses the implicit OAuth flow (tokens arrive in the
  * redirect fragment, which suits chrome.identity.launchWebAuthFlow) and stores
  * the session in chrome.storage so it is shared across SW + side panel.
