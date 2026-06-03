@@ -84,6 +84,7 @@ export default function MarketReportView({
       setReports(await saveReport(report));
       if (report.synthesis) onReport(report.synthesis);
     } catch (e) {
+      if (ctrl.signal.aborted) return; // user/unmount cancelled — not an error
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       abortRef.current = null;

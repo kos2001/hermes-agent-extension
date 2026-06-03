@@ -305,6 +305,9 @@ export async function translatePage(opts: TranslatePageOptions): Promise<{
         const map = await translateChunk(opts.config, opts.targetLang, item.c, signal);
         applied += await applyTranslations(opts.tabId, map);
       } catch (e) {
+        // A user/unmount abort surfaces here as an empty-response or abort error;
+        // it's expected cancellation, not a chunk failure — don't report it.
+        if (signal.aborted) return;
         const msg = e instanceof Error ? e.message : String(e);
         opts.onError?.(item.i, msg);
       }

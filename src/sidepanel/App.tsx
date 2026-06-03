@@ -366,6 +366,7 @@ export default function App() {
       });
       if (result.chunks === 0) setTranslateError("No translatable text found");
     } catch (e) {
+      if (controller.signal.aborted) return; // user/unmount cancelled — not an error
       setTranslateError(e instanceof Error ? e.message : String(e));
     } finally {
       translateAbortRef.current = null;
