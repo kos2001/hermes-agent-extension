@@ -184,8 +184,15 @@ html, body, #root {
   cursor: pointer;
   font-size: 12px;
 }
-.translate-bar .tx-restore {
+/* Keep the two actions together and push them to the right; on a narrow panel
+   the whole group wraps to its own line below the page-translate label. */
+.translate-bar .tx-actions {
   margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.translate-bar .tx-restore {
   background: var(--panel-2);
   color: var(--text);
   border: 1px solid var(--border);
