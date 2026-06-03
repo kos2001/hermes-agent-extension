@@ -134,7 +134,7 @@ async function runScheduledMarketReport(): Promise<void> {
   // Match the report language to the user's selected UI language.
   const storedLang = (await chrome.storage.local.get(LANG_KEY))[LANG_KEY];
   const lang = isLang(storedLang) ? storedLang : "ko";
-  const report = await runMarketReport({ nodes, folderId: settings.folderId, folderTitle, config, lang });
+  const report = await runMarketReport({ nodes, folderId: settings.folderId, folderTitle, config, lang, instruction: settings.prompt });
   await saveReport(report);
   if (settings.autoSave && report.synthesis) {
     try {

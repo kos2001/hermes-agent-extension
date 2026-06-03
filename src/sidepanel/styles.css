@@ -546,6 +546,43 @@ html, body, #root {
 .mr-controls .tx-go { background: var(--accent); border: 0; color: var(--on-accent); font-weight: 600; }
 .mr-controls .tx-restore { background: var(--panel-2); color: var(--text); border: 1px solid var(--border); }
 .mr-controls button:disabled { opacity: 0.5; cursor: not-allowed; }
+/* Custom report-writing prompt: saved-prompt picker + editor + save/delete. */
+.mr-prompt { padding: 0 12px 8px; display: flex; flex-direction: column; gap: 6px; }
+.mr-prompt-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 12px; color: var(--muted); }
+.mr-prompt-pick {
+  background: var(--panel-2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 3px 6px;
+  font: inherit;
+  font-size: 12px;
+  max-width: 60%;
+}
+.mr-prompt-text {
+  width: 100%;
+  background: var(--panel-2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 8px;
+  font: inherit;
+  font-size: 12px;
+  resize: vertical;
+  min-height: 38px;
+}
+.mr-prompt-btns { display: flex; gap: 6px; }
+.mr-prompt-btns .tx-restore {
+  background: var(--panel-2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 3px 10px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.mr-prompt-btns .tx-restore:disabled { opacity: 0.5; cursor: not-allowed; }
+
 /* Plain-language summary of the schedule + auto-save settings. */
 .mr-sched-summary {
   margin: 0 12px 8px;

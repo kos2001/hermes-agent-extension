@@ -7,14 +7,18 @@ import {
   type FolderInfo,
   type MarketReport,
   type MarketSettings,
+  type SavedPrompt,
   type ScheduleFreq,
   DEFAULT_MARKET_SETTINGS,
+  deletePrompt,
   downloadReport,
   listFolders,
   loadMarketSettings,
+  loadPrompts,
   loadReports,
   runMarketReport,
   saveMarketSettings,
+  savePrompt,
   saveReport,
   scheduleMarketAlarm,
 } from "@/lib/market-report";
@@ -41,6 +45,8 @@ export default function MarketReportView({
   const [progress, setProgress] = useState<{ done: number; total: number; label: string } | null>(null);
   const [error, setError] = useState("");
   const [saved, setSaved] = useState("");
+  const [prompts, setPrompts] = useState<SavedPrompt[]>([]);
+  const [selectedPromptId, setSelectedPromptId] = useState("");
   const abortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
@@ -50,6 +56,7 @@ export default function MarketReportView({
       setFolders(listFolders(ns));
       setSettings(await loadMarketSettings());
       setReports(await loadReports());
+      setPrompts(await loadPrompts());
     })();
   }, []);
 
@@ -61,6 +68,38 @@ export default function MarketReportView({
     setSettings(next);
     void saveMarketSettings(next).then(() => scheduleMarketAlarm(next));
   }, []);
+
+  // Pick a saved prompt (or "" for the built-in default) into the editor.
+  const pickPrompt = useCallback(
+    (id: string) => {
+      setSelectedPromptId(id);
+      const chosen = prompts.find((p) => p.id === id);
+      persist({ ...settings, prompt: chosen?.text ?? "" });
+    },
+    [prompts, settings, persist],
+  );
+
+  // Save the current editor text as a named, reusable prompt.
+  const saveCurrentPrompt = useCallback(async () => {
+    const text = settings.prompt.trim();
+    if (!text) {
+      setError(t(lang, "mr.promptEmpty"));
+      return;
+    }
+    const name = window.prompt(t(lang, "mr.promptNamePrompt"));
+    if (!name || !name.trim()) return;
+    setError("");
+    const next = await savePrompt(name, text);
+    setPrompts(next);
+    setSelectedPromptId(next.find((p) => p.name === name.trim())?.id ?? "");
+    setSaved(t(lang, "mr.promptSavedOk").replace("{name}", name.trim()));
+  }, [settings, lang]);
+
+  const removeSelectedPrompt = useCallback(async () => {
+    if (!selectedPromptId) return;
+    setPrompts(await deletePrompt(selectedPromptId));
+    setSelectedPromptId("");
+  }, [selectedPromptId]);
 
   const run = useCallback(async () => {
     if (!config) {
@@ -81,6 +120,7 @@ export default function MarketReportView({
         folderTitle: folder?.title || settings.folderId,
         config,
         lang,
+        instruction: settings.prompt,
         signal: ctrl.signal,
         onProgress: (done, total, label) => setProgress({ done, total, label }),
       });
@@ -94,7 +134,7 @@ export default function MarketReportView({
       setRunning(false);
       setProgress(null);
     }
-  }, [config, settings.folderId, folders, nodes, lang, onReport]);
+  }, [config, settings.folderId, settings.prompt, folders, nodes, lang, onReport]);
 
   const latest = reports[0];
   const latestHtml = useMemo(() => (latest?.synthesis ? renderMarkdown(latest.synthesis) : ""), [latest]);
@@ -198,6 +238,45 @@ export default function MarketReportView({
             {t(lang, "mr.run")}
           </button>
         )}
+      </div>
+
+      <div className="mr-prompt" title={t(lang, "mr.prompt.title")}>
+        <div className="mr-prompt-head">
+          <span>{t(lang, "mr.prompt")}</span>
+          <select
+            className="mr-prompt-pick"
+            value={selectedPromptId}
+            onChange={(e) => pickPrompt(e.target.value)}
+            disabled={running}
+            title={t(lang, "mr.promptSaved")}
+          >
+            <option value="">{t(lang, "mr.promptDefault")}</option>
+            {prompts.map((p) => (
+              <option key={p.id} value={p.id}>{p.name}</option>
+            ))}
+          </select>
+        </div>
+        <textarea
+          className="mr-prompt-text"
+          value={settings.prompt}
+          onChange={(e) => {
+            setSelectedPromptId("");
+            persist({ ...settings, prompt: e.target.value });
+          }}
+          placeholder={t(lang, "mr.prompt.placeholder")}
+          rows={2}
+          disabled={running}
+        />
+        <div className="mr-prompt-btns">
+          <button className="tx-restore" onClick={() => void saveCurrentPrompt()} disabled={running || !settings.prompt.trim()}>
+            {t(lang, "mr.promptSave")}
+          </button>
+          {selectedPromptId && (
+            <button className="tx-restore" onClick={() => void removeSelectedPrompt()} disabled={running}>
+              {t(lang, "mr.promptDelete")}
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="mr-sched-summary">{scheduleSummary}</div>
