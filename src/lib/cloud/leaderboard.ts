@@ -34,6 +34,16 @@ export async function listLeaderboard(sb: SupabaseClient, limit = 20): Promise<C
   return rankContributors((data ?? []) as Contributor[]).slice(0, limit);
 }
 
+/** Upvotes-received per user id (for inline reputation badges). */
+export async function getReputations(sb: SupabaseClient, ids: string[]): Promise<Record<string, number>> {
+  if (ids.length === 0) return {};
+  const { data, error } = await sb.from("contributor_reputation").select("user_id, votes_received").in("user_id", ids);
+  if (error) throw error;
+  const out: Record<string, number> = {};
+  for (const r of (data ?? []) as { user_id: string; votes_received: number }[]) out[r.user_id] = r.votes_received;
+  return out;
+}
+
 /** One member's reputation row (for their profile). */
 export async function getContributor(sb: SupabaseClient, userId: string): Promise<Contributor | null> {
   const { data, error } = await sb.from("contributor_reputation").select("*").eq("user_id", userId).maybeSingle();
