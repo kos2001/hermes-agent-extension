@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ConnectionConfig } from "@/lib/types";
 import { t, type Lang } from "@/lib/i18n";
 import { renderMarkdown } from "@/lib/markdown";
@@ -20,6 +20,9 @@ import {
 } from "@/lib/market-report";
 
 const HOURS = Array.from({ length: 24 }, (_, h) => h);
+
+// Recharts is heavy — split it into its own chunk, loaded only when a report exists.
+const MarketCharts = lazy(() => import("./Charts").then((m) => ({ default: m.MarketCharts })));
 
 export default function MarketReportView({
   config,
@@ -201,6 +204,9 @@ export default function MarketReportView({
             {latest.skipped > 0 && (
               <div className="mr-status">{t(lang, "mr.skipped").replace("{n}", String(latest.skipped))}</div>
             )}
+            <Suspense fallback={null}>
+              <MarketCharts reports={reports} lang={lang} />
+            </Suspense>
             {latestHtml ? (
               <div className="md" dangerouslySetInnerHTML={{ __html: latestHtml }} />
             ) : (
