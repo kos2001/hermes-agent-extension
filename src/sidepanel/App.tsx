@@ -478,23 +478,25 @@ export default function App() {
           <option>French</option>
           <option>German</option>
         </select>
-        {translateBusy ? (
-          <button className="tx-go" onClick={() => translateAbortRef.current?.abort()} title={t(lang, "stop")}>
-            {t(lang, "stop")}
+        <span className="tx-actions">
+          {translateBusy ? (
+            <button className="tx-go" onClick={() => translateAbortRef.current?.abort()} title={t(lang, "stop")}>
+              {t(lang, "stop")}
+            </button>
+          ) : (
+            <button className="tx-go" onClick={() => void runTranslate()} disabled={!config} title={t(lang, "translateTitle")}>
+              {t(lang, "translate")}
+            </button>
+          )}
+          <button
+            className="tx-restore secondary"
+            onClick={() => void runRestore()}
+            disabled={translateBusy}
+            title={t(lang, "restoreTitle")}
+          >
+            {t(lang, "restore")}
           </button>
-        ) : (
-          <button className="tx-go" onClick={() => void runTranslate()} disabled={!config} title={t(lang, "translateTitle")}>
-            {t(lang, "translate")}
-          </button>
-        )}
-        <button
-          className="tx-restore secondary"
-          onClick={() => void runRestore()}
-          disabled={translateBusy}
-          title={t(lang, "restoreTitle")}
-        >
-          {t(lang, "restore")}
-        </button>
+        </span>
       </div>
       {(translateProgress || translateError) && (
         <div className={`tx-status ${translateError ? "err" : ""}`}>
