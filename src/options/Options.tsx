@@ -3,6 +3,7 @@ import { assertHeadersLatin1, listModels, normaliseBaseUrl } from "@/lib/hermes-
 import { DEFAULT_CONFIG, type ConnectionConfig } from "@/lib/types";
 import { getProvider, OPENROUTER_HEADERS, PROVIDERS, type ProviderProfile } from "@/lib/providers";
 import { loadConfig, saveConfig } from "@/lib/storage";
+import { isLang, LANG_KEY, LANGS, t, type Lang } from "@/lib/i18n";
 
 type ProbeState =
   | { kind: "idle" }
@@ -16,6 +17,7 @@ export default function Options() {
   const [saved, setSaved] = useState(false);
   const [probe, setProbe] = useState<ProbeState>({ kind: "idle" });
   const [providerId, setProviderId] = useState<string>("");
+  const [lang, setLang] = useState<Lang>("ko");
 
   useEffect(() => {
     loadConfig().then((loaded) => {
@@ -27,7 +29,17 @@ export default function Options() {
       );
       if (match) setProviderId(match.id);
     });
+    chrome.storage.local.get(LANG_KEY).then((r) => {
+      if (isLang(r[LANG_KEY])) setLang(r[LANG_KEY]);
+    });
   }, []);
+
+  // Persist the UI language immediately; the side panel picks it up live via its
+  // storage onChanged listener.
+  const changeLang = (next: Lang) => {
+    setLang(next);
+    void chrome.storage.local.set({ [LANG_KEY]: next });
+  };
 
   const setField = <K extends keyof ConnectionConfig>(key: K, value: ConnectionConfig[K]) => {
     setSaved(false);
@@ -106,6 +118,23 @@ export default function Options() {
       <h1>Hermes Agent — Settings</h1>
       <div className="subtitle">
         Configure the connection to OpenRouter or your local Hermes server.
+      </div>
+
+      <div className="field">
+        <label>{t(lang, "langName")}</label>
+        <div className="lang-options">
+          {LANGS.map((l) => (
+            <button
+              key={l.code}
+              type="button"
+              className={`lang-opt${lang === l.code ? " active" : ""}`}
+              onClick={() => changeLang(l.code)}
+              title={l.name}
+            >
+              {l.label} · {l.name}
+            </button>
+          ))}
+        </div>
       </div>
 
       <label className="field">
