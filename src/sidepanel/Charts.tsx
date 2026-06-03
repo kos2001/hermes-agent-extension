@@ -56,47 +56,64 @@ const ZOOM_MIN = 0.6;
 const ZOOM_MAX = 2;
 const ZOOM_STEP = 0.25;
 
-/** A chart card with a title, optional hint, and a +/− zoom control. */
+/** A chart card with a title, optional hint, +/− zoom, and a hide/show toggle. */
 function ChartCard({
   title,
   hint,
+  lang,
   render,
 }: {
   title: string;
   hint?: string;
+  lang: Lang;
   render: (zoom: number) => React.ReactNode;
 }) {
   const [zoom, setZoom] = useState(1);
+  const [hidden, setHidden] = useState(false);
   const clamp = (z: number) => Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Math.round(z * 100) / 100));
   return (
-    <div className="chart-card">
+    <div className={`chart-card${hidden ? " collapsed" : ""}`}>
       <div className="chart-head">
         <span className="chart-title">{title}</span>
         <span className="chart-controls">
           {hint && <span className="chart-hint">{hint}</span>}
+          {!hidden && (
+            <>
+              <button
+                type="button"
+                className="chart-zoom"
+                onClick={() => setZoom((z) => clamp(z - ZOOM_STEP))}
+                disabled={zoom <= ZOOM_MIN}
+                title={t(lang, "chart.zoomOut")}
+                aria-label={t(lang, "chart.zoomOut")}
+              >
+                −
+              </button>
+              <button
+                type="button"
+                className="chart-zoom"
+                onClick={() => setZoom((z) => clamp(z + ZOOM_STEP))}
+                disabled={zoom >= ZOOM_MAX}
+                title={t(lang, "chart.zoomIn")}
+                aria-label={t(lang, "chart.zoomIn")}
+              >
+                +
+              </button>
+            </>
+          )}
           <button
             type="button"
-            className="chart-zoom"
-            onClick={() => setZoom((z) => clamp(z - ZOOM_STEP))}
-            disabled={zoom <= ZOOM_MIN}
-            title="−"
-            aria-label="zoom out"
+            className="chart-zoom chart-toggle"
+            onClick={() => setHidden((h) => !h)}
+            title={t(lang, hidden ? "chart.show" : "chart.hide")}
+            aria-label={t(lang, hidden ? "chart.show" : "chart.hide")}
+            aria-expanded={!hidden}
           >
-            −
-          </button>
-          <button
-            type="button"
-            className="chart-zoom"
-            onClick={() => setZoom((z) => clamp(z + ZOOM_STEP))}
-            disabled={zoom >= ZOOM_MAX}
-            title="+"
-            aria-label="zoom in"
-          >
-            +
+            {hidden ? "▸" : "▾"}
           </button>
         </span>
       </div>
-      {render(zoom)}
+      {!hidden && render(zoom)}
     </div>
   );
 }
@@ -201,11 +218,12 @@ export function MarketCharts({ reports, lang }: { reports: MarketReport[]; lang:
 
   return (
     <div className="charts">
-      <ChartCard title={t(lang, "chart.coverage")} hint={latest.folderTitle} render={(z) => <Donut data={donut.data} total={donut.total} zoom={z} />} />
+      <ChartCard title={t(lang, "chart.coverage")} hint={latest.folderTitle} lang={lang} render={(z) => <Donut data={donut.data} total={donut.total} zoom={z} />} />
       {trend.length >= 2 && (
         <ChartCard
           title={t(lang, "chart.trend")}
           hint={`${trend.length} · ${t(lang, "chart.sites")}`}
+          lang={lang}
           render={(z) => (
             <ResponsiveContainer width="100%" height={Math.round(120 * z)}>
               <AreaChart data={trend} margin={{ top: 6, right: 8, bottom: 0, left: -24 }}>
@@ -263,6 +281,7 @@ export function BookmarkCharts({ nodes, lang }: { nodes: BookmarkNode[]; lang: L
       <ChartCard
         title={t(lang, "chart.folders")}
         hint={t(lang, "chart.total").replace("{n}", String(totalBookmarks))}
+        lang={lang}
         render={(z) => <HBars data={folders} zoom={z} />}
       />
     </div>

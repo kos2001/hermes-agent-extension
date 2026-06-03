@@ -652,6 +652,11 @@ html, body, #root {
 }
 .chart-zoom:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
 .chart-zoom:disabled { opacity: 0.4; cursor: not-allowed; }
+/* Hide/show toggle: slightly wider chevron, no border to read as a header affordance. */
+.chart-toggle { font-size: 11px; border-color: transparent; background: transparent; }
+.chart-toggle:hover:not(:disabled) { background: var(--panel-2); }
+/* Collapsed card is just its header row. */
+.chart-card.collapsed { padding-bottom: 10px; }
 
 /* Donut: chart on top, centered total overlay, legend below. The `top` offset
    is set inline (= height / 2) so the total stays centered as zoom scales it. */
