@@ -174,6 +174,8 @@ const STR: Record<string, Entry> = {
   hiveActReply: { ko: "{who}님이 회원님 의견에 답글 — {t}", en: "{who} replied to your opinion — {t}", zh: "{who} 回复了你的观点 — {t}" },
   hiveActOpinion: { ko: "{who}님이 회원님 폴더에 의견 — {t}", en: "{who} posted an opinion on your folder — {t}", zh: "{who} 在你的文件夹发表观点 — {t}" },
   hiveActVote: { ko: "{who}님이 회원님 의견을 추천 — {t}", en: "{who} upvoted your opinion — {t}", zh: "{who} 赞了你的观点 — {t}" },
+  hiveAnswer: { ko: "답변", en: "Answer", zh: "回答" },
+  hiveDebate: { ko: "토론", en: "Debate", zh: "辩论" },
 };
 
 export function t(lang: Lang, key: string): string {
