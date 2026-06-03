@@ -15,8 +15,6 @@ import {
   Bar,
   BarChart,
   Cell,
-  Pie,
-  PieChart,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -118,49 +116,6 @@ function ChartCard({
   );
 }
 
-/** Donut with a centered total — scales with zoom. */
-function Donut({ data, total, zoom }: { data: { name: string; value: number; color: string }[]; total: number; zoom: number }) {
-  const height = Math.round(150 * zoom);
-  const outerR = Math.round(height * 0.41);
-  const innerR = Math.round(height * 0.28);
-  return (
-    <div className="chart-donut-wrap">
-      <ResponsiveContainer width="100%" height={height}>
-        <PieChart>
-          <Pie
-            data={data}
-            dataKey="value"
-            nameKey="name"
-            cx="50%"
-            cy="50%"
-            innerRadius={innerR}
-            outerRadius={outerR}
-            paddingAngle={2}
-            stroke="none"
-            isAnimationActive={animate}
-          >
-            {data.map((d) => (
-              <Cell key={d.name} fill={d.color} />
-            ))}
-          </Pie>
-          <Tooltip {...tooltipProps} />
-        </PieChart>
-      </ResponsiveContainer>
-      <div className="chart-donut-center" style={{ top: height / 2 }}>
-        <strong style={{ fontSize: Math.round(20 * zoom) }}>{total}</strong>
-      </div>
-      <ul className="chart-legend">
-        {data.map((d) => (
-          <li key={d.name}>
-            <i style={{ background: d.color }} />
-            {d.name} <b>{d.value}</b>
-          </li>
-        ))}
-      </ul>
-    </div>
-  );
-}
-
 /** Horizontal bars — readable for long category labels in a narrow panel. */
 function HBars({ data, zoom }: { data: { name: string; value: number; color: string }[]; zoom: number }) {
   const rowH = 28 * zoom;
@@ -188,20 +143,8 @@ function HBars({ data, zoom }: { data: { name: string; value: number; color: str
 }
 
 export function MarketCharts({ reports, lang }: { reports: MarketReport[]; lang: Lang }) {
-  const latest = reports[0];
-  const donut = useMemo(() => {
-    if (!latest) return null;
-    const failed = latest.sites.filter((s) => s.error).length;
-    const covered = latest.sites.filter((s) => !s.error && s.summary).length;
-    const data = [
-      { name: t(lang, "chart.covered"), value: covered, color: C.ok },
-      { name: t(lang, "chart.failed"), value: failed, color: C.fail },
-      { name: t(lang, "chart.skipped"), value: latest.skipped, color: C.neutral },
-    ].filter((d) => d.value > 0);
-    return { data, total: covered + failed + latest.skipped };
-  }, [latest, lang]);
-
-  // Oldest → newest so the trend reads left-to-right.
+  // Oldest → newest so the trend reads left-to-right. (The per-report coverage
+  // donut was dropped — the trend across runs is the useful view.)
   const trend = useMemo(
     () =>
       reports
@@ -214,11 +157,10 @@ export function MarketCharts({ reports, lang }: { reports: MarketReport[]; lang:
     [reports],
   );
 
-  if (!donut || donut.total === 0) return null;
+  if (trend.length < 2) return null;
 
   return (
     <div className="charts">
-      <ChartCard title={t(lang, "chart.coverage")} hint={latest.folderTitle} lang={lang} render={(z) => <Donut data={donut.data} total={donut.total} zoom={z} />} />
       {trend.length >= 2 && (
         <ChartCard
           title={t(lang, "chart.trend")}
