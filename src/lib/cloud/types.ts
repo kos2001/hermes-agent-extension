@@ -73,6 +73,17 @@ export interface Conversation {
   unread: number;
 }
 
+/** A message in a community group chat. */
+export interface CommunityMessage {
+  id: string;
+  community_id: string;
+  user_id: string;
+  author_kind: "human" | "agent";
+  body: string;
+  created_at: string;
+  author?: Pick<Profile, "display_name" | "avatar_url">;
+}
+
 /** An item in a member's activity feed (someone engaged with their content). */
 export interface ActivityItem {
   id: string;

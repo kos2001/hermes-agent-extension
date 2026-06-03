@@ -7,6 +7,7 @@ import { myOpinionVotes, opinionVoteCounts, unvoteOpinion, voteOpinion } from "@
 import { getContributor, listLeaderboard, type Contributor } from "@/lib/cloud/leaderboard";
 import { createCommunity, deleteCommunity, joinCommunity, leaveCommunity, listCommunities, myCommunityIds } from "@/lib/cloud/communities";
 import { buildConversations, getProfileNames, listMyMessages, markRead, sendMessage } from "@/lib/cloud/messages";
+import { listCommunityMessages, sendCommunityMessage } from "@/lib/cloud/community-chat";
 import { loadActivity, unseenCount } from "@/lib/cloud/activity";
 import { eqFilter, onTableInserts } from "@/lib/cloud/realtime";
 import { avatarFor } from "@/lib/cloud/avatar";
@@ -26,7 +27,7 @@ function renderBody(text: string): ReactNode {
   const parts = text.split(/(@[\p{L}\p{N}_]+)/gu);
   return parts.map((p, i) => (/^@[\p{L}\p{N}_]+$/u.test(p) ? <span key={i} className="mention">{p}</span> : p));
 }
-import type { ActivityItem, Comment, Community, DirectMessage, FeedEntry, SharedFolder, SharedItem } from "@/lib/cloud/types";
+import type { ActivityItem, Comment, Community, CommunityMessage, DirectMessage, FeedEntry, SharedFolder, SharedItem } from "@/lib/cloud/types";
 import { isValidEmail } from "@/lib/cloud/email";
 import { feedStats, topicCounts, topicWeight } from "@/lib/cloud/feed-stats";
 import { cloudConfigured, getSession, onAuthChange, sendEmailOtp, signOut, supabase, verifyEmailOtp } from "./cloud";
@@ -164,6 +165,7 @@ function SignedIn({ session }: { session: Session }) {
   const [openId, setOpenId] = useState<string | null>(null);
   const [tab, setTab] = useState<"feed" | "leaderboard" | "communities" | "messages" | "activity">("feed");
   const [community, setCommunity] = useState<{ id: string; name: string } | null>(null);
+  const [communityTab, setCommunityTab] = useState<"folders" | "chat">("folders");
   const [dmTarget, setDmTarget] = useState<{ id: string; name: string } | null>(null);
   const [profile, setProfile] = useState<{ id: string; name: string } | null>(null);
   const [activity, setActivity] = useState<ActivityItem[] | null>(null);
@@ -218,7 +220,15 @@ function SignedIn({ session }: { session: Session }) {
           </span>
           <button onClick={() => setCommunity(null)}>← All communities</button>
         </div>
-        <Feed onOpen={setOpenId} onOpenProfile={openProfile} communityId={community.id} />
+        <div className="scope">
+          <button className={communityTab === "folders" ? "active" : ""} onClick={() => setCommunityTab("folders")}>📁 Folders</button>
+          <button className={communityTab === "chat" ? "active" : ""} onClick={() => setCommunityTab("chat")}>💬 Chat</button>
+        </div>
+        {communityTab === "folders" ? (
+          <Feed onOpen={setOpenId} onOpenProfile={openProfile} communityId={community.id} />
+        ) : (
+          <CommunityChat communityId={community.id} myId={myId} />
+        )}
       </>
     );
   } else {
@@ -265,6 +275,65 @@ function SignedIn({ session }: { session: Session }) {
     >
       {content}
     </Shell>
+  );
+}
+
+function CommunityChat({ communityId, myId }: { communityId: string; myId: string }) {
+  const [messages, setMessages] = useState<CommunityMessage[] | null>(null);
+  const [body, setBody] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  const load = useCallback(() => {
+    listCommunityMessages(supabase, communityId)
+      .then(setMessages)
+      .catch((e) => setError(errMsg(e)));
+  }, [communityId]);
+  useEffect(load, [load]);
+  useEffect(() => onTableInserts(supabase, "community_messages", eqFilter("community_id", communityId), load), [communityId, load]);
+
+  async function send() {
+    const text = body.trim();
+    if (!text) return;
+    setBusy(true);
+    setError("");
+    try {
+      await sendCommunityMessage(supabase, communityId, text);
+      setBody("");
+      load();
+    } catch (e) {
+      setError(errMsg(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="chat">
+      {error && <p className="hint err">⚠ {error}</p>}
+      {!messages && <p className="hint">Loading…</p>}
+      {messages && messages.length === 0 && <p className="hint">No messages yet — start the conversation.</p>}
+      <div className="chat-thread">
+        {messages?.map((m) => {
+          const who = m.author?.display_name ?? "Someone";
+          const mine = m.user_id === myId;
+          return (
+            <div key={m.id} className={`chat-msg ${mine ? "mine" : "theirs"}`}>
+              {!mine && (
+                <span className="chat-from">
+                  <Avatar seed={m.user_id} label={who} /> {who}
+                </span>
+              )}
+              <span className="chat-bubble">{m.body}</span>
+            </div>
+          );
+        })}
+      </div>
+      <div className="opinion-form">
+        <textarea rows={2} placeholder="Message the community…" value={body} disabled={busy} onChange={(e) => setBody(e.target.value)} />
+        <button className="primary" onClick={() => void send()} disabled={busy || !body.trim()}>Send</button>
+      </div>
+    </div>
   );
 }
 
