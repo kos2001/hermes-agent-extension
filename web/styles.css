@@ -308,3 +308,10 @@ code { background: var(--panel-2); padding: 2px 6px; border-radius: 6px; font-si
 .chat-bubble { padding: 9px 13px; border-radius: 14px; background: var(--panel-2); white-space: pre-wrap; line-height: 1.45; }
 .chat-msg.mine .chat-bubble { background: linear-gradient(180deg, var(--accent-2), var(--accent)); color: var(--on-accent); border-bottom-right-radius: 4px; }
 .chat-msg.theirs .chat-bubble { border-bottom-left-radius: 4px; }
+
+/* Inline reputation badge + mention autocomplete */
+.rep-badge { margin-left: 6px; font-size: 11px; color: var(--accent); font-weight: 700; }
+.compose-wrap { position: relative; }
+.mention-menu { position: absolute; bottom: 100%; left: 0; margin-bottom: 6px; z-index: 30; background: var(--panel); border: 1px solid var(--border-strong); border-radius: var(--radius-sm); box-shadow: var(--shadow); overflow: hidden; min-width: 180px; }
+.mention-item { display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; background: transparent; border: none; border-radius: 0; padding: 8px 12px; }
+.mention-item:hover { background: var(--panel-2); }
