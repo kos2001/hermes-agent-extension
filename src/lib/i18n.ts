@@ -124,6 +124,8 @@ const STR: Record<string, Entry> = {
   "chart.show": { ko: "차트 보기", en: "Show chart", zh: "显示图表" },
   working: { ko: "● 작업 중…", en: "● Working…", zh: "● 处理中…" },
   inputPlaceholder: { ko: "메시지 입력…", en: "Message…", zh: "输入消息…" },
+  slashHint: { ko: "메시지 입력…  ( / 로 명령 )", en: "Message…  ( / for commands )", zh: "输入消息…（输入 / 使用命令）" },
+  "slash.title": { ko: "명령", en: "Commands", zh: "命令" },
   noPageText: { ko: "페이지 내용을 읽을 수 없습니다.", en: "Could not read the page content.", zh: "无法读取页面内容。" },
   noResult: { ko: "(결과 없음)", en: "(no result)", zh: "(无结果)" },
   langName: { ko: "언어", en: "Language", zh: "语言" },

@@ -337,6 +337,37 @@ html, body, #root {
   font-size: 12px;
 }
 
+/* Slash-command menu: opens above the input when the box starts with "/". */
+.slash-menu {
+  border-top: 1px solid var(--border);
+  background: var(--panel);
+  max-height: 240px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+.slash-item {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  width: 100%;
+  padding: 7px 12px;
+  background: transparent;
+  border: 0;
+  text-align: left;
+  cursor: pointer;
+  color: var(--text);
+  font-size: 13px;
+}
+.slash-item.active { background: var(--panel-2); }
+.slash-cmd {
+  color: var(--accent);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  min-width: 86px;
+}
+.slash-label { color: var(--muted); }
+
 .input-row {
   border-top: 1px solid var(--border);
   background: var(--panel);

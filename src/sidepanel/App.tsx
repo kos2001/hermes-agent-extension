@@ -383,7 +383,56 @@ export default function App() {
     setTranslateError(null);
   }, []);
 
+  // ── Slash commands ──────────────────────────────────────────────────
+  // Typing "/" in the chat box opens a filterable menu of the same actions
+  // available as buttons (skills, translate, new chat, view switches). The
+  // command names are language-neutral tokens so they're typeable in any UI lang.
+  const [slashIdx, setSlashIdx] = useState(0);
+  const slashCommands = useMemo(
+    () => [
+      ...PROMPT_SKILLS.map((s) => ({ name: s.id, label: t(lang, `skill.${s.id}`), run: () => void runPromptSkill(s) })),
+      { name: "links", label: t(lang, "skill.links"), run: () => void runLocalSkill() },
+      { name: "translate", label: t(lang, "translate"), run: () => void runTranslate() },
+      { name: "new", label: t(lang, "newChat"), run: () => newChat() },
+      { name: "bookmarks", label: t(lang, "bookmarks"), run: () => setView("bookmarks") },
+      { name: "market", label: t(lang, "market"), run: () => setView("market") },
+    ],
+    [lang, runPromptSkill, runLocalSkill, runTranslate, newChat],
+  );
+  const slashQuery = input.startsWith("/") ? input.slice(1).toLowerCase() : null;
+  const slashOpen = view === "chat" && !streaming && slashQuery !== null && !/\s/.test(slashQuery);
+  const slashMatches = slashOpen ? slashCommands.filter((c) => c.name.startsWith(slashQuery ?? "")) : [];
+  const slashSel = Math.min(slashIdx, Math.max(0, slashMatches.length - 1));
+  const runSlash = (cmd: { run: () => void }) => {
+    setInput("");
+    setSlashIdx(0);
+    cmd.run();
+  };
+
   const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    // Slash menu keyboard handling takes precedence over send while it's open.
+    if (slashOpen && slashMatches.length > 0) {
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        setSlashIdx((slashSel + 1) % slashMatches.length);
+        return;
+      }
+      if (e.key === "ArrowUp") {
+        e.preventDefault();
+        setSlashIdx((slashSel - 1 + slashMatches.length) % slashMatches.length);
+        return;
+      }
+      if (e.key === "Escape") {
+        e.preventDefault();
+        setInput("");
+        return;
+      }
+      if ((e.key === "Enter" || e.key === "Tab") && !e.nativeEvent.isComposing) {
+        e.preventDefault();
+        runSlash(slashMatches[slashSel]);
+        return;
+      }
+    }
     // `isComposing` guards against IME (Korean/Japanese/Chinese) — pressing
     // Enter to commit a composing character must not submit, or the last
     // character gets duplicated.
@@ -575,12 +624,33 @@ export default function App() {
         })}
       </div>
 
+      {slashOpen && slashMatches.length > 0 && (
+        <div className="slash-menu" role="listbox" aria-label={t(lang, "slash.title")}>
+          {slashMatches.map((c, i) => (
+            <button
+              key={c.name}
+              type="button"
+              role="option"
+              aria-selected={i === slashSel}
+              className={`slash-item${i === slashSel ? " active" : ""}`}
+              onMouseEnter={() => setSlashIdx(i)}
+              onClick={() => runSlash(c)}
+            >
+              <span className="slash-cmd">/{c.name}</span>
+              <span className="slash-label">{c.label}</span>
+            </button>
+          ))}
+        </div>
+      )}
       <div className="input-row">
         <textarea
           value={input}
-          onChange={(e) => setInput(e.target.value)}
+          onChange={(e) => {
+            setInput(e.target.value);
+            setSlashIdx(0);
+          }}
           onKeyDown={onKeyDown}
-          placeholder=""
+          placeholder={t(lang, "slashHint")}
           rows={1}
           disabled={streaming || !config}
         />
