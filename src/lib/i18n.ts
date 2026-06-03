@@ -99,9 +99,16 @@ const STR: Record<string, Entry> = {
   "mr.skipped": { ko: "{n}개 사이트는 상한(20)으로 제외됨", en: "{n} sites skipped (cap 20)", zh: "{n} 个站点因上限(20)被跳过" },
   "mr.siteError": { ko: "수집 실패", en: "fetch failed", zh: "抓取失败" },
   "mr.saveFolder": { ko: "저장 폴더", en: "Save folder", zh: "保存文件夹" },
-  "mr.autoSave": { ko: "자동 저장", en: "Auto-save", zh: "自动保存" },
+  "mr.saveFolder.title": { ko: "다운로드(Downloads) 아래 이 하위 폴더에 보고서 파일이 저장됩니다.", en: "Reports are saved to this subfolder under Downloads.", zh: "报告将保存到 下载 下的此子文件夹。" },
+  "mr.autoSave": { ko: "생성되면 파일로 자동 저장", en: "Auto-save to file on generate", zh: "生成后自动保存为文件" },
+  "mr.autoSave.title": { ko: "예약 보고서가 만들어질 때마다 저장 폴더에 자동으로 다운로드합니다.", en: "Each scheduled report is auto-downloaded to the save folder.", zh: "每次预约报告生成后自动下载到保存文件夹。" },
+  "mr.schedule.title": { ko: "정해진 주기로 백그라운드에서 보고서를 자동 생성합니다.", en: "Generate reports automatically in the background on a schedule.", zh: "按周期在后台自动生成报告。" },
   "mr.save": { ko: "저장", en: "Save", zh: "保存" },
   "mr.saved": { ko: "다운로드 폴더 '{folder}'에 저장됨", en: "Saved to Downloads/{folder}", zh: "已保存到 下载/{folder}" },
+  // Plain-language summary of what the current schedule + auto-save settings do.
+  "mr.sched.off": { ko: "📌 예약 꺼짐 — '지금 생성'으로 만든 뒤 보고서 옆 ⬇ 로 다운로드하세요.", en: "📌 Not scheduled — use Run now, then ⬇ next to a report to download.", zh: "📌 未预约 — 用“立即生成”，再点报告旁的 ⬇ 下载。" },
+  "mr.sched.auto": { ko: "🗓 {freq} {h}:00 자동 생성 → 다운로드 폴더 '{folder}'에 파일로 자동 저장", en: "🗓 Auto-generates {freq} at {h}:00 → auto-saved to Downloads/{folder}", zh: "🗓 {freq} {h}:00 自动生成 → 自动保存到 下载/{folder}" },
+  "mr.sched.app": { ko: "🗓 {freq} {h}:00 자동 생성 · 앱에만 보관 (수동 ⬇ 로 다운로드)", en: "🗓 Auto-generates {freq} at {h}:00 · kept in-app only (download with ⬇)", zh: "🗓 {freq} {h}:00 自动生成 · 仅保存在应用内（用 ⬇ 下载）" },
 
   // Charts (Recharts visualizations)
   "chart.coverage": { ko: "수집 현황", en: "Coverage", zh: "抓取情况" },
