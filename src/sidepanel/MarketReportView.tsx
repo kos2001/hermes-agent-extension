@@ -99,6 +99,18 @@ export default function MarketReportView({
   const latest = reports[0];
   const latestHtml = useMemo(() => (latest?.synthesis ? renderMarkdown(latest.synthesis) : ""), [latest]);
 
+  // Plain-language summary of what the current schedule + auto-save settings do,
+  // so the relationship between 주기 / 자동 저장 / 저장 폴더 is obvious at a glance.
+  const scheduleSummary = useMemo(() => {
+    if (settings.freq === "off") return t(lang, "mr.sched.off");
+    const freqLabel = t(lang, settings.freq === "daily" ? "mr.freq.daily" : "mr.freq.weekly");
+    const key = settings.autoSave ? "mr.sched.auto" : "mr.sched.app";
+    return t(lang, key)
+      .replace("{freq}", freqLabel)
+      .replace("{h}", String(settings.hour).padStart(2, "0"))
+      .replace("{folder}", settings.saveFolder || "Downloads");
+  }, [settings.freq, settings.autoSave, settings.hour, settings.saveFolder, lang]);
+
   // Save the latest report to the local Downloads/<saveFolder> directory.
   const saveLatest = useCallback(async () => {
     if (!latest) return;
@@ -128,7 +140,7 @@ export default function MarketReportView({
             ))}
           </select>
         </label>
-        <label className="mr-field">
+        <label className="mr-field" title={t(lang, "mr.schedule.title")}>
           <span>{t(lang, "mr.schedule")}</span>
           <select
             value={settings.freq}
@@ -154,7 +166,7 @@ export default function MarketReportView({
             </select>
           </label>
         )}
-        <label className="mr-field">
+        <label className="mr-field" title={t(lang, "mr.saveFolder.title")}>
           <span>{t(lang, "mr.saveFolder")}</span>
           <input
             type="text"
@@ -164,15 +176,19 @@ export default function MarketReportView({
             disabled={running}
           />
         </label>
-        <label className="mr-field mr-check">
-          <input
-            type="checkbox"
-            checked={settings.autoSave}
-            onChange={(e) => persist({ ...settings, autoSave: e.target.checked })}
-            disabled={running}
-          />
-          <span>{t(lang, "mr.autoSave")}</span>
-        </label>
+        {/* Auto-save only affects scheduled runs, so it appears only when a
+            schedule is on — making its dependency on 주기 visually explicit. */}
+        {settings.freq !== "off" && (
+          <label className="mr-field mr-check" title={t(lang, "mr.autoSave.title")}>
+            <input
+              type="checkbox"
+              checked={settings.autoSave}
+              onChange={(e) => persist({ ...settings, autoSave: e.target.checked })}
+              disabled={running}
+            />
+            <span>{t(lang, "mr.autoSave")}</span>
+          </label>
+        )}
         {running ? (
           <button className="tx-restore" onClick={() => abortRef.current?.abort()}>{t(lang, "stop")}</button>
         ) : (
@@ -181,6 +197,8 @@ export default function MarketReportView({
           </button>
         )}
       </div>
+
+      <div className="mr-sched-summary">{scheduleSummary}</div>
 
       {folders.length === 0 && <div className="mr-status">{t(lang, "mr.noFolder")}</div>}
       {error && <div className="mr-status err">⚠ {error}</div>}
