@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useRef, useState } from "react";
+import { lazy, memo, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import type { ConnectionConfig } from "@/lib/types";
 import { t, type Lang } from "@/lib/i18n";
 import { collectChat } from "@/lib/hermes-client";
@@ -21,6 +21,9 @@ import { cloudConfigured, supabase } from "@/lib/cloud/client";
 import { getSession } from "@/lib/cloud/auth";
 import { publishFolder } from "@/lib/cloud/folders";
 import { summarizeFolder } from "@/lib/cloud/summarize-folder";
+
+// Recharts is heavy — split it into its own chunk, loaded with the view's charts.
+const BookmarkCharts = lazy(() => import("./Charts").then((m) => ({ default: m.BookmarkCharts })));
 
 /** null = idle. Long ops: "dead"/"ai"/"clean"/"sdup"/"share". "apply" = applying. */
 type Busy = null | "dead" | "ai" | "clean" | "sdup" | "apply" | "share";
@@ -403,6 +406,10 @@ export default function BookmarksView({
       {(busy === "ai" || busy === "apply") && <div className="bm-status">{t(lang, "working")}</div>}
       {error && <div className="bm-status err">⚠ {error}</div>}
       {note && <div className="bm-status">{note}</div>}
+
+      <Suspense fallback={null}>
+        <BookmarkCharts actions={actions} nodes={nodes} lang={lang} />
+      </Suspense>
 
       <div className="bm-list">
         {actions.length === 0 && !disabled && !note && <div className="bm-empty">{t(lang, "bm.empty")}</div>}
