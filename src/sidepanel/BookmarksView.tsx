@@ -161,6 +161,7 @@ export default function BookmarksView({
       const merged = [...byId.values()];
       setResult(merged, noChanges(merged.length));
     } catch (e) {
+      if (ctrl.signal.aborted) return; // user/unmount cancelled — not an error
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       deadAbort.current = null;
