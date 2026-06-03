@@ -408,7 +408,7 @@ export default function BookmarksView({
       {note && <div className="bm-status">{note}</div>}
 
       <Suspense fallback={null}>
-        <BookmarkCharts actions={actions} nodes={nodes} lang={lang} />
+        <BookmarkCharts nodes={nodes} lang={lang} />
       </Suspense>
 
       <div className="bm-list">

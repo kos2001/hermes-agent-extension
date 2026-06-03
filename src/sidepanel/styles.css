@@ -619,33 +619,52 @@ html, body, #root {
 }
 .chart-head {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
   gap: 8px;
   margin-bottom: 4px;
 }
 .chart-title { font-size: 12px; font-weight: 600; color: var(--text); }
+.chart-controls { display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
 .chart-hint {
   font-size: 11px;
   color: var(--muted);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  max-width: 55%;
+  max-width: 120px;
 }
+/* +/− zoom buttons in each chart header. */
+.chart-zoom {
+  width: 20px;
+  height: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  font-size: 14px;
+  line-height: 1;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--panel-2);
+  color: var(--text);
+  cursor: pointer;
+}
+.chart-zoom:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+.chart-zoom:disabled { opacity: 0.4; cursor: not-allowed; }
 
-/* Donut: chart on top, centered total overlay, legend below. */
+/* Donut: chart on top, centered total overlay, legend below. The `top` offset
+   is set inline (= height / 2) so the total stays centered as zoom scales it. */
 .chart-donut-wrap { position: relative; }
 .chart-donut-center {
   position: absolute;
-  top: 75px;
   left: 0;
   right: 0;
   text-align: center;
   transform: translateY(-50%);
   pointer-events: none;
 }
-.chart-donut-center strong { font-size: 20px; font-weight: 700; color: var(--text); }
+.chart-donut-center strong { font-weight: 700; color: var(--text); }
 
 .chart-legend {
   list-style: none;
