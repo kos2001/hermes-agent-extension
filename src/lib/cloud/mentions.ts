@@ -7,6 +7,47 @@ export interface MentionCandidate {
   name: string;
 }
 
+/**
+ * The mention query currently being typed: the partial `@word` immediately
+ * before the caret (without the `@`), or null if the caret isn't in one. An
+ * empty string means `@` was just typed (show all candidates). Pure.
+ */
+export function activeMention(text: string, caret: number): string | null {
+  const before = text.slice(0, Math.max(0, caret));
+  const m = before.match(/@([\p{L}\p{N}_]*)$/u);
+  return m ? m[1] : null;
+}
+
+/**
+ * Replace the active `@query` before the caret with `@name ` and return the new
+ * text and caret position. No-op (returns text unchanged) if no active mention.
+ */
+export function applyMention(text: string, caret: number, name: string): { text: string; caret: number } {
+  const c = Math.max(0, caret);
+  const before = text.slice(0, c);
+  const m = before.match(/@([\p{L}\p{N}_]*)$/u);
+  if (!m) return { text, caret: c };
+  const start = c - m[0].length;
+  const insert = `@${name} `;
+  return { text: text.slice(0, start) + insert + text.slice(c), caret: start + insert.length };
+}
+
+/** Candidate members whose name matches the typed query (prefix, case-insensitive). */
+export function matchCandidates(query: string, candidates: MentionCandidate[], limit = 6): MentionCandidate[] {
+  const q = query.trim().toLowerCase();
+  const named = candidates.filter((c) => c.name.trim());
+  const pool = q ? named.filter((c) => c.name.toLowerCase().includes(q)) : named;
+  const seen = new Set<string>();
+  const out: MentionCandidate[] = [];
+  for (const c of pool) {
+    if (seen.has(c.id)) continue;
+    seen.add(c.id);
+    out.push(c);
+    if (out.length >= limit) break;
+  }
+  return out;
+}
+
 /** Extract unique `@token` tokens from text (token = run of non-space, non-@ chars). */
 export function extractMentionTokens(body: string): string[] {
   const out: string[] = [];
