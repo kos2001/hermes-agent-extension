@@ -109,6 +109,17 @@ const STR: Record<string, Entry> = {
   "mr.sched.off": { ko: "📌 예약 꺼짐 — '지금 생성'으로 만든 뒤 보고서 옆 ⬇ 로 다운로드하세요.", en: "📌 Not scheduled — use Run now, then ⬇ next to a report to download.", zh: "📌 未预约 — 用“立即生成”，再点报告旁的 ⬇ 下载。" },
   "mr.sched.auto": { ko: "🗓 {freq} {h}:00 자동 생성 → 다운로드 폴더 '{folder}'에 파일로 자동 저장", en: "🗓 Auto-generates {freq} at {h}:00 → auto-saved to Downloads/{folder}", zh: "🗓 {freq} {h}:00 自动生成 → 自动保存到 下载/{folder}" },
   "mr.sched.app": { ko: "🗓 {freq} {h}:00 자동 생성 · 앱에만 보관 (수동 ⬇ 로 다운로드)", en: "🗓 Auto-generates {freq} at {h}:00 · kept in-app only (download with ⬇)", zh: "🗓 {freq} {h}:00 自动生成 · 仅保存在应用内（用 ⬇ 下载）" },
+  // Custom report-writing prompt
+  "mr.prompt": { ko: "보고서 프롬프트", en: "Report prompt", zh: "报告提示词" },
+  "mr.prompt.title": { ko: "보고서를 어떻게 작성할지 지시하는 프롬프트. 비워두면 기본 분석가 프롬프트가 쓰입니다.", en: "Instruction for how to write the report. Empty = built-in analyst prompt.", zh: "撰写报告的指令。留空则使用内置分析师提示词。" },
+  "mr.prompt.placeholder": { ko: "예: 투자자 관점에서 리스크 중심으로 요약…  (비우면 기본)", en: "e.g. Summarize risks for an investor…  (empty = default)", zh: "例如：以投资者视角侧重风险…（留空为默认）" },
+  "mr.promptSaved": { ko: "저장된 프롬프트", en: "Saved prompts", zh: "已保存提示词" },
+  "mr.promptDefault": { ko: "기본 (분석가 프롬프트)", en: "Default (analyst prompt)", zh: "默认（分析师提示词）" },
+  "mr.promptSave": { ko: "프롬프트 저장", en: "Save prompt", zh: "保存提示词" },
+  "mr.promptDelete": { ko: "삭제", en: "Delete", zh: "删除" },
+  "mr.promptNamePrompt": { ko: "이 프롬프트의 이름을 입력하세요:", en: "Name this prompt:", zh: "为该提示词命名：" },
+  "mr.promptEmpty": { ko: "저장할 프롬프트 내용을 입력하세요.", en: "Enter prompt text to save.", zh: "请输入要保存的提示词内容。" },
+  "mr.promptSavedOk": { ko: "프롬프트 '{name}' 저장됨", en: "Saved prompt '{name}'", zh: "已保存提示词 '{name}'" },
 
   // Charts (Recharts visualizations)
   "chart.coverage": { ko: "수집 현황", en: "Coverage", zh: "抓取情况" },
