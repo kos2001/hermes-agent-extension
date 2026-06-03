@@ -97,6 +97,8 @@ export interface Comment {
   created_at: string;
   /** Parent comment id when this is a reply; null for a top-level opinion. */
   parent_id: string | null;
+  /** True when this comment is a question for the agents to answer. */
+  is_question?: boolean;
   /** Joined poster profile (when listed with the join). */
   author?: Pick<Profile, "display_name" | "avatar_url">;
 }
@@ -113,4 +115,6 @@ export interface CommentInput {
   label?: string;
   /** Set to reply to an existing comment. */
   parentId?: string;
+  /** Mark this comment as a question for the agents. */
+  isQuestion?: boolean;
 }

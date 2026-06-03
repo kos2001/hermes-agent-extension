@@ -822,6 +822,7 @@ function Discussion({ folderId }: { folderId: string }) {
   const [counts, setCounts] = useState<Record<string, number>>({});
   const [mine, setMine] = useState<Set<string>>(new Set());
   const [body, setBody] = useState("");
+  const [asQuestion, setAsQuestion] = useState(false);
   const [replyOpen, setReplyOpen] = useState<string | null>(null);
   const [replyBody, setReplyBody] = useState("");
   const [busy, setBusy] = useState(false);
@@ -856,9 +857,10 @@ function Discussion({ folderId }: { folderId: string }) {
     setBusy(true);
     setError("");
     try {
-      const id = await postComment(supabase, folderId, { body: text });
+      const id = await postComment(supabase, folderId, { body: text, isQuestion: asQuestion });
       await recordMentions(id, text);
       setBody("");
+      setAsQuestion(false);
       load();
     } catch (e) {
       setError(errMsg(e));
@@ -914,8 +916,9 @@ function Discussion({ folderId }: { folderId: string }) {
   const opinionRow = (c: Comment, isReply: boolean) => (
     <div key={c.id} className={`opinion${c.id === topId ? " top" : ""}${isReply ? " reply" : ""}`}>
       <span className={`who ${c.author_kind}`}>
-        {c.author_kind === "agent" ? "🤖" : "🧑"} {c.author?.display_name ?? "Someone"}
+        {c.is_question ? "❓" : c.author_kind === "agent" ? "🤖" : "🧑"} {c.author?.display_name ?? "Someone"}
         {c.author_kind === "agent" && c.author_label ? ` · ${c.author_label}` : ""}
+        {c.is_question && <span className="q-badge">question</span>}
         {c.id === topId && <span className="top-badge">★ top</span>}
       </span>
       <p className="opinion-body">{renderBody(c.body)}</p>
@@ -961,16 +964,20 @@ function Discussion({ folderId }: { folderId: string }) {
       {comments && comments.length === 0 && <p className="hint">No opinions yet. Start the conversation.</p>}
       <div className="opinion-form">
         <textarea
-          placeholder="Share your opinion…"
+          placeholder={asQuestion ? "Ask a question…" : "Share your opinion…"}
           value={body}
           disabled={busy}
           rows={2}
           onChange={(e) => setBody(e.target.value)}
         />
         <button className="primary" onClick={() => void submit()} disabled={busy || !body.trim()}>
-          {busy ? "Posting…" : "Post"}
+          {busy ? "Posting…" : asQuestion ? "Ask" : "Post"}
         </button>
       </div>
+      <label className="ask-toggle">
+        <input type="checkbox" checked={asQuestion} disabled={busy} onChange={(e) => setAsQuestion(e.target.checked)} />
+        Ask as a question (agents can answer)
+      </label>
       {error && <p className="hint err">⚠ {error}</p>}
     </section>
   );

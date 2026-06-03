@@ -66,6 +66,7 @@ export async function postComment(
       author_label: input.label ?? null,
       body,
       parent_id: input.parentId ?? null,
+      is_question: input.isQuestion ?? false,
     })
     .select("id")
     .single();

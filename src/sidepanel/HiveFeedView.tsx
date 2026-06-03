@@ -8,6 +8,7 @@ import { getFolder } from "@/lib/cloud/folders";
 import { listComments, postComment, threadComments } from "@/lib/cloud/comments";
 import { myOpinionVotes, opinionVoteCounts, unvoteOpinion, voteOpinion } from "@/lib/cloud/opinion-votes";
 import { generateOpinion } from "@/lib/cloud/agent-opinion";
+import { generateAnswer, generateDebate } from "@/lib/cloud/agent-qa";
 import { listLeaderboard, type Contributor } from "@/lib/cloud/leaderboard";
 import {
   applyHeartbeatSchedule,
@@ -259,7 +260,7 @@ function FolderThread({ folder, config, lang }: { folder: FeedEntry; config: Con
   const [body, setBody] = useState("");
   const [replyOpen, setReplyOpen] = useState<string | null>(null);
   const [replyBody, setReplyBody] = useState("");
-  const [busy, setBusy] = useState<null | "agent" | "human" | "reply" | "areply">(null);
+  const [busy, setBusy] = useState<null | "agent" | "human" | "reply" | "areply" | "answer" | "debate">(null);
   const [error, setError] = useState("");
 
   const load = useCallback(() => {
@@ -333,6 +334,46 @@ function FolderThread({ folder, config, lang }: { folder: FeedEntry; config: Con
     }
   }, [config, folder, comments, lang, load]);
 
+  // Agent answers a member's question (grounded in the folder), as a reply.
+  const agentAnswer = useCallback(
+    async (question: Comment) => {
+      if (!config) return setError(t(lang, "bm.needConfig"));
+      setBusy("answer");
+      setError("");
+      try {
+        const answer = await generateAnswer(config, await folderForOpinion(), question.body);
+        await postComment(supabase, folder.id, { body: answer, kind: "agent", label: config.model, parentId: question.id });
+        load();
+      } catch (e) {
+        setError(e instanceof Error ? e.message : t(lang, "hivePostFailed"));
+      } finally {
+        setBusy(null);
+      }
+    },
+    [config, folder, lang, load],
+  );
+
+  // Two agents debate the folder: "for" as a top-level opinion, "against" as a reply.
+  const debate = useCallback(async () => {
+    if (!config) return setError(t(lang, "bm.needConfig"));
+    setBusy("debate");
+    setError("");
+    try {
+      const { for: pro, against: con } = await generateDebate(config, await folderForOpinion());
+      if (pro) {
+        const id = await postComment(supabase, folder.id, { body: pro, kind: "agent", label: `${config.model} · for` });
+        if (con) await postComment(supabase, folder.id, { body: con, kind: "agent", label: `${config.model} · against`, parentId: id });
+      } else if (con) {
+        await postComment(supabase, folder.id, { body: con, kind: "agent", label: `${config.model} · against` });
+      }
+      load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : t(lang, "hivePostFailed"));
+    } finally {
+      setBusy(null);
+    }
+  }, [config, folder, lang, load]);
+
   // Agent replies to ONE specific opinion (threaded).
   const agentReply = useCallback(
     async (parent: Comment) => {
@@ -399,7 +440,7 @@ function FolderThread({ folder, config, lang }: { folder: FeedEntry; config: Con
   const opRow = (c: Comment, isReply: boolean) => (
     <div key={c.id} className={`hive-op${c.id === topId ? " top" : ""}${isReply ? " reply" : ""}`}>
       <span className={`hive-op-who ${c.author_kind}`}>
-        {c.author_kind === "agent" ? "🤖" : "🧑"} {c.author?.display_name ?? "—"}
+        {c.is_question ? "❓" : c.author_kind === "agent" ? "🤖" : "🧑"} {c.author?.display_name ?? "—"}
         {c.author_kind === "agent" && c.author_label ? ` · ${c.author_label}` : ""}
         {c.id === topId && <span className="hive-top-badge">★</span>}
       </span>
@@ -417,9 +458,15 @@ function FolderThread({ folder, config, lang }: { folder: FeedEntry; config: Con
             <button className="hive-replybtn" disabled={busy !== null} onClick={() => setReplyOpen((id) => (id === c.id ? null : c.id))}>
               ↳ {t(lang, "hiveReply")}
             </button>
-            <button className="hive-replybtn" disabled={busy !== null || !config} onClick={() => void agentReply(c)}>
-              🤖
-            </button>
+            {c.is_question ? (
+              <button className="hive-replybtn" disabled={busy !== null || !config} title={t(lang, "hiveAnswer")} onClick={() => void agentAnswer(c)}>
+                {busy === "answer" ? "…" : "🤖 " + t(lang, "hiveAnswer")}
+              </button>
+            ) : (
+              <button className="hive-replybtn" disabled={busy !== null || !config} onClick={() => void agentReply(c)}>
+                🤖
+              </button>
+            )}
           </>
         )}
       </span>
@@ -457,6 +504,9 @@ function FolderThread({ folder, config, lang }: { folder: FeedEntry; config: Con
       <div className="hive-actions">
         <button className="tx-go" disabled={busy !== null || !config} onClick={() => void opine()}>
           {busy === "agent" ? t(lang, "hiveOpining") : t(lang, "hiveAgentOpine")}
+        </button>
+        <button className="tx-restore" disabled={busy !== null || !config} title={t(lang, "hiveDebate")} onClick={() => void debate()}>
+          {busy === "debate" ? "…" : "🤖🤖 " + t(lang, "hiveDebate")}
         </button>
       </div>
       <div className="hive-comment">

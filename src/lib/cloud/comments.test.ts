@@ -50,6 +50,7 @@ describe("postComment", () => {
       author_label: "gpt-x",
       body: "hi",
       parent_id: null,
+      is_question: false,
     });
   });
 
