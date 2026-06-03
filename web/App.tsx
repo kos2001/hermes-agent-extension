@@ -1,17 +1,17 @@
-import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import type { Session } from "@supabase/supabase-js";
 import { listFeed, listOwnerFolders, react, unreact } from "@/lib/cloud/feed";
 import { getFolder } from "@/lib/cloud/folders";
 import { listComments, postComment, threadComments } from "@/lib/cloud/comments";
 import { myOpinionVotes, opinionVoteCounts, unvoteOpinion, voteOpinion } from "@/lib/cloud/opinion-votes";
-import { getContributor, listLeaderboard, type Contributor } from "@/lib/cloud/leaderboard";
+import { getContributor, getReputations, listLeaderboard, type Contributor } from "@/lib/cloud/leaderboard";
 import { createCommunity, deleteCommunity, joinCommunity, leaveCommunity, listCommunities, myCommunityIds } from "@/lib/cloud/communities";
 import { buildConversations, getProfileNames, listMyMessages, markRead, sendMessage } from "@/lib/cloud/messages";
 import { listCommunityMessages, sendCommunityMessage } from "@/lib/cloud/community-chat";
 import { loadActivity, unseenCount } from "@/lib/cloud/activity";
 import { eqFilter, onTableInserts } from "@/lib/cloud/realtime";
 import { avatarFor } from "@/lib/cloud/avatar";
-import { extractMentionTokens, postMentions, resolveMentions, type MentionCandidate } from "@/lib/cloud/mentions";
+import { activeMention, applyMention, extractMentionTokens, matchCandidates, postMentions, resolveMentions, type MentionCandidate } from "@/lib/cloud/mentions";
 import {
   filterFollowing,
   followTopic,
@@ -890,21 +890,30 @@ function Discussion({ folderId }: { folderId: string }) {
   const [comments, setComments] = useState<Comment[] | null>(null);
   const [counts, setCounts] = useState<Record<string, number>>({});
   const [mine, setMine] = useState<Set<string>>(new Set());
+  const [reps, setReps] = useState<Record<string, number>>({});
   const [body, setBody] = useState("");
   const [asQuestion, setAsQuestion] = useState(false);
+  const [menu, setMenu] = useState<MentionCandidate[] | null>(null);
   const [replyOpen, setReplyOpen] = useState<string | null>(null);
   const [replyBody, setReplyBody] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const taRef = useRef<HTMLTextAreaElement>(null);
 
   const load = useCallback(() => {
     listComments(supabase, folderId)
       .then(async (cs) => {
         setComments(cs);
         const ids = cs.map((c) => c.id);
-        const [vc, mv] = await Promise.all([opinionVoteCounts(supabase, ids), myOpinionVotes(supabase, ids)]);
+        const authorIds = [...new Set(cs.map((c) => c.user_id))];
+        const [vc, mv, rp] = await Promise.all([
+          opinionVoteCounts(supabase, ids),
+          myOpinionVotes(supabase, ids),
+          getReputations(supabase, authorIds),
+        ]);
         setCounts(vc);
         setMine(mv);
+        setReps(rp);
       })
       .catch((e) => setError(errMsg(e)));
   }, [folderId]);
@@ -913,11 +922,32 @@ function Discussion({ folderId }: { folderId: string }) {
   // Live: refresh when anyone posts an opinion/reply on this folder.
   useEffect(() => onTableInserts(supabase, "comments", eqFilter("folder_id", folderId), load), [folderId, load]);
 
+  const participants = (): MentionCandidate[] => (comments ?? []).map((c) => ({ id: c.user_id, name: c.author?.display_name ?? "" }));
+
   // Resolve @mentions in `text` against thread participants and record them.
   async function recordMentions(commentId: string, text: string) {
-    const cands: MentionCandidate[] = (comments ?? []).map((c) => ({ id: c.user_id, name: c.author?.display_name ?? "" }));
-    const ids = resolveMentions(extractMentionTokens(text), cands);
+    const ids = resolveMentions(extractMentionTokens(text), participants());
     if (ids.length) await postMentions(supabase, commentId, ids);
+  }
+
+  // Compose handler driving the @mention autocomplete menu.
+  function onCompose(value: string, caret: number) {
+    setBody(value);
+    const q = activeMention(value, caret);
+    setMenu(q === null ? null : matchCandidates(q, participants()));
+  }
+  function pickMention(name: string) {
+    const ta = taRef.current;
+    const caret = ta ? ta.selectionStart : body.length;
+    const r = applyMention(body, caret, name);
+    setBody(r.text);
+    setMenu(null);
+    requestAnimationFrame(() => {
+      if (ta) {
+        ta.focus();
+        ta.setSelectionRange(r.caret, r.caret);
+      }
+    });
   }
 
   async function submit() {
@@ -986,6 +1016,7 @@ function Discussion({ folderId }: { folderId: string }) {
     <div key={c.id} className={`opinion${c.id === topId ? " top" : ""}${isReply ? " reply" : ""}`}>
       <span className={`who ${c.author_kind}`}>
         {c.is_question ? "❓" : c.author_kind === "agent" ? "🤖" : "🧑"} {c.author?.display_name ?? "Someone"}
+        {(reps[c.user_id] ?? 0) > 0 && <span className="rep-badge" title="reputation">▲{reps[c.user_id]}</span>}
         {c.author_kind === "agent" && c.author_label ? ` · ${c.author_label}` : ""}
         {c.is_question && <span className="q-badge">question</span>}
         {c.id === topId && <span className="top-badge">★ top</span>}
@@ -1031,17 +1062,30 @@ function Discussion({ folderId }: { folderId: string }) {
         </div>
       ))}
       {comments && comments.length === 0 && <p className="hint">No opinions yet. Start the conversation.</p>}
-      <div className="opinion-form">
-        <textarea
-          placeholder={asQuestion ? "Ask a question…" : "Share your opinion…"}
-          value={body}
-          disabled={busy}
-          rows={2}
-          onChange={(e) => setBody(e.target.value)}
-        />
-        <button className="primary" onClick={() => void submit()} disabled={busy || !body.trim()}>
-          {busy ? "Posting…" : asQuestion ? "Ask" : "Post"}
-        </button>
+      <div className="compose-wrap">
+        {menu && menu.length > 0 && (
+          <div className="mention-menu">
+            {menu.map((c) => (
+              <button key={c.id} className="mention-item" onMouseDown={(e) => { e.preventDefault(); pickMention(c.name); }}>
+                <Avatar seed={c.id} label={c.name} /> {c.name}
+              </button>
+            ))}
+          </div>
+        )}
+        <div className="opinion-form">
+          <textarea
+            ref={taRef}
+            placeholder={asQuestion ? "Ask a question… (@ to mention)" : "Share your opinion… (@ to mention)"}
+            value={body}
+            disabled={busy}
+            rows={2}
+            onChange={(e) => onCompose(e.target.value, e.target.selectionStart ?? e.target.value.length)}
+            onKeyUp={(e) => onCompose((e.target as HTMLTextAreaElement).value, (e.target as HTMLTextAreaElement).selectionStart ?? 0)}
+          />
+          <button className="primary" onClick={() => void submit()} disabled={busy || !body.trim()}>
+            {busy ? "Posting…" : asQuestion ? "Ask" : "Post"}
+          </button>
+        </div>
       </div>
       <label className="ask-toggle">
         <input type="checkbox" checked={asQuestion} disabled={busy} onChange={(e) => setAsQuestion(e.target.checked)} />
