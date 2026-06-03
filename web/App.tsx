@@ -11,6 +11,15 @@ import { loadActivity, unseenCount } from "@/lib/cloud/activity";
 import { eqFilter, onTableInserts } from "@/lib/cloud/realtime";
 import { avatarFor } from "@/lib/cloud/avatar";
 import { extractMentionTokens, postMentions, resolveMentions, type MentionCandidate } from "@/lib/cloud/mentions";
+import {
+  filterFollowing,
+  followTopic,
+  followUser,
+  myFollowing,
+  myTopics,
+  unfollowTopic,
+  unfollowUser,
+} from "@/lib/cloud/follows";
 
 /** Render text with @mentions highlighted. */
 function renderBody(text: string): ReactNode {
@@ -459,6 +468,9 @@ function Feed({
   const [entries, setEntries] = useState<FeedEntry[] | null>(null);
   const [error, setError] = useState("");
   const [topic, setTopic] = useState<string | null>(null);
+  const [scope, setScope] = useState<"all" | "following">("all");
+  const [fUsers, setFUsers] = useState<Set<string>>(new Set());
+  const [fTopics, setFTopics] = useState<Set<string>>(new Set());
 
   const load = useCallback(() => {
     listFeed(supabase, 50, communityId)
@@ -466,6 +478,12 @@ function Feed({
       .catch((e) => setError(errMsg(e)));
   }, [communityId]);
   useEffect(load, [load]);
+  useEffect(() => {
+    Promise.all([myFollowing(supabase), myTopics(supabase)]).then(([u, t]) => {
+      setFUsers(u);
+      setFTopics(t);
+    }).catch(() => {});
+  }, []);
   // Live: a newly shared (or re-shared) folder appears without a refresh.
   useEffect(() => onTableInserts(supabase, "shared_folders", undefined, load), [load]);
 
@@ -476,10 +494,23 @@ function Feed({
   const stats = feedStats(entries);
   const counts = topicCounts(entries);
   const maxCount = counts.length ? counts[0].count : 1;
-  const shown = topic ? entries.filter((e) => e.topics.some((t) => t.toLowerCase() === topic)) : entries;
+  const base = scope === "following" && !communityId ? filterFollowing(entries, fUsers, fTopics) : entries;
+  const shown = topic ? base.filter((e) => e.topics.some((t) => t.toLowerCase() === topic)) : base;
+
+  async function toggleTopicFollow(tp: string) {
+    const has = fTopics.has(tp);
+    setFTopics((p) => { const n = new Set(p); has ? n.delete(tp) : n.add(tp); return n; });
+    try { has ? await unfollowTopic(supabase, tp) : await followTopic(supabase, tp); } catch { /* revert silently */ }
+  }
 
   return (
     <>
+      {!communityId && (
+        <div className="scope">
+          <button className={scope === "all" ? "active" : ""} onClick={() => setScope("all")}>All</button>
+          <button className={scope === "following" ? "active" : ""} onClick={() => setScope("following")}>Following</button>
+        </div>
+      )}
       <section className="collective">
         <div className="stats">
           <Stat n={stats.folders} label="folders" />
@@ -506,10 +537,19 @@ function Feed({
       {topic && (
         <div className="filter-bar">
           <span>
-            Showing <strong>#{topic}</strong> · {shown.length} of {entries.length}
+            Showing <strong>#{topic}</strong> · {shown.length} result{shown.length === 1 ? "" : "s"}
           </span>
-          <button onClick={() => setTopic(null)}>Clear</button>
+          <span style={{ display: "inline-flex", gap: 8 }}>
+            <button className={fTopics.has(topic) ? "active" : ""} onClick={() => void toggleTopicFollow(topic)}>
+              {fTopics.has(topic) ? "★ Following" : "☆ Follow topic"}
+            </button>
+            <button onClick={() => setTopic(null)}>Clear</button>
+          </span>
         </div>
+      )}
+
+      {scope === "following" && !communityId && shown.length === 0 && (
+        <p className="hint">Nothing here yet. Follow members (on their profile) or topics (☆ on a topic) to fill this feed.</p>
       )}
 
       <div className="feed">
@@ -562,18 +602,26 @@ function Profile({
 }) {
   const [rep, setRep] = useState<Contributor | null>(null);
   const [folders, setFolders] = useState<FeedEntry[] | null>(null);
+  const [following, setFollowing] = useState(false);
   const [error, setError] = useState("");
 
   useEffect(() => {
-    Promise.all([getContributor(supabase, userId), listOwnerFolders(supabase, userId)])
-      .then(([r, f]) => {
+    Promise.all([getContributor(supabase, userId), listOwnerFolders(supabase, userId), myFollowing(supabase)])
+      .then(([r, f, fset]) => {
         setRep(r);
         setFolders(f);
+        setFollowing(fset.has(userId));
       })
       .catch((e) => setError(errMsg(e)));
   }, [userId]);
 
   const who = rep?.display_name ?? fallbackName;
+
+  async function toggleFollow() {
+    const next = !following;
+    setFollowing(next);
+    try { next ? await followUser(supabase, userId) : await unfollowUser(supabase, userId); } catch { setFollowing(!next); }
+  }
 
   return (
     <div className="profile">
@@ -588,9 +636,12 @@ function Profile({
         <Stat n={rep?.folders_shared ?? 0} label="folders" />
       </div>
       {!isMe && (
-        <button className="primary" onClick={() => onMessage(userId, who)} style={{ marginBottom: 16 }}>
-          ✉ Message
-        </button>
+        <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+          <button className={following ? "active" : "primary"} onClick={() => void toggleFollow()}>
+            {following ? "✓ Following" : "+ Follow"}
+          </button>
+          <button onClick={() => onMessage(userId, who)}>✉ Message</button>
+        </div>
       )}
       <h3>Shared folders</h3>
       {!folders && <p className="hint">Loading…</p>}

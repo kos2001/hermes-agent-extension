@@ -128,7 +128,8 @@ email. The steps below are done **once by the operator** who runs the backend.
    communities + membership + the `community_overview` view), and
    `0008_direct_messages.sql` (private 1:1 messages), `0009_realtime.sql`
    (adds comments + shared_folders to the realtime publication for live updates),
-   and `0010_mentions.sql` (@mentions → notifications).
+   `0010_mentions.sql` (@mentions → notifications), and `0011_follows.sql`
+   (follow members/topics → personalized "Following" feed).
    All idempotent. (Realtime is on by default for Supabase projects.)
    If a pre-existing
    `profiles` table causes a "Database error saving new user" on first login,
