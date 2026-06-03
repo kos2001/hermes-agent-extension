@@ -111,18 +111,20 @@ export default function MarketReportView({
       .replace("{folder}", settings.saveFolder || "Downloads");
   }, [settings.freq, settings.autoSave, settings.hour, settings.saveFolder, lang]);
 
-  // Save the latest report to the local Downloads/<saveFolder> directory.
-  const saveLatest = useCallback(async () => {
-    if (!latest) return;
-    setSaved("");
-    setError("");
-    try {
-      await downloadReport(latest, settings.saveFolder, false);
-      setSaved(t(lang, "mr.saved").replace("{folder}", settings.saveFolder || "Downloads"));
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    }
-  }, [latest, settings.saveFolder, lang]);
+  // Download any generated report (latest or history) to Downloads/<saveFolder>.
+  const saveOne = useCallback(
+    async (report: MarketReport) => {
+      setSaved("");
+      setError("");
+      try {
+        await downloadReport(report, settings.saveFolder, false);
+        setSaved(t(lang, "mr.saved").replace("{folder}", settings.saveFolder || "Downloads"));
+      } catch (e) {
+        setError(e instanceof Error ? e.message : String(e));
+      }
+    },
+    [settings.saveFolder, lang],
+  );
 
   return (
     <div className="mr-view">
@@ -215,8 +217,8 @@ export default function MarketReportView({
           <>
             <div className="mr-latest-head">
               <span className="mr-section-title">{t(lang, "mr.latest")} — {latest.folderTitle}</span>
-              <button className="tx-restore mr-save" onClick={() => void saveLatest()}>
-                {t(lang, "mr.save")}
+              <button className="tx-restore mr-save" onClick={() => void saveOne(latest)}>
+                ⬇ {t(lang, "mr.save")}
               </button>
             </div>
             {latest.skipped > 0 && (
@@ -235,7 +237,15 @@ export default function MarketReportView({
                 <summary>{t(lang, "mr.history")} ({reports.length - 1})</summary>
                 {reports.slice(1).map((r) => (
                   <div key={r.id} className="mr-history-item">
-                    {r.folderTitle} · {r.sites.length} sites
+                    <span className="mr-history-label">{r.folderTitle} · {r.sites.length} sites</span>
+                    <button
+                      className="mr-dl"
+                      onClick={() => void saveOne(r)}
+                      title={t(lang, "mr.save")}
+                      aria-label={t(lang, "mr.save")}
+                    >
+                      ⬇
+                    </button>
                   </div>
                 ))}
               </details>
