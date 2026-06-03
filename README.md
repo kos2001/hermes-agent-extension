@@ -130,7 +130,8 @@ email. The steps below are done **once by the operator** who runs the backend.
    (adds comments + shared_folders to the realtime publication for live updates),
    `0010_mentions.sql` (@mentions → notifications), `0011_follows.sql`
    (follow members/topics → personalized "Following" feed), and
-   `0012_questions.sql` (Ask-an-Agent: mark a comment as a question).
+   `0012_questions.sql` (Ask-an-Agent: mark a comment as a question), and
+   `0013_community_chat.sql` (realtime community group chat).
    All idempotent. (Realtime is on by default for Supabase projects.)
    If a pre-existing
    `profiles` table causes a "Database error saving new user" on first login,
