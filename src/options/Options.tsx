@@ -62,6 +62,62 @@ export default function Options() {
     }));
   };
 
+  // One-tap: point the connection at the local Hermes gateway. This is how
+  // OAuth-only providers (Codex, Qwen, etc.) are used — the CLI holds the auth
+  // and the extension just talks to the gateway.
+  const useGateway = () => {
+    setProviderId("");
+    setSaved(false);
+    setHeadersText("{}");
+    setCfg((prev) => ({ ...prev, baseUrl: "http://127.0.0.1:8642", model: "hermes-agent", headers: {} }));
+  };
+
+  // Gateway setup helpers: the extension can't read ~/.hermes (sandbox), so we
+  // give the user the exact line / command to copy. Works on any machine.
+  const [copiedKey, setCopiedKey] = useState("");
+  // Default the OS toggle from the browser; the user can flip it.
+  const [osKind, setOsKind] = useState<"unix" | "win">(() =>
+    /win/i.test(navigator.userAgent) ? "win" : "unix",
+  );
+  const extId = chrome.runtime?.id ?? "";
+  const corsLine = `cors_origins: "chrome-extension://${extId}"`;
+  const cfgPath = osKind === "win" ? "%USERPROFILE%\\.hermes\\config.yaml" : "~/.hermes/config.yaml";
+  // One-liner that prints the full connection string ("baseUrl model token")
+  // from the local Hermes config — the user runs it and pastes the output below.
+  const connectCmd =
+    osKind === "win"
+      ? "$f=$false;$t='';foreach($l in Get-Content \"$env:USERPROFILE\\.hermes\\config.yaml\"){if($l -match '^api_server:'){$f=$true};if($f -and $l -match 'token:'){$t=($l -replace '.*token:\\s*','').Trim();break}};\"http://127.0.0.1:8642 hermes-agent $t\""
+      : "echo \"http://127.0.0.1:8642 hermes-agent $(awk '/^api_server:/{f=1} f&&/token:/{print $2; exit}' ~/.hermes/config.yaml)\"";
+  const [connectStr, setConnectStr] = useState("");
+  const [connectMsg, setConnectMsg] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
+  const applyConnect = () => {
+    const parts = connectStr.trim().split(/\s+/);
+    if (parts.length < 3 || !/^https?:\/\//.test(parts[0])) {
+      setConnectMsg({ kind: "err", text: t(lang, "opt.connect.err") });
+      return;
+    }
+    const [baseUrl, model, token] = parts;
+    const next: ConnectionConfig = { ...cfg, baseUrl, model, apiKey: token, headers: {} };
+    setCfg(next);
+    setHeadersText("{}");
+    setProviderId("");
+    void saveConfig(next);
+    setSaved(true);
+    setConnectStr("");
+    setConnectMsg({ kind: "ok", text: t(lang, "opt.connect.ok") });
+  };
+  const copy = (text: string, key: string) => {
+    navigator.clipboard
+      .writeText(text)
+      .then(() => {
+        setCopiedKey(key);
+        setTimeout(() => setCopiedKey(""), 1500);
+      })
+      .catch(() => {
+        /* clipboard blocked — the text is still visible to copy manually */
+      });
+  };
+
   const provider: ProviderProfile | undefined = getProvider(providerId);
 
   const save = async () => {
@@ -156,9 +212,14 @@ export default function Options() {
           </optgroup>
         </select>
         {provider?.compat === "special" && (
-          <p className="note err" style={{ marginTop: 6 }}>
-            ⚠ {provider.note ?? "Not directly usable with an API key in this extension."}
-          </p>
+          <div className="note err" style={{ marginTop: 6 }}>
+            <p style={{ margin: 0 }}>
+              ⚠ {provider.note ?? "Not directly usable with an API key in this extension."}
+            </p>
+            <button className="secondary" onClick={useGateway} style={{ marginTop: 8 }}>
+              {t(lang, "opt.switchGateway")}
+            </button>
+          </div>
         )}
         {provider?.compat === "openai" && provider.note && (
           <p className="note" style={{ marginTop: 6 }}>
@@ -179,6 +240,73 @@ export default function Options() {
           </p>
         )}
       </label>
+
+      {provider?.compat !== "special" && (
+        <div className="field">
+          <button className="secondary" onClick={useGateway}>{t(lang, "opt.useGateway")}</button>
+          <p className="note" style={{ marginTop: 6 }}>{t(lang, "opt.useGateway.note")}</p>
+        </div>
+      )}
+
+      {providerId === "openai-codex" && (
+        <div className="field">
+          <label>{t(lang, "opt.codex.title")}</label>
+          <p className="note" style={{ marginBottom: 6 }}>{t(lang, "opt.codex.body")}</p>
+          <pre className="cmd">hermes auth add openai-codex</pre>
+        </div>
+      )}
+
+      <div className="field">
+        <label>{t(lang, "opt.cors.title")}</label>
+        <div className="lang-options" style={{ marginBottom: 8 }}>
+          <button
+            type="button"
+            className={`lang-opt${osKind === "unix" ? " active" : ""}`}
+            onClick={() => setOsKind("unix")}
+          >
+            macOS / Linux
+          </button>
+          <button
+            type="button"
+            className={`lang-opt${osKind === "win" ? " active" : ""}`}
+            onClick={() => setOsKind("win")}
+          >
+            Windows
+          </button>
+        </div>
+        <p className="note" style={{ marginBottom: 6 }}>{t(lang, "opt.cors.body").replace("{path}", cfgPath)}</p>
+        <pre className="cmd">{corsLine}</pre>
+        <div className="row" style={{ marginTop: 6 }}>
+          <button className="secondary" onClick={() => copy(corsLine, "cors")}>
+            {copiedKey === "cors" ? t(lang, "opt.cors.copied") : t(lang, "opt.cors.copy")}
+          </button>
+          <code style={{ fontSize: 12, color: "var(--muted)" }}>hermes gateway restart</code>
+        </div>
+      </div>
+
+      <div className="field">
+        <label>{t(lang, "opt.connect.title")}</label>
+        <p className="note" style={{ marginBottom: 6 }}>{t(lang, "opt.connect.body")}</p>
+        <pre className="cmd">{connectCmd}</pre>
+        <div className="row" style={{ marginTop: 6, marginBottom: 6 }}>
+          <button className="secondary" onClick={() => copy(connectCmd, "connect")}>
+            {copiedKey === "connect" ? t(lang, "opt.cors.copied") : t(lang, "opt.cors.copy")}
+          </button>
+        </div>
+        <input
+          type="text"
+          value={connectStr}
+          placeholder={t(lang, "opt.connect.placeholder")}
+          onChange={(e) => {
+            setConnectStr(e.target.value);
+            setConnectMsg(null);
+          }}
+        />
+        <div className="row" style={{ marginTop: 6 }}>
+          <button onClick={applyConnect} disabled={!connectStr.trim()}>{t(lang, "opt.connect.apply")}</button>
+          {connectMsg && <span className={`note ${connectMsg.kind === "ok" ? "ok" : "err"}`}>{connectMsg.text}</span>}
+        </div>
+      </div>
 
       <label className="field">
         <label>Base URL</label>
@@ -239,9 +367,19 @@ export default function Options() {
 
       <div className="row">
         <button onClick={save}>Save</button>
-        <button className="secondary" onClick={testConnection}>Test connection</button>
+        <button
+          className="secondary"
+          onClick={testConnection}
+          disabled={provider?.compat === "special"}
+          title={provider?.compat === "special" ? t(lang, "opt.testGatewayFirst") : undefined}
+        >
+          Test connection
+        </button>
         {saved && <span className="note ok">Saved.</span>}
       </div>
+      {provider?.compat === "special" && (
+        <p className="note err" style={{ marginTop: 6 }}>{t(lang, "opt.testGatewayFirst")}</p>
+      )}
 
       {probe.kind === "probing" && <p className="note">Testing…</p>}
       {probe.kind === "err" && <p className="note err">{probe.message}</p>}
