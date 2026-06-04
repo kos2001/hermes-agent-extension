@@ -25,8 +25,30 @@ html, body { margin: 0; background: var(--bg); color: var(--text); }
 h1 { font-size: 18px; margin: 0 0 4px; }
 .subtitle { color: var(--muted); font-size: 12px; margin-bottom: 20px; }
 
-/* Grouped settings sections. */
-.section { margin-top: 24px; }
+/* Settings tabs. */
+.tabs {
+  display: flex;
+  gap: 4px;
+  border-bottom: 1px solid var(--border);
+  margin: 20px 0 4px;
+}
+.tab {
+  background: transparent;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  margin-bottom: -1px;
+  padding: 8px 12px;
+  color: var(--muted);
+  font-weight: 500;
+  font-size: 13px;
+  cursor: pointer;
+}
+.tab:hover { color: var(--text); }
+.tab.active { color: var(--text); border-bottom-color: var(--accent); }
+
+/* Grouped settings sections (one shown per tab). */
+.section { margin-top: 20px; }
 .section > h2 {
   font-size: 13px;
   font-weight: 600;

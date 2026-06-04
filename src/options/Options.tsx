@@ -18,6 +18,7 @@ export default function Options() {
   const [probe, setProbe] = useState<ProbeState>({ kind: "idle" });
   const [providerId, setProviderId] = useState<string>("");
   const [lang, setLang] = useState<Lang>("ko");
+  const [tab, setTab] = useState<"connection" | "gateway" | "language">("connection");
 
   useEffect(() => {
     loadConfig().then((loaded) => {
@@ -180,8 +181,20 @@ export default function Options() {
         Configure the connection to OpenRouter or your local Hermes server.
       </div>
 
+      <div className="tabs">
+        <button type="button" className={`tab${tab === "connection" ? " active" : ""}`} onClick={() => setTab("connection")}>
+          {t(lang, "opt.sec.connection")}
+        </button>
+        <button type="button" className={`tab${tab === "gateway" ? " active" : ""}`} onClick={() => setTab("gateway")}>
+          {t(lang, "opt.sec.gateway")}
+        </button>
+        <button type="button" className={`tab${tab === "language" ? " active" : ""}`} onClick={() => setTab("language")}>
+          {t(lang, "langName")}
+        </button>
+      </div>
+
+      {tab === "language" && (
       <section className="section">
-        <h2>{t(lang, "langName")}</h2>
         <div className="lang-options">
           {LANGS.map((l) => (
             <button
@@ -196,9 +209,10 @@ export default function Options() {
           ))}
         </div>
       </section>
+      )}
 
+      {tab === "connection" && (
       <section className="section">
-        <h2>{t(lang, "opt.sec.connection")}</h2>
 
       <label className="field">
         <label>Provider</label>
@@ -351,9 +365,10 @@ export default function Options() {
         </div>
       )}
       </section>
+      )}
 
+      {tab === "gateway" && (
       <section className="section">
-        <h2>{t(lang, "opt.sec.gateway")}</h2>
         <p className="section-note">{t(lang, "opt.sec.gateway.body")}</p>
 
         <div className="lang-options" style={{ marginBottom: 14 }}>
@@ -408,6 +423,7 @@ export default function Options() {
           </div>
         </div>
       </section>
+      )}
     </div>
   );
 }
