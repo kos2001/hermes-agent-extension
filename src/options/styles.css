@@ -25,6 +25,20 @@ html, body { margin: 0; background: var(--bg); color: var(--text); }
 h1 { font-size: 18px; margin: 0 0 4px; }
 .subtitle { color: var(--muted); font-size: 12px; margin-bottom: 20px; }
 
+/* Grouped settings sections. */
+.section { margin-top: 24px; }
+.section > h2 {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  margin: 0 0 14px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.section-note { font-size: 12px; color: var(--muted); margin: -6px 0 14px; }
+
 .field { display: block; margin-bottom: 16px; }
 .field label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 4px; }
 .field input, .field textarea {
@@ -76,6 +90,8 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
   font-size: 12px;
   color: var(--text);
   user-select: all;
+  white-space: pre-wrap;
+  word-break: break-all;
 }
 
 .note { font-size: 12px; color: var(--muted); }

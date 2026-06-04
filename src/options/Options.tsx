@@ -80,8 +80,12 @@ export default function Options() {
     /win/i.test(navigator.userAgent) ? "win" : "unix",
   );
   const extId = chrome.runtime?.id ?? "";
-  const corsLine = `cors_origins: "chrome-extension://${extId}"`;
-  const cfgPath = osKind === "win" ? "%USERPROFILE%\\.hermes\\config.yaml" : "~/.hermes/config.yaml";
+  // One-line setup: register this extension's origin in the gateway CORS allow
+  // list and restart — via the official `hermes config set` (idempotent). `&&`
+  // on POSIX shells, `;` for PowerShell.
+  const corsCmd =
+    `hermes config set platforms.api_server.extra.cors_origins "chrome-extension://${extId}"` +
+    (osKind === "win" ? "; hermes gateway restart" : " && hermes gateway restart");
   // One-liner that prints the full connection string ("baseUrl model token")
   // from the local Hermes config — the user runs it and pastes the output below.
   const connectCmd =
@@ -176,8 +180,8 @@ export default function Options() {
         Configure the connection to OpenRouter or your local Hermes server.
       </div>
 
-      <div className="field">
-        <label>{t(lang, "langName")}</label>
+      <section className="section">
+        <h2>{t(lang, "langName")}</h2>
         <div className="lang-options">
           {LANGS.map((l) => (
             <button
@@ -191,7 +195,10 @@ export default function Options() {
             </button>
           ))}
         </div>
-      </div>
+      </section>
+
+      <section className="section">
+        <h2>{t(lang, "opt.sec.connection")}</h2>
 
       <label className="field">
         <label>Provider</label>
@@ -241,13 +248,6 @@ export default function Options() {
         )}
       </label>
 
-      {provider?.compat !== "special" && (
-        <div className="field">
-          <button className="secondary" onClick={useGateway}>{t(lang, "opt.useGateway")}</button>
-          <p className="note" style={{ marginTop: 6 }}>{t(lang, "opt.useGateway.note")}</p>
-        </div>
-      )}
-
       {providerId === "openai-codex" && (
         <div className="field">
           <label>{t(lang, "opt.codex.title")}</label>
@@ -255,58 +255,6 @@ export default function Options() {
           <pre className="cmd">hermes auth add openai-codex</pre>
         </div>
       )}
-
-      <div className="field">
-        <label>{t(lang, "opt.cors.title")}</label>
-        <div className="lang-options" style={{ marginBottom: 8 }}>
-          <button
-            type="button"
-            className={`lang-opt${osKind === "unix" ? " active" : ""}`}
-            onClick={() => setOsKind("unix")}
-          >
-            macOS / Linux
-          </button>
-          <button
-            type="button"
-            className={`lang-opt${osKind === "win" ? " active" : ""}`}
-            onClick={() => setOsKind("win")}
-          >
-            Windows
-          </button>
-        </div>
-        <p className="note" style={{ marginBottom: 6 }}>{t(lang, "opt.cors.body").replace("{path}", cfgPath)}</p>
-        <pre className="cmd">{corsLine}</pre>
-        <div className="row" style={{ marginTop: 6 }}>
-          <button className="secondary" onClick={() => copy(corsLine, "cors")}>
-            {copiedKey === "cors" ? t(lang, "opt.cors.copied") : t(lang, "opt.cors.copy")}
-          </button>
-          <code style={{ fontSize: 12, color: "var(--muted)" }}>hermes gateway restart</code>
-        </div>
-      </div>
-
-      <div className="field">
-        <label>{t(lang, "opt.connect.title")}</label>
-        <p className="note" style={{ marginBottom: 6 }}>{t(lang, "opt.connect.body")}</p>
-        <pre className="cmd">{connectCmd}</pre>
-        <div className="row" style={{ marginTop: 6, marginBottom: 6 }}>
-          <button className="secondary" onClick={() => copy(connectCmd, "connect")}>
-            {copiedKey === "connect" ? t(lang, "opt.cors.copied") : t(lang, "opt.cors.copy")}
-          </button>
-        </div>
-        <input
-          type="text"
-          value={connectStr}
-          placeholder={t(lang, "opt.connect.placeholder")}
-          onChange={(e) => {
-            setConnectStr(e.target.value);
-            setConnectMsg(null);
-          }}
-        />
-        <div className="row" style={{ marginTop: 6 }}>
-          <button onClick={applyConnect} disabled={!connectStr.trim()}>{t(lang, "opt.connect.apply")}</button>
-          {connectMsg && <span className={`note ${connectMsg.kind === "ok" ? "ok" : "err"}`}>{connectMsg.text}</span>}
-        </div>
-      </div>
 
       <label className="field">
         <label>Base URL</label>
@@ -402,6 +350,64 @@ export default function Options() {
           )}
         </div>
       )}
+      </section>
+
+      <section className="section">
+        <h2>{t(lang, "opt.sec.gateway")}</h2>
+        <p className="section-note">{t(lang, "opt.sec.gateway.body")}</p>
+
+        <div className="lang-options" style={{ marginBottom: 14 }}>
+          <button
+            type="button"
+            className={`lang-opt${osKind === "unix" ? " active" : ""}`}
+            onClick={() => setOsKind("unix")}
+          >
+            macOS / Linux
+          </button>
+          <button
+            type="button"
+            className={`lang-opt${osKind === "win" ? " active" : ""}`}
+            onClick={() => setOsKind("win")}
+          >
+            Windows
+          </button>
+        </div>
+
+        <div className="field">
+          <label>1. {t(lang, "opt.cors.title")}</label>
+          <p className="note" style={{ marginBottom: 6 }}>{t(lang, "opt.cors.body")}</p>
+          <pre className="cmd">{corsCmd}</pre>
+          <div className="row" style={{ marginTop: 6 }}>
+            <button className="secondary" onClick={() => copy(corsCmd, "cors")}>
+              {copiedKey === "cors" ? t(lang, "opt.cors.copied") : t(lang, "opt.cors.copy")}
+            </button>
+          </div>
+        </div>
+
+        <div className="field">
+          <label>2. {t(lang, "opt.connect.title")}</label>
+          <p className="note" style={{ marginBottom: 6 }}>{t(lang, "opt.connect.body")}</p>
+          <pre className="cmd">{connectCmd}</pre>
+          <div className="row" style={{ marginTop: 6, marginBottom: 6 }}>
+            <button className="secondary" onClick={() => copy(connectCmd, "connect")}>
+              {copiedKey === "connect" ? t(lang, "opt.cors.copied") : t(lang, "opt.cors.copy")}
+            </button>
+          </div>
+          <input
+            type="text"
+            value={connectStr}
+            placeholder={t(lang, "opt.connect.placeholder")}
+            onChange={(e) => {
+              setConnectStr(e.target.value);
+              setConnectMsg(null);
+            }}
+          />
+          <div className="row" style={{ marginTop: 6 }}>
+            <button onClick={applyConnect} disabled={!connectStr.trim()}>{t(lang, "opt.connect.apply")}</button>
+            {connectMsg && <span className={`note ${connectMsg.kind === "ok" ? "ok" : "err"}`}>{connectMsg.text}</span>}
+          </div>
+        </div>
+      </section>
     </div>
   );
 }

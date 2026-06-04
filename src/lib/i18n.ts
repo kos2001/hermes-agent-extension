@@ -142,11 +142,14 @@ const STR: Record<string, Entry> = {
   "chart.show": { ko: "차트 보기", en: "Show chart", zh: "显示图表" },
 
   // Options: local gateway + Codex auth guidance
+  "opt.sec.connection": { ko: "연결", en: "Connection", zh: "连接" },
+  "opt.sec.gateway": { ko: "로컬 Hermes 게이트웨이", en: "Local Hermes gateway", zh: "本地 Hermes 网关" },
+  "opt.sec.gateway.body": { ko: "로컬 게이트웨이(127.0.0.1:8642)에 연결하는 1회 설정입니다. 두 명령을 터미널에서 실행하세요.", en: "One-time setup to connect to the local gateway (127.0.0.1:8642). Run the two commands in a terminal.", zh: "连接本地网关（127.0.0.1:8642）的一次性设置。在终端运行这两条命令。" },
   "opt.useGateway": { ko: "🖥 로컬 Hermes 게이트웨이 사용", en: "🖥 Use local Hermes gateway", zh: "🖥 使用本地 Hermes 网关" },
   "opt.switchGateway": { ko: "🖥 게이트웨이로 전환", en: "🖥 Switch to gateway", zh: "🖥 切换到网关" },
   "opt.testGatewayFirst": { ko: "이 프로바이더는 직접 연결할 수 없습니다 — 위의 ‘게이트웨이로 전환’ 후 테스트하세요.", en: "This provider can't be reached directly — switch to the gateway above, then test.", zh: "该提供方无法直接连接 — 请先用上方“切换到网关”再测试。" },
   "opt.cors.title": { ko: "게이트웨이 연결 (CORS 설정)", en: "Gateway connection (CORS)", zh: "网关连接（CORS）" },
-  "opt.cors.body": { ko: "로컬 게이트웨이로 채팅하려면, {path} 의 platforms.api_server.extra 에 아래 줄을 추가하고 `hermes gateway restart` 하세요.", en: "To chat via the local gateway, add this line under platforms.api_server.extra in {path}, then run `hermes gateway restart`.", zh: "要通过本地网关聊天，请将下面这一行加入 {path} 的 platforms.api_server.extra，然后运行 `hermes gateway restart`。" },
+  "opt.cors.body": { ko: "터미널에서 아래 한 줄을 실행하면 이 확장의 origin을 게이트웨이 CORS 허용에 추가하고 재시작합니다. (1회)", en: "Run this one line in a terminal to allow this extension's origin in the gateway CORS and restart it. (once)", zh: "在终端运行下面这一行，即可将本扩展的 origin 加入网关 CORS 允许列表并重启。（一次）" },
   "opt.cors.copy": { ko: "복사", en: "Copy", zh: "复制" },
   "opt.cors.copied": { ko: "복사됨 ✓", en: "Copied ✓", zh: "已复制 ✓" },
   "opt.connect.title": { ko: "빠른 연결 (한 번에 설정)", en: "Quick connect (one paste)", zh: "快速连接（一次粘贴）" },
