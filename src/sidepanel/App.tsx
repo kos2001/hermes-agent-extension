@@ -1,5 +1,5 @@
 import { lazy, memo, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { streamChat } from "@/lib/hermes-client";
+import { isHermesEndpoint, streamChat } from "@/lib/hermes-client";
 import { renderMarkdown } from "@/lib/markdown";
 import type { ChatMessage, ConnectionConfig, StoredMessage } from "@/lib/types";
 import { loadConfig, newMessage } from "@/lib/storage";
@@ -40,6 +40,18 @@ type HealthState = "unknown" | "online" | "offline";
 type Theme = "dark" | "light";
 
 const THEME_KEY = "hermes.theme";
+
+// Server-side Hermes skills surfaced as slash commands when connected to the
+// gateway. Selecting one prefills the input so the user finishes the request;
+// the agent then auto-invokes the named skill.
+const SERVER_SKILLS: { name: string; labelKey: string }[] = [
+  { name: "arxiv", labelKey: "slash.srv.arxiv" },
+  { name: "github", labelKey: "slash.srv.github" },
+  { name: "research", labelKey: "slash.srv.research" },
+  { name: "graphify", labelKey: "slash.srv.graphify" },
+  { name: "web", labelKey: "slash.srv.web" },
+  { name: "data-science", labelKey: "slash.srv.dataScience" },
+];
 
 /** Apply the theme to the document root so the CSS variables switch. */
 function applyTheme(theme: Theme) {
@@ -86,6 +98,7 @@ export default function App() {
   const translateAbortRef = useRef<AbortController | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
 
   // Refresh page context when tab changes / activates.
   useEffect(() => {
@@ -386,7 +399,10 @@ export default function App() {
   // available as buttons (skills, translate, new chat, view switches). The
   // command names are language-neutral tokens so they're typeable in any UI lang.
   const [slashIdx, setSlashIdx] = useState(0);
-  const slashCommands = useMemo(
+  // Server (Hermes) skills only make sense against the local gateway / a Hermes
+  // endpoint — hide them when pointed at a plain cloud provider.
+  const hermesConnected = !!config && isHermesEndpoint(config.baseUrl);
+  const slashCommands = useMemo<{ name: string; label: string; run?: () => void; insert?: string }[]>(
     () => [
       ...PROMPT_SKILLS.map((s) => ({ name: s.id, label: t(lang, `skill.${s.id}`), run: () => void runPromptSkill(s) })),
       { name: "links", label: t(lang, "skill.links"), run: () => void runLocalSkill() },
@@ -394,17 +410,31 @@ export default function App() {
       { name: "new", label: t(lang, "newChat"), run: () => newChat() },
       { name: "bookmarks", label: t(lang, "bookmarks"), run: () => setView("bookmarks") },
       { name: "market", label: t(lang, "market"), run: () => setView("market") },
+      ...(hermesConnected
+        ? SERVER_SKILLS.map((s) => ({
+            name: s.name,
+            label: t(lang, s.labelKey),
+            insert: t(lang, "slash.skillPrefix").replace("{skill}", s.name),
+          }))
+        : []),
     ],
-    [lang, runPromptSkill, runLocalSkill, runTranslate, newChat],
+    [lang, hermesConnected, runPromptSkill, runLocalSkill, runTranslate, newChat],
   );
   const slashQuery = input.startsWith("/") ? input.slice(1).toLowerCase() : null;
   const slashOpen = view === "chat" && !streaming && slashQuery !== null && !/\s/.test(slashQuery);
   const slashMatches = slashOpen ? slashCommands.filter((c) => c.name.startsWith(slashQuery ?? "")) : [];
   const slashSel = Math.min(slashIdx, Math.max(0, slashMatches.length - 1));
-  const runSlash = (cmd: { run: () => void }) => {
-    setInput("");
+  const runSlash = (cmd: { run?: () => void; insert?: string }) => {
     setSlashIdx(0);
-    cmd.run();
+    // Server-skill commands prefill the input so the user completes the request;
+    // action commands run immediately and clear the box.
+    if (cmd.insert !== undefined) {
+      setInput(cmd.insert);
+      requestAnimationFrame(() => inputRef.current?.focus());
+      return;
+    }
+    setInput("");
+    cmd.run?.();
   };
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -631,6 +661,7 @@ export default function App() {
       )}
       <div className="input-row">
         <textarea
+          ref={inputRef}
           value={input}
           onChange={(e) => {
             setInput(e.target.value);
