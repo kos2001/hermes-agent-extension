@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { mockPb } from "./pb-mock";
-import { eqFilter, onTableInserts } from "./realtime";
+import { eqFilter, onTableEvents, onTableInserts } from "./realtime";
 
 const tick = () => new Promise((r) => setTimeout(r, 0));
 
@@ -47,6 +47,22 @@ describe("onTableInserts", () => {
     await tick();
     handler!({ action: "create", record: { id: "x" } });
     expect(cb).toHaveBeenCalledOnce();
+  });
+
+  it("onTableEvents also fires on updates", async () => {
+    let handler: ((e: { action: string; record: Record<string, unknown> }) => void) | null = null;
+    const subscribe = vi.fn(async (_t: string, h: typeof handler) => {
+      handler = h;
+      return vi.fn();
+    });
+    const pb = mockPb({ agent_tasks: { subscribe } });
+    const cb = vi.fn();
+    onTableEvents(pb, "agent_tasks", undefined, cb);
+    await tick();
+    handler!({ action: "create", record: {} });
+    handler!({ action: "update", record: {} });
+    handler!({ action: "delete", record: {} });
+    expect(cb).toHaveBeenCalledTimes(2);
   });
 
   it("unsubscribes even when off() is called before the subscription resolves", async () => {
