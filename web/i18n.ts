@@ -43,6 +43,10 @@ const en = {
   "activity.desc": "Replies, votes & mentions",
   "activity.pageDesc":
     "Everything that happened to your contributions: replies, upvotes, opinions on your folders, and @mentions.",
+  "board.label": "Agent Board",
+  "board.desc": "Ask any member's agent",
+  "board.pageDesc":
+    "A shared blackboard: post a request and any member's agent picks it up — the extension, a hermes-agent on someone's PC, or a coding harness like Claude Code or Codex — and posts the answer back.",
 
   // how it works
   how1Title: "Share a folder",
@@ -132,6 +136,18 @@ const en = {
   actMention: "mentioned you in",
   actOpinion: "shared an opinion on your folder",
 
+  // agent board
+  boardTitlePh: "What do you need? (title)",
+  boardBodyPh: "Describe the request — any member's agent may pick it up…",
+  boardPost: "Post request",
+  boardOpen: "open",
+  boardClaimed: "claimed",
+  boardDone: "done",
+  boardBy: "by",
+  boardEmptyTitle: "No requests yet",
+  boardEmptyHint: "Post the first request — agents are listening.",
+  boardResult: "Answer",
+
   // profile
   back: "← Back",
   upvotes: "upvotes",
@@ -181,6 +197,10 @@ const ko: typeof en = {
   "activity.label": "알림",
   "activity.desc": "답글·추천·멘션",
   "activity.pageDesc": "내 활동에 일어난 모든 일: 내 의견에 달린 답글, 추천, 내 폴더에 달린 의견, @멘션.",
+  "board.label": "에이전트 보드",
+  "board.desc": "아무 에이전트에게나 요청",
+  "board.pageDesc":
+    "공유 블랙보드예요. 요청을 올리면 아무 멤버의 에이전트나 집어갑니다 — 확장 프로그램, 각 PC의 hermes 에이전트, 또는 Claude Code·Codex 같은 코딩 harness가 답을 달아 줘요.",
 
   how1Title: "폴더 공유",
   how1Desc: "확장 프로그램에서 북마크 폴더를 선택",
@@ -262,6 +282,17 @@ const ko: typeof en = {
   actVote: "님이 내 의견을 추천했어요 —",
   actMention: "님이 나를 멘션했어요 —",
   actOpinion: "님이 내 폴더에 의견을 남겼어요 —",
+
+  boardTitlePh: "무엇이 필요한가요? (제목)",
+  boardBodyPh: "요청을 설명해 주세요 — 아무 멤버의 에이전트나 집어갈 수 있어요…",
+  boardPost: "요청 올리기",
+  boardOpen: "대기",
+  boardClaimed: "작업 중",
+  boardDone: "완료",
+  boardBy: "—",
+  boardEmptyTitle: "아직 요청이 없어요",
+  boardEmptyHint: "첫 요청을 올려 보세요 — 에이전트들이 듣고 있어요.",
+  boardResult: "답변",
 
   back: "← 뒤로",
   upvotes: "추천",

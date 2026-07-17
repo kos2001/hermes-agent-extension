@@ -1,0 +1,137 @@
+import type PocketBase from "pocketbase";
+import type { ChatMessage, ConnectionConfig } from "@/lib/types";
+import { collectChat } from "@/lib/hermes-client";
+import { uid } from "./pb";
+
+/**
+ * The agent blackboard: members post requests; any member's agent — the
+ * extension, a hermes-agent on some PC, or a coding harness (Claude Code,
+ * Codex, …) — claims an open task, works it, and posts the result.
+ */
+export interface AgentTask {
+  id: string;
+  requester_id: string;
+  title: string;
+  body: string;
+  status: "open" | "claimed" | "done";
+  claimed_by: string;
+  worker_label: string;
+  result: string;
+  created_at: string;
+  updated_at: string;
+  requester?: { display_name: string | null };
+}
+
+/** The oldest open task someone else posted, or null. Pure. */
+export function pickOpenTask(tasks: AgentTask[], myId: string): AgentTask | null {
+  const open = tasks
+    .filter((t) => t.status === "open" && t.requester_id !== myId)
+    .sort((a, b) => (a.created_at < b.created_at ? -1 : 1));
+  return open[0] ?? null;
+}
+
+/** LLM request for answering a board task. Pure. */
+export function buildTaskPrompt(task: Pick<AgentTask, "title" | "body">): { messages: ChatMessage[] } {
+  const system =
+    "You are an AI agent working a shared task board for a knowledge-sharing " +
+    "community. A member posted the request below. Produce a genuinely useful, " +
+    "self-contained answer (a few paragraphs at most). " +
+    'Reply with JSON only: {"answer": "..."}.';
+  return {
+    messages: [
+      { role: "system", content: system },
+      { role: "user", content: JSON.stringify({ title: task.title, request: task.body }) },
+    ],
+  };
+}
+
+/** Pull the answer text from the model reply (JSON `{answer}` or plain text). Pure. */
+export function parseTaskAnswer(text: string): string {
+  const start = text.indexOf("{");
+  const end = text.lastIndexOf("}");
+  if (start >= 0 && end > start) {
+    try {
+      const obj = JSON.parse(text.slice(start, end + 1)) as { answer?: unknown };
+      if (typeof obj.answer === "string" && obj.answer.trim()) return obj.answer.trim();
+    } catch {
+      // fall through to plain text
+    }
+  }
+  const plain = text.trim();
+  if (!plain) throw new Error("Agent returned an empty answer");
+  return plain;
+}
+
+/** All board tasks, newest first, with the requester joined. */
+export async function listTasks(pb: PocketBase, limit = 50): Promise<AgentTask[]> {
+  const result = await pb.collection("agent_tasks").getList(1, limit, {
+    sort: "-created_at",
+    expand: "requester_id",
+  });
+  return result.items.map((row) => {
+    const { expand, ...t } = row as Record<string, unknown> & {
+      expand?: { requester_id?: { display_name: string | null } };
+    };
+    return { ...t, requester: { display_name: expand?.requester_id?.display_name ?? null } } as AgentTask;
+  });
+}
+
+/** Post a request to the board; returns the new task id. */
+export async function postTask(pb: PocketBase, title: string, body: string): Promise<string> {
+  const cleanTitle = title.trim();
+  const cleanBody = body.trim();
+  if (!cleanTitle || !cleanBody) throw new Error("Title and body must not be empty");
+  const userId = uid(pb);
+  if (!userId) throw new Error("Must be signed in to post");
+  const created = await pb.collection("agent_tasks").create({
+    requester_id: userId,
+    title: cleanTitle,
+    body: cleanBody,
+    status: "open",
+  });
+  return created.id;
+}
+
+/** Claim an open task for the current user's agent. */
+export async function claimTask(pb: PocketBase, taskId: string, workerLabel: string): Promise<void> {
+  const userId = uid(pb);
+  if (!userId) throw new Error("Must be signed in to claim");
+  await pb.collection("agent_tasks").update(taskId, {
+    status: "claimed",
+    claimed_by: userId,
+    worker_label: workerLabel,
+  });
+}
+
+/** Post the result and mark the task done. */
+export async function completeTask(pb: PocketBase, taskId: string, result: string): Promise<void> {
+  await pb.collection("agent_tasks").update(taskId, { status: "done", result });
+}
+
+/**
+ * One autonomous pass for the extension's local agent: claim the oldest open
+ * task and answer it with the member's own LLM. Returns what was worked.
+ */
+export async function runBoardWork(
+  pb: PocketBase,
+  config: ConnectionConfig,
+  opts: { signal?: AbortSignal } = {},
+): Promise<{ worked: string | null }> {
+  const myId = uid(pb);
+  if (!myId) return { worked: null };
+  const tasks = await listTasks(pb);
+  const next = pickOpenTask(tasks, myId);
+  if (!next) return { worked: null };
+
+  await claimTask(pb, next.id, config.model);
+  const { messages } = buildTaskPrompt(next);
+  const text = await collectChat({
+    config,
+    messages,
+    model: config.model,
+    responseFormat: { type: "json_object" },
+    signal: opts.signal,
+  });
+  await completeTask(pb, next.id, parseTaskAnswer(text));
+  return { worked: next.id };
+}

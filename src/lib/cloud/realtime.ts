@@ -21,11 +21,25 @@ export function onTableInserts(
   filter: RealtimeFilter | undefined,
   cb: () => void,
 ): () => void {
+  return onTableEvents(pb, collection, filter, cb, ["create"]);
+}
+
+/**
+ * Like onTableInserts but also fires on updates — for records whose state
+ * changes matter (e.g. board tasks moving open → claimed → done).
+ */
+export function onTableEvents(
+  pb: PocketBase,
+  collection: string,
+  filter: RealtimeFilter | undefined,
+  cb: () => void,
+  actions: string[] = ["create", "update"],
+): () => void {
   let unsub: (() => void) | null = null;
   let cancelled = false;
   pb.collection(collection)
     .subscribe("*", (e) => {
-      if (e.action !== "create") return;
+      if (!actions.includes(e.action)) return;
       if (filter && String((e.record as Record<string, unknown>)[filter.column]) !== filter.value) return;
       cb();
     })

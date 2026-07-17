@@ -10,7 +10,8 @@ import { createCommunity, deleteCommunity, joinCommunity, leaveCommunity, listCo
 import { buildConversations, getProfileNames, listMyMessages, markRead, sendMessage } from "@/lib/cloud/messages";
 import { listCommunityMessages, sendCommunityMessage } from "@/lib/cloud/community-chat";
 import { loadActivity, unseenCount } from "@/lib/cloud/activity";
-import { eqFilter, onTableInserts } from "@/lib/cloud/realtime";
+import { listTasks, postTask, type AgentTask } from "@/lib/cloud/board";
+import { eqFilter, onTableEvents, onTableInserts } from "@/lib/cloud/realtime";
 import { avatarFor } from "@/lib/cloud/avatar";
 import { activeMention, applyMention, extractMentionTokens, matchCandidates, postMentions, resolveMentions, type MentionCandidate } from "@/lib/cloud/mentions";
 import {
@@ -111,13 +112,14 @@ const HOW_STEPS: { icon: string; title: StrKey; desc: StrKey }[] = [
   { icon: "💬", title: "how4Title", desc: "how4Desc" },
 ];
 
-type TabKey = "feed" | "leaderboard" | "communities" | "messages" | "activity";
+type TabKey = "feed" | "leaderboard" | "communities" | "board" | "messages" | "activity";
 
 /** The site's pages; labels and descriptions come from the i18n dictionary. */
 const PAGES: { key: TabKey; icon: string }[] = [
   { key: "feed", icon: "📰" },
   { key: "leaderboard", icon: "🏆" },
   { key: "communities", icon: "👥" },
+  { key: "board", icon: "🧠" },
   { key: "messages", icon: "✉️" },
   { key: "activity", icon: "🔔" },
 ];
@@ -298,7 +300,7 @@ function SignIn({ onSignedIn }: { onSignedIn: (s: HiveSession) => void }) {
 
 function SignedIn({ session }: { session: HiveSession }) {
   const [openId, setOpenId] = useState<string | null>(null);
-  const [tab, setTab] = useState<"feed" | "leaderboard" | "communities" | "messages" | "activity">("feed");
+  const [tab, setTab] = useState<TabKey>("feed");
   const [community, setCommunity] = useState<{ id: string; name: string } | null>(null);
   const [communityTab, setCommunityTab] = useState<"folders" | "chat">("folders");
   const [dmTarget, setDmTarget] = useState<{ id: string; name: string } | null>(null);
@@ -386,6 +388,8 @@ function SignedIn({ session }: { session: HiveSession }) {
           <Leaderboard onOpenProfile={openProfile} />
         ) : tab === "communities" ? (
           <Communities onOpen={setCommunity} myId={myId} />
+        ) : tab === "board" ? (
+          <Board myId={myId} />
         ) : tab === "messages" ? (
           <Messages myId={myId} initialOther={dmTarget} />
         ) : (
@@ -487,6 +491,88 @@ function CommunityChat({ communityId, myId }: { communityId: string; myId: strin
       <div className="opinion-form">
         <textarea rows={2} placeholder={t("chatPlaceholder")} value={body} disabled={busy} onChange={(e) => setBody(e.target.value)} />
         <button className="primary" onClick={() => void send()} disabled={busy || !body.trim()}>{t("send")}</button>
+      </div>
+    </div>
+  );
+}
+
+/** The agent blackboard: post a request; any member's agent answers. */
+function Board({ myId }: { myId: string }) {
+  const t = useT();
+  const [tasks, setTasks] = useState<AgentTask[] | null>(null);
+  const [title, setTitle] = useState("");
+  const [body, setBody] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  const load = useCallback(() => {
+    listTasks(pb)
+      .then(setTasks)
+      .catch((e) => setError(errMsg(e)));
+  }, []);
+  useEffect(load, [load]);
+  // Live: new requests appear and claims/answers update without a refresh.
+  useEffect(() => onTableEvents(pb, "agent_tasks", undefined, load), [load]);
+
+  async function submit() {
+    setBusy(true);
+    setError("");
+    try {
+      await postTask(pb, title, body);
+      setTitle("");
+      setBody("");
+      load();
+    } catch (e) {
+      setError(errMsg(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const statusChip = (task: AgentTask) =>
+    task.status === "open" ? (
+      <span className="task-status open">🟡 {t("boardOpen")}</span>
+    ) : task.status === "claimed" ? (
+      <span className="task-status claimed">🔵 {t("boardClaimed")}{task.worker_label ? ` ${t("boardBy")} ${task.worker_label}` : ""}</span>
+    ) : (
+      <span className="task-status done">✅ {t("boardDone")}{task.worker_label ? ` ${t("boardBy")} ${task.worker_label}` : ""}</span>
+    );
+
+  return (
+    <div className="board">
+      <div className="board-form">
+        <input placeholder={t("boardTitlePh")} value={title} disabled={busy} onChange={(e) => setTitle(e.target.value)} />
+        <div className="opinion-form">
+          <textarea rows={2} placeholder={t("boardBodyPh")} value={body} disabled={busy} onChange={(e) => setBody(e.target.value)} />
+          <button className="primary" onClick={() => void submit()} disabled={busy || !title.trim() || !body.trim()}>
+            {t("boardPost")}
+          </button>
+        </div>
+      </div>
+      {error && <p className="hint err">⚠ {error}</p>}
+      {!tasks && <SkeletonRows />}
+      {tasks && tasks.length === 0 && <EmptyState icon="🧠" title={t("boardEmptyTitle")} hint={t("boardEmptyHint")} />}
+      <div className="feed">
+        {tasks?.map((task) => (
+          <article key={task.id} className={`card task${isRecent(task.updated_at, FRESH_MS) ? " fresh" : ""}`}>
+            <header className="card-head">
+              <h3>{task.title}</h3>
+              {statusChip(task)}
+            </header>
+            <p className="summary">{task.body}</p>
+            <p className="task-meta">
+              <Avatar seed={task.requester_id} label={task.requester?.display_name ?? t("someone")} />{" "}
+              {task.requester?.display_name ?? t("someone")}
+              {task.requester_id === myId ? " ✳" : ""} · <TimeAgo iso={task.created_at} />
+            </p>
+            {task.status === "done" && task.result && (
+              <div className="task-result">
+                <strong>🤖 {t("boardResult")}</strong>
+                <p>{task.result}</p>
+              </div>
+            )}
+          </article>
+        ))}
       </div>
     </div>
   );

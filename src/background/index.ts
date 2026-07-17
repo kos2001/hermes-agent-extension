@@ -23,6 +23,7 @@ import { loadConfig } from "@/lib/storage";
 import { loadBookmarks } from "@/lib/bookmarks";
 import { downloadReport, loadMarketSettings, MARKET_ALARM, runMarketReport, saveReport } from "@/lib/market-report";
 import { HEARTBEAT_ALARM, loadHeartbeatSettings, runHeartbeat } from "@/lib/cloud/heartbeat";
+import { runBoardWork } from "@/lib/cloud/board";
 import { pb } from "@/lib/cloud/client";
 import { isLang, LANG_KEY } from "@/lib/i18n";
 
@@ -177,6 +178,20 @@ async function runScheduledHeartbeat(): Promise<void> {
     }
   } catch (e) {
     console.warn("hive heartbeat failed:", e);
+  }
+  // Blackboard: answer one open request from the shared agent board per beat.
+  try {
+    const { worked } = await runBoardWork(pb, config);
+    if (worked) {
+      chrome.notifications.create({
+        type: "basic",
+        iconUrl: "icons/icon-128.png",
+        title: "Hive",
+        message: "Your agent answered a request on the agent board.",
+      });
+    }
+  } catch (e) {
+    console.warn("hive board work failed:", e);
   }
 }
 
