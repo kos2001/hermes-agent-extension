@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
+import { detectLang, localizeTimeAgo, saveLang, t as tr, type Lang, type StrKey } from "./i18n";
 import { listFeed, listOwnerFolders, myReactions, react, reactionCounts, reactionKey, unreact } from "@/lib/cloud/feed";
 import { isRecent, timeAgo } from "@/lib/cloud/time";
 import { getFolder } from "@/lib/cloud/folders";
@@ -35,12 +36,22 @@ import { cloudConfigured, getSession, onAuthChange, pb, sendEmailOtp, signOut, v
 type ReactionKind = "like" | "save";
 type ReactionTally = { like: number; save: number };
 
+/** UI language, switchable from the top bar (persisted). */
+const LangCtx = createContext<{ lang: Lang; setLang: (l: Lang) => void }>({ lang: "en", setLang: () => {} });
+
+/** Bound translator for the active language. */
+function useT() {
+  const { lang } = useContext(LangCtx);
+  return useCallback((key: StrKey, vars?: Record<string, string | number>) => tr(lang, key, vars), [lang]);
+}
+
 /** How long a just-inserted row keeps its "new" flash (realtime arrivals). */
 const FRESH_MS = 20_000;
 
 /** Relative timestamp with the exact moment on hover. */
 function TimeAgo({ iso }: { iso: string }) {
-  const label = timeAgo(iso);
+  const { lang } = useContext(LangCtx);
+  const label = localizeTimeAgo(lang, timeAgo(iso));
   if (!label) return null;
   return (
     <span className="time" title={new Date(iso).toLocaleString()}>
@@ -93,22 +104,60 @@ function EmptyState({ icon, title, hint }: { icon: string; title: string; hint?:
   );
 }
 
-const HOW_STEPS = [
-  { icon: "📁", title: "Share a folder", desc: "Pick a bookmark folder in the extension" },
-  { icon: "🤖", title: "Your agent reads it", desc: "It reads each page and writes real insights" },
-  { icon: "🐝", title: "It lands on the feed", desc: "Members browse, react and follow topics" },
-  { icon: "💬", title: "Minds meet", desc: "Humans and agents discuss, answer and vote" },
+const HOW_STEPS: { icon: string; title: StrKey; desc: StrKey }[] = [
+  { icon: "📁", title: "how1Title", desc: "how1Desc" },
+  { icon: "🤖", title: "how2Title", desc: "how2Desc" },
+  { icon: "🐝", title: "how3Title", desc: "how3Desc" },
+  { icon: "💬", title: "how4Title", desc: "how4Desc" },
 ];
+
+type TabKey = "feed" | "leaderboard" | "communities" | "messages" | "activity";
+
+/** The site's pages; labels and descriptions come from the i18n dictionary. */
+const PAGES: { key: TabKey; icon: string }[] = [
+  { key: "feed", icon: "📰" },
+  { key: "leaderboard", icon: "🏆" },
+  { key: "communities", icon: "👥" },
+  { key: "messages", icon: "✉️" },
+  { key: "activity", icon: "🔔" },
+];
+
+const pageKey = (key: TabKey, part: "label" | "desc" | "pageDesc") => `${key}.${part}` as StrKey;
+
+/** Page title + one-line explanation shown at the top of each page. */
+function PageHead({ page }: { page: (typeof PAGES)[number] }) {
+  const t = useT();
+  return (
+    <header className="page-head">
+      <h2>
+        {page.icon} {t(pageKey(page.key, "label"))}
+      </h2>
+      <p className="page-sub">{t(pageKey(page.key, "pageDesc"))}</p>
+    </header>
+  );
+}
+
+/** Sidebar footer: where the name comes from. */
+function WhyHive() {
+  const t = useT();
+  return (
+    <div className="side-why">
+      <strong>{t("whyHiveTitle")}</strong>
+      {t("whyHiveBody")}
+    </div>
+  );
+}
 
 /** Visual pipeline of what Hive does — shown on sign-in and on an empty feed. */
 function HowItWorks() {
+  const t = useT();
   return (
     <div className="how">
       {HOW_STEPS.map((s, i) => (
         <div key={s.title} className="how-step" style={{ animationDelay: `${i * 120}ms` }}>
           <span className="how-icon" aria-hidden>{s.icon}</span>
-          <span className="how-title">{s.title}</span>
-          <span className="how-desc">{s.desc}</span>
+          <span className="how-title">{t(s.title)}</span>
+          <span className="how-desc">{t(s.desc)}</span>
         </div>
       ))}
     </div>
@@ -127,6 +176,11 @@ function errMsg(e: unknown): string {
 export function App() {
   const [session, setSession] = useState<HiveSession | null>(null);
   const [ready, setReady] = useState(false);
+  const [lang, setLangState] = useState<Lang>(() => detectLang());
+  const setLang = (l: Lang) => {
+    saveLang(l);
+    setLangState(l);
+  };
 
   useEffect(() => {
     if (!cloudConfigured) {
@@ -140,30 +194,30 @@ export function App() {
     return onAuthChange(setSession);
   }, []);
 
+  let body: ReactNode;
   if (!cloudConfigured) {
-    return (
+    body = (
       <Shell>
-        <p className="hint">
-          Hive is not configured. Set <code>VITE_POCKETBASE_URL</code> and rebuild.
-        </p>
+        <p className="hint">{tr(lang, "notConfigured")}</p>
       </Shell>
     );
-  }
-
-  if (!ready) return <Shell><p className="hint">Loading…</p></Shell>;
-
-  if (!session) {
-    return (
+  } else if (!ready) {
+    body = <Shell><p className="hint">{tr(lang, "loading")}</p></Shell>;
+  } else if (!session) {
+    body = (
       <Shell>
         <SignIn onSignedIn={setSession} />
       </Shell>
     );
+  } else {
+    body = <SignedIn session={session} />;
   }
 
-  return <SignedIn session={session} />;
+  return <LangCtx.Provider value={{ lang, setLang }}>{body}</LangCtx.Provider>;
 }
 
 function SignIn({ onSignedIn }: { onSignedIn: (s: HiveSession) => void }) {
+  const t = useT();
   const [phase, setPhase] = useState<"email" | "code">("email");
   const [email, setEmail] = useState("");
   const [code, setCode] = useState("");
@@ -172,7 +226,7 @@ function SignIn({ onSignedIn }: { onSignedIn: (s: HiveSession) => void }) {
 
   async function send() {
     if (!isValidEmail(email)) {
-      setError("Enter a valid email.");
+      setError(t("emailInvalid"));
       return;
     }
     setBusy(true);
@@ -202,28 +256,28 @@ function SignIn({ onSignedIn }: { onSignedIn: (s: HiveSession) => void }) {
 
   return (
     <div className="signin">
-      <h2>Discover what others are reading</h2>
-      <p className="hint">Sign in with an email code to browse what members have shared.</p>
+      <h2>{t("signinTitle")}</h2>
+      <p className="hint">{t("signinSub")}</p>
       {phase === "email" ? (
         <div className="signin-form">
           <input
             type="email"
-            placeholder="you@example.com"
+            placeholder={t("emailPlaceholder")}
             value={email}
             disabled={busy}
             onChange={(e) => setEmail(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && void send()}
           />
           <button className="primary" onClick={() => void send()} disabled={busy}>
-            {busy ? "Sending…" : "Send code"}
+            {busy ? t("sending") : t("sendCode")}
           </button>
         </div>
       ) : (
         <div className="signin-form">
-          <p className="hint">Code sent to {email}.</p>
+          <p className="hint">{t("codeSentTo", { email })}</p>
           <input
             inputMode="numeric"
-            placeholder="6-digit code"
+            placeholder={t("codePlaceholder")}
             value={code}
             disabled={busy}
             autoFocus
@@ -231,9 +285,9 @@ function SignIn({ onSignedIn }: { onSignedIn: (s: HiveSession) => void }) {
             onKeyDown={(e) => e.key === "Enter" && void verify()}
           />
           <button className="primary" onClick={() => void verify()} disabled={busy}>
-            {busy ? "Verifying…" : "Verify"}
+            {busy ? t("verifying") : t("verify")}
           </button>
-          <button onClick={() => void send()} disabled={busy}>Resend</button>
+          <button onClick={() => void send()} disabled={busy}>{t("resend")}</button>
         </div>
       )}
       {error && <p className="hint err">⚠ {error}</p>}
@@ -253,16 +307,24 @@ function SignedIn({ session }: { session: HiveSession }) {
   const [seen, setSeen] = useState<string | null>(() => localStorage.getItem("hive.activity.seen"));
   const myId = session.user.id;
   const name = session.user.name ?? session.user.email ?? "";
+  const t = useT();
 
   useEffect(() => {
     loadActivity(pb).then(setActivity).catch(() => {});
   }, []);
   const unseen = activity ? unseenCount(activity, seen) : 0;
-  const openActivity = () => {
-    setTab("activity");
-    const now = new Date().toISOString();
-    localStorage.setItem("hive.activity.seen", now);
-    setSeen(now);
+
+  /** Sidebar navigation: switch page and leave any drill-down view. */
+  const goTab = (key: TabKey) => {
+    setTab(key);
+    setOpenId(null);
+    setProfile(null);
+    setCommunity(null);
+    if (key === "activity") {
+      const now = new Date().toISOString();
+      localStorage.setItem("hive.activity.seen", now);
+      setSeen(now);
+    }
   };
 
   const startDm = (id: string, who: string) => {
@@ -297,13 +359,14 @@ function SignedIn({ session }: { session: HiveSession }) {
       <>
         <div className="filter-bar">
           <span>
-            Community · <strong>{community.name}</strong>
+            {t("communityLabel")} · <strong>{community.name}</strong>
           </span>
-          <button onClick={() => setCommunity(null)}>← All communities</button>
+          <button onClick={() => setCommunity(null)}>{t("allCommunities")}</button>
         </div>
+        <p className="page-sub">{t("communityPageDesc")}</p>
         <div className="scope">
-          <button className={communityTab === "folders" ? "active" : ""} onClick={() => setCommunityTab("folders")}>📁 Folders</button>
-          <button className={communityTab === "chat" ? "active" : ""} onClick={() => setCommunityTab("chat")}>💬 Chat</button>
+          <button className={communityTab === "folders" ? "active" : ""} onClick={() => setCommunityTab("folders")}>{t("foldersTab")}</button>
+          <button className={communityTab === "chat" ? "active" : ""} onClick={() => setCommunityTab("chat")}>{t("chatTab")}</button>
         </div>
         {communityTab === "folders" ? (
           <Feed onOpen={setOpenId} onOpenProfile={openProfile} communityId={community.id} />
@@ -313,23 +376,10 @@ function SignedIn({ session }: { session: HiveSession }) {
       </>
     );
   } else {
+    const page = PAGES.find((p) => p.key === tab)!;
     content = (
       <>
-        <nav className="tabs">
-          <button className={tab === "feed" ? "active" : ""} onClick={() => setTab("feed")}>Feed</button>
-          <button className={tab === "leaderboard" ? "active" : ""} onClick={() => setTab("leaderboard")}>
-            🏆 Leaderboard
-          </button>
-          <button className={tab === "communities" ? "active" : ""} onClick={() => setTab("communities")}>
-            👥 Communities
-          </button>
-          <button className={tab === "messages" ? "active" : ""} onClick={() => setTab("messages")}>
-            ✉ Messages
-          </button>
-          <button className={tab === "activity" ? "active" : ""} onClick={openActivity}>
-            🔔 Activity{unseen > 0 && <span className="tab-badge">{unseen}</span>}
-          </button>
-        </nav>
+        <PageHead page={page} />
         {tab === "feed" ? (
           <Feed onOpen={setOpenId} onOpenProfile={openProfile} />
         ) : tab === "leaderboard" ? (
@@ -350,16 +400,37 @@ function SignedIn({ session }: { session: HiveSession }) {
       right={
         <span className="me">
           <span className="me-name">{name}</span>
-          <button onClick={() => void signOut()}>Sign out</button>
+          <button onClick={() => void signOut()}>{t("signOut")}</button>
         </span>
       }
     >
-      {content}
+      <div className="layout">
+        <aside className="sidebar">
+          <p className="side-tagline">{t("tagline")}</p>
+          <nav className="side-nav" aria-label="Pages">
+            {PAGES.map((p) => (
+              <button key={p.key} className={`side-item${tab === p.key ? " active" : ""}`} onClick={() => goTab(p.key)}>
+                <span className="side-icon" aria-hidden>{p.icon}</span>
+                <span className="side-text">
+                  <span className="side-label">
+                    {t(pageKey(p.key, "label"))}
+                    {p.key === "activity" && unseen > 0 && <span className="tab-badge">{unseen}</span>}
+                  </span>
+                  <span className="side-desc">{t(pageKey(p.key, "desc"))}</span>
+                </span>
+              </button>
+            ))}
+          </nav>
+          <WhyHive />
+        </aside>
+        <div className="page">{content}</div>
+      </div>
     </Shell>
   );
 }
 
 function CommunityChat({ communityId, myId }: { communityId: string; myId: string }) {
+  const t = useT();
   const [messages, setMessages] = useState<CommunityMessage[] | null>(null);
   const [body, setBody] = useState("");
   const [busy, setBusy] = useState(false);
@@ -394,11 +465,11 @@ function CommunityChat({ communityId, myId }: { communityId: string; myId: strin
       {error && <p className="hint err">⚠ {error}</p>}
       {!messages && <SkeletonRows n={3} />}
       {messages && messages.length === 0 && (
-        <EmptyState icon="💬" title="No messages yet" hint="Start the conversation." />
+        <EmptyState icon="💬" title={t("chatEmptyTitle")} hint={t("chatEmptyHint")} />
       )}
       <div className="chat-thread">
         {messages?.map((m) => {
-          const who = m.author?.display_name ?? "Someone";
+          const who = m.author?.display_name ?? t("someone");
           const mine = m.user_id === myId;
           return (
             <div key={m.id} className={`chat-msg ${mine ? "mine" : "theirs"}${isRecent(m.created_at, FRESH_MS) ? " fresh" : ""}`}>
@@ -414,14 +485,15 @@ function CommunityChat({ communityId, myId }: { communityId: string; myId: strin
         })}
       </div>
       <div className="opinion-form">
-        <textarea rows={2} placeholder="Message the community…" value={body} disabled={busy} onChange={(e) => setBody(e.target.value)} />
-        <button className="primary" onClick={() => void send()} disabled={busy || !body.trim()}>Send</button>
+        <textarea rows={2} placeholder={t("chatPlaceholder")} value={body} disabled={busy} onChange={(e) => setBody(e.target.value)} />
+        <button className="primary" onClick={() => void send()} disabled={busy || !body.trim()}>{t("send")}</button>
       </div>
     </div>
   );
 }
 
 function Communities({ onOpen, myId }: { onOpen: (c: { id: string; name: string }) => void; myId: string }) {
+  const t = useT();
   const [rows, setRows] = useState<Community[] | null>(null);
   const [mine, setMine] = useState<Set<string>>(new Set());
   const [name, setName] = useState("");
@@ -471,7 +543,7 @@ function Communities({ onOpen, myId }: { onOpen: (c: { id: string; name: string 
   }
 
   async function remove(id: string, cname: string) {
-    if (!window.confirm(`Delete community "${cname}"? Folders stay but leave the community.`)) return;
+    if (!window.confirm(t("deleteCommunityConfirm", { name: cname }))) return;
     try {
       await deleteCommunity(pb, id);
       load();
@@ -483,16 +555,16 @@ function Communities({ onOpen, myId }: { onOpen: (c: { id: string; name: string 
   return (
     <div className="communities">
       <div className="community-create">
-        <input placeholder="New community name" value={name} disabled={busy} onChange={(e) => setName(e.target.value)} />
-        <input placeholder="Description (optional)" value={desc} disabled={busy} onChange={(e) => setDesc(e.target.value)} />
+        <input placeholder={t("communityName")} value={name} disabled={busy} onChange={(e) => setName(e.target.value)} />
+        <input placeholder={t("communityDesc")} value={desc} disabled={busy} onChange={(e) => setDesc(e.target.value)} />
         <button className="primary" onClick={() => void create()} disabled={busy || name.trim().length < 2}>
-          Create
+          {t("create")}
         </button>
       </div>
       {error && <p className="hint err">⚠ {error}</p>}
       {!rows && <SkeletonRows />}
       {rows && rows.length === 0 && (
-        <EmptyState icon="👥" title="No communities yet" hint="Create the first one above." />
+        <EmptyState icon="👥" title={t("commEmptyTitle")} hint={t("commEmptyHint")} />
       )}
       <div className="community-list">
         {rows?.map((c) => (
@@ -503,7 +575,7 @@ function Communities({ onOpen, myId }: { onOpen: (c: { id: string; name: string 
               <span className="community-stats">📁 {c.folder_count} · 👥 {c.member_count}</span>
             </div>
             <button className={mine.has(c.id) ? "active" : ""} onClick={() => void toggleJoin(c.id)}>
-              {mine.has(c.id) ? "Joined" : "Join"}
+              {mine.has(c.id) ? t("joined") : t("join")}
             </button>
             {c.created_by === myId && (
               <button className="danger" title="Delete community" onClick={() => void remove(c.id, c.name)}>
@@ -518,6 +590,7 @@ function Communities({ onOpen, myId }: { onOpen: (c: { id: string; name: string 
 }
 
 function Messages({ myId, initialOther }: { myId: string; initialOther: { id: string; name: string } | null }) {
+  const t = useT();
   const [messages, setMessages] = useState<DirectMessage[] | null>(null);
   const [names, setNames] = useState<Record<string, string>>(() =>
     initialOther ? { [initialOther.id]: initialOther.name } : {},
@@ -579,7 +652,7 @@ function Messages({ myId, initialOther }: { myId: string; initialOther: { id: st
       <div className="messages">
         <div className="filter-bar">
           <span>✉ <strong>{names[openOther] ?? "…"}</strong></span>
-          <button onClick={() => setOpenOther(null)}>← All messages</button>
+          <button onClick={() => setOpenOther(null)}>{t("allMessages")}</button>
         </div>
         <div className="dm-thread">
           {thread.map((m) => (
@@ -591,11 +664,11 @@ function Messages({ myId, initialOther }: { myId: string; initialOther: { id: st
               </span>
             </div>
           ))}
-          {thread.length === 0 && <p className="hint">No messages yet — say hello.</p>}
+          {thread.length === 0 && <p className="hint">{t("dmNoMessages")}</p>}
         </div>
         <div className="opinion-form">
-          <textarea rows={2} placeholder="Message…" value={body} disabled={busy} onChange={(e) => setBody(e.target.value)} />
-          <button className="primary" onClick={() => void send()} disabled={busy || !body.trim()}>Send</button>
+          <textarea rows={2} placeholder={t("dmPlaceholder")} value={body} disabled={busy} onChange={(e) => setBody(e.target.value)} />
+          <button className="primary" onClick={() => void send()} disabled={busy || !body.trim()}>{t("send")}</button>
         </div>
       </div>
     );
@@ -604,13 +677,13 @@ function Messages({ myId, initialOther }: { myId: string; initialOther: { id: st
   return (
     <div className="messages">
       {convos.length === 0 && (
-        <EmptyState icon="✉" title="No conversations yet" hint="Use ✉ on a folder to message its author." />
+        <EmptyState icon="✉" title={t("dmEmptyTitle")} hint={t("dmEmptyHint")} />
       )}
       <div className="dm-list">
         {convos.map((c) => (
           <div key={c.otherId} className="dm-row" onClick={() => setOpenOther(c.otherId)}>
-            <Avatar seed={c.otherId} label={names[c.otherId] ?? "Someone"} />
-            <span className="dm-name">{names[c.otherId] ?? "Someone"}</span>
+            <Avatar seed={c.otherId} label={names[c.otherId] ?? t("someone")} />
+            <span className="dm-name">{names[c.otherId] ?? t("someone")}</span>
             <span className="dm-last">{c.lastBody}</span>
             <TimeAgo iso={c.lastAt} />
             {c.unread > 0 && <span className="dm-unread">{c.unread}</span>}
@@ -630,6 +703,7 @@ function Feed({
   onOpenProfile: (id: string, name: string) => void;
   communityId?: string;
 }) {
+  const t = useT();
   const [entries, setEntries] = useState<FeedEntry[] | null>(null);
   const [error, setError] = useState("");
   const [topic, setTopic] = useState<string | null>(null);
@@ -701,7 +775,7 @@ function Feed({
   if (entries.length === 0)
     return (
       <>
-        <EmptyState icon="🐝" title="No shared folders yet" hint="Be the first — share a bookmark folder from the extension." />
+        <EmptyState icon="🐝" title={t("emptyFeedTitle")} hint={t("emptyFeedHint")} />
         <HowItWorks />
       </>
     );
@@ -722,16 +796,16 @@ function Feed({
     <>
       {!communityId && (
         <div className="scope">
-          <button className={scope === "all" ? "active" : ""} onClick={() => setScope("all")}>All</button>
-          <button className={scope === "following" ? "active" : ""} onClick={() => setScope("following")}>Following</button>
+          <button className={scope === "all" ? "active" : ""} onClick={() => setScope("all")}>{t("scopeAll")}</button>
+          <button className={scope === "following" ? "active" : ""} onClick={() => setScope("following")}>{t("scopeFollowing")}</button>
         </div>
       )}
       <section className="collective">
         <div className="stats">
-          <Stat n={stats.folders} label="folders" />
-          <Stat n={stats.members} label="members" />
-          <Stat n={stats.items} label="links" />
-          <Stat n={stats.topics} label="topics" />
+          <Stat n={stats.folders} label={t("statFolders")} />
+          <Stat n={stats.members} label={t("statMembers")} />
+          <Stat n={stats.items} label={t("statLinks")} />
+          <Stat n={stats.topics} label={t("statTopics")} />
         </div>
         {counts.length > 0 && (
           <div className="cloud">
@@ -752,19 +826,19 @@ function Feed({
       {topic && (
         <div className="filter-bar">
           <span>
-            Showing <strong>#{topic}</strong> · {shown.length} result{shown.length === 1 ? "" : "s"}
+            {t("showing")} <strong>#{topic}</strong> · {shown.length} {shown.length === 1 ? t("result") : t("results")}
           </span>
           <span style={{ display: "inline-flex", gap: 8 }}>
             <button className={fTopics.has(topic) ? "active" : ""} onClick={() => void toggleTopicFollow(topic)}>
-              {fTopics.has(topic) ? "★ Following" : "☆ Follow topic"}
+              {fTopics.has(topic) ? t("followingTopic") : t("followTopic")}
             </button>
-            <button onClick={() => setTopic(null)}>Clear</button>
+            <button onClick={() => setTopic(null)}>{t("clear")}</button>
           </span>
         </div>
       )}
 
       {scope === "following" && !communityId && shown.length === 0 && (
-        <p className="hint">Nothing here yet. Follow members (on their profile) or topics (☆ on a topic) to fill this feed.</p>
+        <p className="hint">{t("followingEmpty")}</p>
       )}
 
       <div className="feed">
@@ -784,23 +858,18 @@ function Feed({
   );
 }
 
-const ACTIVITY_LOOK: Record<ActivityItem["type"], { icon: string; verb: string }> = {
-  reply: { icon: "↳", verb: "replied to your opinion in" },
-  vote: { icon: "▲", verb: "upvoted your opinion in" },
-  mention: { icon: "@", verb: "mentioned you in" },
-  opinion: { icon: "💬", verb: "shared an opinion on your folder" },
+const ACTIVITY_LOOK: Record<ActivityItem["type"], { icon: string; verb: StrKey }> = {
+  reply: { icon: "↳", verb: "actReply" },
+  vote: { icon: "▲", verb: "actVote" },
+  mention: { icon: "@", verb: "actMention" },
+  opinion: { icon: "💬", verb: "actOpinion" },
 };
 
 function Activity({ items, onOpenFolder }: { items: ActivityItem[] | null; onOpenFolder: (id: string) => void }) {
+  const t = useT();
   if (!items) return <SkeletonRows />;
   if (items.length === 0)
-    return (
-      <EmptyState
-        icon="🔔"
-        title="No activity yet"
-        hint="When others reply, upvote, or mention you, it shows here."
-      />
-    );
+    return <EmptyState icon="🔔" title={t("actEmptyTitle")} hint={t("actEmptyHint")} />;
   return (
     <div className="activity">
       {items.map((a) => {
@@ -809,7 +878,7 @@ function Activity({ items, onOpenFolder }: { items: ActivityItem[] | null; onOpe
           <div key={a.id} className="activity-row" onClick={() => onOpenFolder(a.folderId)}>
             <span className={`activity-icon t-${a.type}`}>{look.icon}</span>
             <span className="activity-text">
-              <strong>{a.actorName}</strong> {look.verb} <strong>{a.folderTitle}</strong>
+              <strong>{a.actorName}</strong> {t(look.verb)} <strong>{a.folderTitle}</strong>
             </span>
             <TimeAgo iso={a.when} />
           </div>
@@ -834,6 +903,7 @@ function Profile({
   onOpenFolder: (id: string) => void;
   onMessage: (id: string, name: string) => void;
 }) {
+  const t = useT();
   const [rep, setRep] = useState<Contributor | null>(null);
   const [folders, setFolders] = useState<FeedEntry[] | null>(null);
   const [following, setFollowing] = useState(false);
@@ -861,32 +931,32 @@ function Profile({
     <div className="profile">
       <div className="filter-bar">
         <span className="profile-head"><Avatar seed={userId} label={who} /> <strong>{who}</strong></span>
-        <button onClick={onBack}>← Back</button>
+        <button onClick={onBack}>{t("back")}</button>
       </div>
       {error && <p className="hint err">⚠ {error}</p>}
       <div className="stats">
-        <Stat n={rep?.votes_received ?? 0} label="upvotes" />
-        <Stat n={rep?.opinions ?? 0} label="opinions" />
-        <Stat n={rep?.folders_shared ?? 0} label="folders" />
+        <Stat n={rep?.votes_received ?? 0} label={t("upvotes")} />
+        <Stat n={rep?.opinions ?? 0} label={t("opinions")} />
+        <Stat n={rep?.folders_shared ?? 0} label={t("folders")} />
       </div>
       {!isMe && (
         <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
           <button className={following ? "active" : "primary"} onClick={() => void toggleFollow()}>
-            {following ? "✓ Following" : "+ Follow"}
+            {following ? t("followingUser") : t("follow")}
           </button>
-          <button onClick={() => onMessage(userId, who)}>✉ Message</button>
+          <button onClick={() => onMessage(userId, who)}>{t("message")}</button>
         </div>
       )}
-      <h3>Shared folders</h3>
+      <h3>{t("sharedFolders")}</h3>
       {!folders && <SkeletonCards n={2} />}
-      {folders && folders.length === 0 && <EmptyState icon="📁" title="No shared folders yet" />}
+      {folders && folders.length === 0 && <EmptyState icon="📁" title={t("noFolders")} />}
       <div className="feed">
         {folders?.map((f) => (
           <article key={f.id} className="card" onClick={() => onOpenFolder(f.id)} style={{ cursor: "pointer" }}>
             <header className="card-head">
               <h3>{f.title}</h3>
               <span className="count">
-                {f.item_count} items · <TimeAgo iso={f.updated_at} />
+                {f.item_count} {t("items")} · <TimeAgo iso={f.updated_at} />
               </span>
             </header>
             {f.summary && <p className="summary">{f.summary}</p>}
@@ -903,6 +973,7 @@ function Profile({
 }
 
 function Leaderboard({ onOpenProfile }: { onOpenProfile: (id: string, name: string) => void }) {
+  const t = useT();
   const [rows, setRows] = useState<Contributor[] | null>(null);
   const [error, setError] = useState("");
 
@@ -915,19 +986,19 @@ function Leaderboard({ onOpenProfile }: { onOpenProfile: (id: string, name: stri
   if (error) return <p className="hint err">⚠ {error}</p>;
   if (!rows) return <SkeletonRows />;
   if (rows.length === 0)
-    return <EmptyState icon="🏆" title="No contributors yet" hint="Share a folder or post an opinion to appear here." />;
+    return <EmptyState icon="🏆" title={t("lbEmptyTitle")} hint={t("lbEmptyHint")} />;
 
   const maxVotes = Math.max(1, ...rows.map((r) => r.votes_received));
   return (
     <div className="leaderboard">
-      <p className="hint">Ranked by upvotes their opinions earned. Click a name for their profile.</p>
+      <p className="hint">{t("lbHint")}</p>
       <ol className="lb-list">
         {rows.map((r, i) => (
-          <li key={r.user_id} className="lb-row" onClick={() => onOpenProfile(r.user_id, r.display_name ?? "Someone")} style={{ cursor: "pointer" }}>
+          <li key={r.user_id} className="lb-row" onClick={() => onOpenProfile(r.user_id, r.display_name ?? t("someone"))} style={{ cursor: "pointer" }}>
             <span className={`lb-rank r${i + 1}`}>{i + 1}</span>
-            <Avatar seed={r.user_id} label={r.display_name ?? "Someone"} />
+            <Avatar seed={r.user_id} label={r.display_name ?? t("someone")} />
             <span className="lb-main">
-              <span className="lb-name">{r.display_name ?? "Someone"}</span>
+              <span className="lb-name">{r.display_name ?? t("someone")}</span>
               <span className="lb-bar" aria-hidden>
                 <span className="lb-bar-fill" style={{ width: `${(r.votes_received / maxVotes) * 100}%` }} />
               </span>
@@ -968,14 +1039,15 @@ function FolderCard({
   mine: Set<string>;
   onToggleReaction: (folderId: string, kind: ReactionKind) => void;
 }) {
-  const owner = entry.owner.display_name ?? "Someone";
+  const t = useT();
+  const owner = entry.owner.display_name ?? t("someone");
   return (
     <article className={`card${isRecent(entry.updated_at, FRESH_MS) ? " fresh" : ""}`}>
       <header className="card-head" onClick={onOpen}>
         <h3>{entry.title}</h3>
         <span
           className="owner"
-          title={`View ${owner}'s profile`}
+          title={owner}
           onClick={(e) => {
             e.stopPropagation();
             onOpenProfile(entry.owner_id, owner);
@@ -986,13 +1058,13 @@ function FolderCard({
       </header>
       {entry.summary && <p className="summary" onClick={onOpen}>{entry.summary}</p>}
       <div className="topics">
-        {entry.topics.map((t) => (
-          <span key={t} className="chip">#{t}</span>
+        {entry.topics.map((tp) => (
+          <span key={tp} className="chip">#{tp}</span>
         ))}
       </div>
       <footer className="card-foot">
         <span className="count">
-          {entry.item_count} items · <TimeAgo iso={entry.updated_at} />
+          {entry.item_count} {t("items")} · <TimeAgo iso={entry.updated_at} />
         </span>
         <Reactions folderId={entry.id} counts={reactions} mine={mine} onToggle={onToggleReaction} />
       </footer>
@@ -1011,6 +1083,7 @@ function Reactions({
   mine: Set<string>;
   onToggle: (folderId: string, kind: ReactionKind) => void;
 }) {
+  const t = useT();
   const btn = (kind: ReactionKind, icon: string, label: string) => {
     const n = counts?.[kind] ?? 0;
     return (
@@ -1022,13 +1095,14 @@ function Reactions({
   };
   return (
     <span className="reactions">
-      {btn("like", "♥", "Like")}
-      {btn("save", "☆", "Save")}
+      {btn("like", "♥", t("like"))}
+      {btn("save", "☆", t("save"))}
     </span>
   );
 }
 
 function Detail({ folderId, onBack }: { folderId: string; onBack: () => void }) {
+  const t = useT();
   const [data, setData] = useState<{ folder: SharedFolder; items: SharedItem[] } | null>(null);
   const [error, setError] = useState("");
 
@@ -1040,14 +1114,14 @@ function Detail({ folderId, onBack }: { folderId: string; onBack: () => void }) 
 
   return (
     <div className="detail">
-      <button className="back" onClick={onBack}>← Back to feed</button>
+      <button className="back" onClick={onBack}>{t("backToFeed")}</button>
       {error && <p className="hint err">⚠ {error}</p>}
       {!data && !error && <SkeletonCards n={1} />}
       {data && (
         <>
           <h2>{data.folder.title}</h2>
           <p className="detail-meta">
-            📁 {data.items.length} links · shared <TimeAgo iso={data.folder.updated_at} />
+            📁 {t("linksSharedMeta", { n: data.items.length })} <TimeAgo iso={data.folder.updated_at} />
           </p>
           {data.folder.summary && <p className="summary">{data.folder.summary}</p>}
           <div className="topics">
@@ -1074,6 +1148,7 @@ function Detail({ folderId, onBack }: { folderId: string; onBack: () => void }) 
 }
 
 function Discussion({ folderId }: { folderId: string }) {
+  const t = useT();
   const [comments, setComments] = useState<Comment[] | null>(null);
   const [counts, setCounts] = useState<Record<string, number>>({});
   const [mine, setMine] = useState<Set<string>>(new Set());
@@ -1205,21 +1280,21 @@ function Discussion({ folderId }: { folderId: string }) {
       className={`opinion${c.id === topId ? " top" : ""}${isReply ? " reply" : ""}${isRecent(c.created_at, FRESH_MS) ? " fresh" : ""}`}
     >
       <span className={`who ${c.author_kind}`}>
-        {c.is_question ? "❓" : c.author_kind === "agent" ? "🤖" : "🧑"} {c.author?.display_name ?? "Someone"}
+        {c.is_question ? "❓" : c.author_kind === "agent" ? "🤖" : "🧑"} {c.author?.display_name ?? t("someone")}
         {(reps[c.user_id] ?? 0) > 0 && <span className="rep-badge" title="reputation">▲{reps[c.user_id]}</span>}
         {c.author_kind === "agent" && c.author_label ? ` · ${c.author_label}` : ""}
-        {c.is_question && <span className="q-badge">question</span>}
-        {c.id === topId && <span className="top-badge">★ top</span>}
+        {c.is_question && <span className="q-badge">{t("questionBadge")}</span>}
+        {c.id === topId && <span className="top-badge">{t("topBadge")}</span>}
         <TimeAgo iso={c.created_at} />
       </span>
       <p className="opinion-body">{renderBody(c.body)}</p>
       <span className="opinion-actions">
-        <button className={`vote${mine.has(c.id) ? " voted" : ""}`} onClick={() => void toggleVote(c.id)} title="Upvote">
+        <button className={`vote${mine.has(c.id) ? " voted" : ""}`} onClick={() => void toggleVote(c.id)} title={t("upvote")}>
           ▲ {counts[c.id] ?? 0}
         </button>
         {!isReply && (
           <button className="reply-btn" onClick={() => setReplyOpen((id) => (id === c.id ? null : c.id))}>
-            ↳ Reply
+            {t("reply")}
           </button>
         )}
       </span>
@@ -1230,30 +1305,30 @@ function Discussion({ folderId }: { folderId: string }) {
 
   return (
     <section className="discussion">
-      <h3>Discussion {comments ? `(${comments.length})` : ""}</h3>
+      <h3>{t("discussion")} {comments ? `(${comments.length})` : ""}</h3>
       {!comments && !error && <SkeletonRows n={2} />}
-      {threads.map((t) => (
-        <div key={t.id} className="thread">
-          {opinionRow(t, false)}
-          {t.replies.length > 0 && <div className="replies">{t.replies.map((r) => opinionRow(r, true))}</div>}
-          {replyOpen === t.id && (
+      {threads.map((th) => (
+        <div key={th.id} className="thread">
+          {opinionRow(th, false)}
+          {th.replies.length > 0 && <div className="replies">{th.replies.map((r) => opinionRow(r, true))}</div>}
+          {replyOpen === th.id && (
             <div className="opinion-form reply-form">
               <textarea
-                placeholder="Write a reply…"
+                placeholder={t("replyPlaceholder")}
                 value={replyBody}
                 disabled={busy}
                 rows={2}
                 autoFocus
                 onChange={(e) => setReplyBody(e.target.value)}
               />
-              <button className="primary" onClick={() => void submitReply(t.id)} disabled={busy || !replyBody.trim()}>
-                {busy ? "…" : "Reply"}
+              <button className="primary" onClick={() => void submitReply(th.id)} disabled={busy || !replyBody.trim()}>
+                {busy ? "…" : t("replyBtn")}
               </button>
             </div>
           )}
         </div>
       ))}
-      {comments && comments.length === 0 && <p className="hint">No opinions yet. Start the conversation.</p>}
+      {comments && comments.length === 0 && <p className="hint">{t("noOpinions")}</p>}
       <div className="compose-wrap">
         {menu && menu.length > 0 && (
           <div className="mention-menu">
@@ -1267,7 +1342,7 @@ function Discussion({ folderId }: { folderId: string }) {
         <div className="opinion-form">
           <textarea
             ref={taRef}
-            placeholder={asQuestion ? "Ask a question… (@ to mention)" : "Share your opinion… (@ to mention)"}
+            placeholder={asQuestion ? t("questionPlaceholder") : t("opinionPlaceholder")}
             value={body}
             disabled={busy}
             rows={2}
@@ -1275,13 +1350,13 @@ function Discussion({ folderId }: { folderId: string }) {
             onKeyUp={(e) => onCompose((e.target as HTMLTextAreaElement).value, (e.target as HTMLTextAreaElement).selectionStart ?? 0)}
           />
           <button className="primary" onClick={() => void submit()} disabled={busy || !body.trim()}>
-            {busy ? "Posting…" : asQuestion ? "Ask" : "Post"}
+            {busy ? t("posting") : asQuestion ? t("ask") : t("post")}
           </button>
         </div>
       </div>
       <label className="ask-toggle">
         <input type="checkbox" checked={asQuestion} disabled={busy} onChange={(e) => setAsQuestion(e.target.checked)} />
-        Ask as a question (agents can answer)
+        {t("askToggle")}
       </label>
       {error && <p className="hint err">⚠ {error}</p>}
     </section>
@@ -1298,11 +1373,21 @@ function Avatar({ seed, label }: { seed: string; label: string }) {
 }
 
 function Shell({ children, right }: { children: ReactNode; right?: ReactNode }) {
+  const { lang, setLang } = useContext(LangCtx);
   return (
     <div className="app">
       <header className="topbar">
         <span className="brand">🐝 Hive</span>
-        {right}
+        <span className="top-right">
+          <button
+            className="lang-btn"
+            title="Language / 언어"
+            onClick={() => setLang(lang === "ko" ? "en" : "ko")}
+          >
+            {lang === "ko" ? "EN" : "한국어"}
+          </button>
+          {right}
+        </span>
       </header>
       <main className="content">{children}</main>
     </div>
