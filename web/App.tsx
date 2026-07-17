@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import type { Session } from "@supabase/supabase-js";
-import { listFeed, listOwnerFolders, react, unreact } from "@/lib/cloud/feed";
+import { listFeed, listOwnerFolders, myReactions, react, reactionCounts, reactionKey, unreact } from "@/lib/cloud/feed";
+import { isRecent, timeAgo } from "@/lib/cloud/time";
 import { getFolder } from "@/lib/cloud/folders";
 import { listComments, postComment, threadComments } from "@/lib/cloud/comments";
 import { myOpinionVotes, opinionVoteCounts, unvoteOpinion, voteOpinion } from "@/lib/cloud/opinion-votes";
@@ -33,6 +34,87 @@ import { feedStats, topicCounts, topicWeight } from "@/lib/cloud/feed-stats";
 import { cloudConfigured, getSession, onAuthChange, sendEmailOtp, signOut, supabase, verifyEmailOtp } from "./cloud";
 
 type ReactionKind = "like" | "save";
+type ReactionTally = { like: number; save: number };
+
+/** How long a just-inserted row keeps its "new" flash (realtime arrivals). */
+const FRESH_MS = 20_000;
+
+/** Relative timestamp with the exact moment on hover. */
+function TimeAgo({ iso }: { iso: string }) {
+  const label = timeAgo(iso);
+  if (!label) return null;
+  return (
+    <span className="time" title={new Date(iso).toLocaleString()}>
+      {label}
+    </span>
+  );
+}
+
+/** Pulsing placeholder cards shown while a list loads. */
+function SkeletonCards({ n = 3 }: { n?: number }) {
+  return (
+    <div className="feed" aria-hidden>
+      {Array.from({ length: n }, (_, i) => (
+        <div key={i} className="card skeleton-card">
+          <div className="sk sk-title" />
+          <div className="sk sk-line" />
+          <div className="sk sk-line short" />
+          <div className="sk-chips">
+            <div className="sk sk-chip" />
+            <div className="sk sk-chip" />
+            <div className="sk sk-chip" />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** Pulsing placeholder rows (leaderboard, lists, threads). */
+function SkeletonRows({ n = 4 }: { n?: number }) {
+  return (
+    <div className="sk-rows" aria-hidden>
+      {Array.from({ length: n }, (_, i) => (
+        <div key={i} className="skeleton-card sk-row">
+          <div className="sk sk-avatar" />
+          <div className="sk sk-line" />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function EmptyState({ icon, title, hint }: { icon: string; title: string; hint?: string }) {
+  return (
+    <div className="empty">
+      <span className="empty-icon" aria-hidden>{icon}</span>
+      <p className="empty-title">{title}</p>
+      {hint && <p className="hint">{hint}</p>}
+    </div>
+  );
+}
+
+const HOW_STEPS = [
+  { icon: "📁", title: "Share a folder", desc: "Pick a bookmark folder in the extension" },
+  { icon: "🤖", title: "Your agent reads it", desc: "It reads each page and writes real insights" },
+  { icon: "🐝", title: "It lands on the feed", desc: "Members browse, react and follow topics" },
+  { icon: "💬", title: "Minds meet", desc: "Humans and agents discuss, answer and vote" },
+];
+
+/** Visual pipeline of what Hive does — shown on sign-in and on an empty feed. */
+function HowItWorks() {
+  return (
+    <div className="how">
+      {HOW_STEPS.map((s, i) => (
+        <div key={s.title} className="how-step" style={{ animationDelay: `${i * 120}ms` }}>
+          <span className="how-icon" aria-hidden>{s.icon}</span>
+          <span className="how-title">{s.title}</span>
+          <span className="how-desc">{s.desc}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
 
 /** Readable message from any thrown value — Supabase errors are plain objects. */
 function errMsg(e: unknown): string {
@@ -157,6 +239,7 @@ function SignIn({ onSignedIn }: { onSignedIn: (s: Session) => void }) {
         </div>
       )}
       {error && <p className="hint err">⚠ {error}</p>}
+      <HowItWorks />
     </div>
   );
 }
@@ -311,20 +394,23 @@ function CommunityChat({ communityId, myId }: { communityId: string; myId: strin
   return (
     <div className="chat">
       {error && <p className="hint err">⚠ {error}</p>}
-      {!messages && <p className="hint">Loading…</p>}
-      {messages && messages.length === 0 && <p className="hint">No messages yet — start the conversation.</p>}
+      {!messages && <SkeletonRows n={3} />}
+      {messages && messages.length === 0 && (
+        <EmptyState icon="💬" title="No messages yet" hint="Start the conversation." />
+      )}
       <div className="chat-thread">
         {messages?.map((m) => {
           const who = m.author?.display_name ?? "Someone";
           const mine = m.user_id === myId;
           return (
-            <div key={m.id} className={`chat-msg ${mine ? "mine" : "theirs"}`}>
+            <div key={m.id} className={`chat-msg ${mine ? "mine" : "theirs"}${isRecent(m.created_at, FRESH_MS) ? " fresh" : ""}`}>
               {!mine && (
                 <span className="chat-from">
-                  <Avatar seed={m.user_id} label={who} /> {who}
+                  <Avatar seed={m.user_id} label={who} /> {who} <TimeAgo iso={m.created_at} />
                 </span>
               )}
               <span className="chat-bubble">{m.body}</span>
+              {mine && <span className="msg-time"><TimeAgo iso={m.created_at} /></span>}
             </div>
           );
         })}
@@ -406,8 +492,10 @@ function Communities({ onOpen, myId }: { onOpen: (c: { id: string; name: string 
         </button>
       </div>
       {error && <p className="hint err">⚠ {error}</p>}
-      {!rows && <p className="hint">Loading…</p>}
-      {rows && rows.length === 0 && <p className="hint">No communities yet — create the first one.</p>}
+      {!rows && <SkeletonRows />}
+      {rows && rows.length === 0 && (
+        <EmptyState icon="👥" title="No communities yet" hint="Create the first one above." />
+      )}
       <div className="community-list">
         {rows?.map((c) => (
           <div key={c.id} className="community-row">
@@ -478,7 +566,7 @@ function Messages({ myId, initialOther }: { myId: string; initialOther: { id: st
   }
 
   if (error) return <p className="hint err">⚠ {error}</p>;
-  if (!messages) return <p className="hint">Loading…</p>;
+  if (!messages) return <SkeletonRows />;
 
   const convos = buildConversations(messages, myId);
   if (openOther && !convos.some((c) => c.otherId === openOther)) {
@@ -497,7 +585,13 @@ function Messages({ myId, initialOther }: { myId: string; initialOther: { id: st
         </div>
         <div className="dm-thread">
           {thread.map((m) => (
-            <div key={m.id} className={`dm-msg ${m.sender_id === myId ? "mine" : "theirs"}`}>{m.body}</div>
+            <div key={m.id} className={`dm-wrap ${m.sender_id === myId ? "mine" : "theirs"}`}>
+              <div className={`dm-msg ${m.sender_id === myId ? "mine" : "theirs"}`}>{m.body}</div>
+              <span className="msg-time">
+                <TimeAgo iso={m.created_at} />
+                {m.sender_id === myId && m.read_at && <span className="msg-read" title="read">✓✓</span>}
+              </span>
+            </div>
           ))}
           {thread.length === 0 && <p className="hint">No messages yet — say hello.</p>}
         </div>
@@ -511,12 +605,16 @@ function Messages({ myId, initialOther }: { myId: string; initialOther: { id: st
 
   return (
     <div className="messages">
-      {convos.length === 0 && <p className="hint">No conversations yet. Use ✉ on a folder to message its author.</p>}
+      {convos.length === 0 && (
+        <EmptyState icon="✉" title="No conversations yet" hint="Use ✉ on a folder to message its author." />
+      )}
       <div className="dm-list">
         {convos.map((c) => (
           <div key={c.otherId} className="dm-row" onClick={() => setOpenOther(c.otherId)}>
+            <Avatar seed={c.otherId} label={names[c.otherId] ?? "Someone"} />
             <span className="dm-name">{names[c.otherId] ?? "Someone"}</span>
             <span className="dm-last">{c.lastBody}</span>
+            <TimeAgo iso={c.lastAt} />
             {c.unread > 0 && <span className="dm-unread">{c.unread}</span>}
           </div>
         ))}
@@ -540,6 +638,8 @@ function Feed({
   const [scope, setScope] = useState<"all" | "following">("all");
   const [fUsers, setFUsers] = useState<Set<string>>(new Set());
   const [fTopics, setFTopics] = useState<Set<string>>(new Set());
+  const [rCounts, setRCounts] = useState<Record<string, ReactionTally>>({});
+  const [rMine, setRMine] = useState<Set<string>>(new Set());
 
   const load = useCallback(() => {
     listFeed(supabase, 50, communityId)
@@ -553,12 +653,60 @@ function Feed({
       setFTopics(t);
     }).catch(() => {});
   }, []);
+  // Reaction tallies + which ones are mine, so ♥/☆ reflect reality on load.
+  useEffect(() => {
+    if (!entries || entries.length === 0) return;
+    const ids = entries.map((e) => e.id);
+    Promise.all([reactionCounts(supabase, ids), myReactions(supabase, ids)])
+      .then(([c, m]) => {
+        setRCounts(c);
+        setRMine(m);
+      })
+      .catch(() => {});
+  }, [entries]);
   // Live: a newly shared (or re-shared) folder appears without a refresh.
   useEffect(() => onTableInserts(supabase, "shared_folders", undefined, load), [load]);
 
+  const toggleReaction = useCallback(
+    async (folderId: string, kind: ReactionKind) => {
+      const key = reactionKey(folderId, kind);
+      const on = rMine.has(key);
+      const bump = (p: Record<string, ReactionTally>, d: number): Record<string, ReactionTally> => {
+        const cur = p[folderId] ?? { like: 0, save: 0 };
+        return { ...p, [folderId]: { ...cur, [kind]: Math.max(0, cur[kind] + d) } };
+      };
+      // optimistic
+      setRMine((p) => {
+        const n = new Set(p);
+        on ? n.delete(key) : n.add(key);
+        return n;
+      });
+      setRCounts((p) => bump(p, on ? -1 : 1));
+      try {
+        if (on) await unreact(supabase, folderId, kind);
+        else await react(supabase, folderId, kind);
+      } catch {
+        // revert on failure
+        setRMine((p) => {
+          const n = new Set(p);
+          on ? n.add(key) : n.delete(key);
+          return n;
+        });
+        setRCounts((p) => bump(p, on ? 1 : -1));
+      }
+    },
+    [rMine],
+  );
+
   if (error) return <p className="hint err">⚠ {error}</p>;
-  if (!entries) return <p className="hint">Loading feed…</p>;
-  if (entries.length === 0) return <p className="hint">No shared folders yet. Be the first to share one from the extension.</p>;
+  if (!entries) return <SkeletonCards />;
+  if (entries.length === 0)
+    return (
+      <>
+        <EmptyState icon="🐝" title="No shared folders yet" hint="Be the first — share a bookmark folder from the extension." />
+        <HowItWorks />
+      </>
+    );
 
   const stats = feedStats(entries);
   const counts = topicCounts(entries);
@@ -623,33 +771,52 @@ function Feed({
 
       <div className="feed">
         {shown.map((e) => (
-          <FolderCard key={e.id} entry={e} onOpen={() => onOpen(e.id)} onOpenProfile={onOpenProfile} />
+          <FolderCard
+            key={e.id}
+            entry={e}
+            onOpen={() => onOpen(e.id)}
+            onOpenProfile={onOpenProfile}
+            reactions={rCounts[e.id]}
+            mine={rMine}
+            onToggleReaction={toggleReaction}
+          />
         ))}
       </div>
     </>
   );
 }
 
+const ACTIVITY_LOOK: Record<ActivityItem["type"], { icon: string; verb: string }> = {
+  reply: { icon: "↳", verb: "replied to your opinion in" },
+  vote: { icon: "▲", verb: "upvoted your opinion in" },
+  mention: { icon: "@", verb: "mentioned you in" },
+  opinion: { icon: "💬", verb: "shared an opinion on your folder" },
+};
+
 function Activity({ items, onOpenFolder }: { items: ActivityItem[] | null; onOpenFolder: (id: string) => void }) {
-  if (!items) return <p className="hint">Loading…</p>;
+  if (!items) return <SkeletonRows />;
   if (items.length === 0)
-    return <p className="hint">No activity yet. When others reply to your opinions or post on your folders, it shows here.</p>;
+    return (
+      <EmptyState
+        icon="🔔"
+        title="No activity yet"
+        hint="When others reply, upvote, or mention you, it shows here."
+      />
+    );
   return (
     <div className="activity">
-      {items.map((a) => (
-        <div key={a.id} className="activity-row" onClick={() => onOpenFolder(a.folderId)}>
-          <span className="activity-icon">{a.type === "reply" ? "↳" : a.type === "vote" ? "▲" : "💬"}</span>
-          <span className="activity-text">
-            <strong>{a.actorName}</strong>{" "}
-            {a.type === "reply"
-              ? "replied to your opinion in"
-              : a.type === "vote"
-                ? "upvoted your opinion in"
-                : "shared an opinion on your folder"}{" "}
-            <strong>{a.folderTitle}</strong>
-          </span>
-        </div>
-      ))}
+      {items.map((a) => {
+        const look = ACTIVITY_LOOK[a.type] ?? ACTIVITY_LOOK.opinion;
+        return (
+          <div key={a.id} className="activity-row" onClick={() => onOpenFolder(a.folderId)}>
+            <span className={`activity-icon t-${a.type}`}>{look.icon}</span>
+            <span className="activity-text">
+              <strong>{a.actorName}</strong> {look.verb} <strong>{a.folderTitle}</strong>
+            </span>
+            <TimeAgo iso={a.when} />
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -713,14 +880,16 @@ function Profile({
         </div>
       )}
       <h3>Shared folders</h3>
-      {!folders && <p className="hint">Loading…</p>}
-      {folders && folders.length === 0 && <p className="hint">No shared folders yet.</p>}
+      {!folders && <SkeletonCards n={2} />}
+      {folders && folders.length === 0 && <EmptyState icon="📁" title="No shared folders yet" />}
       <div className="feed">
         {folders?.map((f) => (
           <article key={f.id} className="card" onClick={() => onOpenFolder(f.id)} style={{ cursor: "pointer" }}>
             <header className="card-head">
               <h3>{f.title}</h3>
-              <span className="count">{f.item_count} items</span>
+              <span className="count">
+                {f.item_count} items · <TimeAgo iso={f.updated_at} />
+              </span>
             </header>
             {f.summary && <p className="summary">{f.summary}</p>}
             <div className="topics">
@@ -746,9 +915,11 @@ function Leaderboard({ onOpenProfile }: { onOpenProfile: (id: string, name: stri
   }, []);
 
   if (error) return <p className="hint err">⚠ {error}</p>;
-  if (!rows) return <p className="hint">Loading leaderboard…</p>;
-  if (rows.length === 0) return <p className="hint">No contributors yet — share a folder or post an opinion.</p>;
+  if (!rows) return <SkeletonRows />;
+  if (rows.length === 0)
+    return <EmptyState icon="🏆" title="No contributors yet" hint="Share a folder or post an opinion to appear here." />;
 
+  const maxVotes = Math.max(1, ...rows.map((r) => r.votes_received));
   return (
     <div className="leaderboard">
       <p className="hint">Ranked by upvotes their opinions earned. Click a name for their profile.</p>
@@ -757,7 +928,12 @@ function Leaderboard({ onOpenProfile }: { onOpenProfile: (id: string, name: stri
           <li key={r.user_id} className="lb-row" onClick={() => onOpenProfile(r.user_id, r.display_name ?? "Someone")} style={{ cursor: "pointer" }}>
             <span className={`lb-rank r${i + 1}`}>{i + 1}</span>
             <Avatar seed={r.user_id} label={r.display_name ?? "Someone"} />
-            <span className="lb-name">{r.display_name ?? "Someone"}</span>
+            <span className="lb-main">
+              <span className="lb-name">{r.display_name ?? "Someone"}</span>
+              <span className="lb-bar" aria-hidden>
+                <span className="lb-bar-fill" style={{ width: `${(r.votes_received / maxVotes) * 100}%` }} />
+              </span>
+            </span>
             <span className="lb-stats">
               <span className="lb-rep" title="upvotes received">▲ {r.votes_received}</span>
               <span title="opinions posted">💬 {r.opinions}</span>
@@ -783,14 +959,20 @@ function FolderCard({
   entry,
   onOpen,
   onOpenProfile,
+  reactions,
+  mine,
+  onToggleReaction,
 }: {
   entry: FeedEntry;
   onOpen: () => void;
   onOpenProfile: (id: string, name: string) => void;
+  reactions?: ReactionTally;
+  mine: Set<string>;
+  onToggleReaction: (folderId: string, kind: ReactionKind) => void;
 }) {
   const owner = entry.owner.display_name ?? "Someone";
   return (
-    <article className="card">
+    <article className={`card${isRecent(entry.updated_at, FRESH_MS) ? " fresh" : ""}`}>
       <header className="card-head" onClick={onOpen}>
         <h3>{entry.title}</h3>
         <span
@@ -811,38 +993,39 @@ function FolderCard({
         ))}
       </div>
       <footer className="card-foot">
-        <span className="count">{entry.item_count} items</span>
-        <Reactions folderId={entry.id} />
+        <span className="count">
+          {entry.item_count} items · <TimeAgo iso={entry.updated_at} />
+        </span>
+        <Reactions folderId={entry.id} counts={reactions} mine={mine} onToggle={onToggleReaction} />
       </footer>
     </article>
   );
 }
 
-function Reactions({ folderId }: { folderId: string }) {
-  const [on, setOn] = useState<Record<ReactionKind, boolean>>({ like: false, save: false });
-
-  const toggle = useCallback(
-    async (kind: ReactionKind) => {
-      const next = !on[kind];
-      setOn((p) => ({ ...p, [kind]: next })); // optimistic
-      try {
-        if (next) await react(supabase, folderId, kind);
-        else await unreact(supabase, folderId, kind);
-      } catch {
-        setOn((p) => ({ ...p, [kind]: !next })); // revert on failure
-      }
-    },
-    [folderId, on],
-  );
-
+function Reactions({
+  folderId,
+  counts,
+  mine,
+  onToggle,
+}: {
+  folderId: string;
+  counts?: ReactionTally;
+  mine: Set<string>;
+  onToggle: (folderId: string, kind: ReactionKind) => void;
+}) {
+  const btn = (kind: ReactionKind, icon: string, label: string) => {
+    const n = counts?.[kind] ?? 0;
+    return (
+      <button className={mine.has(reactionKey(folderId, kind)) ? "active" : ""} onClick={() => onToggle(folderId, kind)}>
+        {icon} {label}
+        {n > 0 && <span className="rcount">{n}</span>}
+      </button>
+    );
+  };
   return (
     <span className="reactions">
-      <button className={on.like ? "active" : ""} onClick={() => void toggle("like")}>
-        ♥ Like
-      </button>
-      <button className={on.save ? "active" : ""} onClick={() => void toggle("save")}>
-        ☆ Save
-      </button>
+      {btn("like", "♥", "Like")}
+      {btn("save", "☆", "Save")}
     </span>
   );
 }
@@ -861,10 +1044,13 @@ function Detail({ folderId, onBack }: { folderId: string; onBack: () => void }) 
     <div className="detail">
       <button className="back" onClick={onBack}>← Back to feed</button>
       {error && <p className="hint err">⚠ {error}</p>}
-      {!data && !error && <p className="hint">Loading…</p>}
+      {!data && !error && <SkeletonCards n={1} />}
       {data && (
         <>
           <h2>{data.folder.title}</h2>
+          <p className="detail-meta">
+            📁 {data.items.length} links · shared <TimeAgo iso={data.folder.updated_at} />
+          </p>
           {data.folder.summary && <p className="summary">{data.folder.summary}</p>}
           <div className="topics">
             {data.folder.topics.map((t) => (
@@ -872,10 +1058,13 @@ function Detail({ folderId, onBack }: { folderId: string; onBack: () => void }) 
             ))}
           </div>
           <ul className="items">
-            {data.items.map((it) => (
+            {data.items.map((it, i) => (
               <li key={it.id}>
-                <a href={it.url} target="_blank" rel="noreferrer noopener">{it.title}</a>
-                {it.item_summary && <span className="item-summary"> — {it.item_summary}</span>}
+                <span className="item-num" aria-hidden>{i + 1}</span>
+                <span className="item-body">
+                  <a href={it.url} target="_blank" rel="noreferrer noopener">{it.title}</a>
+                  {it.item_summary && <span className="item-summary"> — {it.item_summary}</span>}
+                </span>
               </li>
             ))}
           </ul>
@@ -1013,13 +1202,17 @@ function Discussion({ folderId }: { folderId: string }) {
   }, null)?.id;
 
   const opinionRow = (c: Comment, isReply: boolean) => (
-    <div key={c.id} className={`opinion${c.id === topId ? " top" : ""}${isReply ? " reply" : ""}`}>
+    <div
+      key={c.id}
+      className={`opinion${c.id === topId ? " top" : ""}${isReply ? " reply" : ""}${isRecent(c.created_at, FRESH_MS) ? " fresh" : ""}`}
+    >
       <span className={`who ${c.author_kind}`}>
         {c.is_question ? "❓" : c.author_kind === "agent" ? "🤖" : "🧑"} {c.author?.display_name ?? "Someone"}
         {(reps[c.user_id] ?? 0) > 0 && <span className="rep-badge" title="reputation">▲{reps[c.user_id]}</span>}
         {c.author_kind === "agent" && c.author_label ? ` · ${c.author_label}` : ""}
         {c.is_question && <span className="q-badge">question</span>}
         {c.id === topId && <span className="top-badge">★ top</span>}
+        <TimeAgo iso={c.created_at} />
       </span>
       <p className="opinion-body">{renderBody(c.body)}</p>
       <span className="opinion-actions">
@@ -1040,6 +1233,7 @@ function Discussion({ folderId }: { folderId: string }) {
   return (
     <section className="discussion">
       <h3>Discussion {comments ? `(${comments.length})` : ""}</h3>
+      {!comments && !error && <SkeletonRows n={2} />}
       {threads.map((t) => (
         <div key={t.id} className="thread">
           {opinionRow(t, false)}

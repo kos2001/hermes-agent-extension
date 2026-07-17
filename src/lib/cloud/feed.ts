@@ -41,6 +41,45 @@ export async function react(sb: SupabaseClient, folderId: string, kind: Reaction
   if (error) throw error;
 }
 
+/** Key for a (folder, kind) pair in the myReactions set. */
+export function reactionKey(folderId: string, kind: ReactionKind): string {
+  return `${folderId}:${kind}`;
+}
+
+/** Like/save tallies per folder id (every requested id gets an entry). */
+export async function reactionCounts(
+  sb: SupabaseClient,
+  folderIds: string[],
+): Promise<Record<string, { like: number; save: number }>> {
+  if (folderIds.length === 0) return {};
+  const { data, error } = await sb.from("reactions").select("folder_id, kind").in("folder_id", folderIds);
+  if (error) throw error;
+  const counts: Record<string, { like: number; save: number }> = {};
+  for (const id of folderIds) counts[id] = { like: 0, save: 0 };
+  for (const row of (data ?? []) as { folder_id: string; kind: ReactionKind }[]) {
+    const c = counts[row.folder_id];
+    if (c && (row.kind === "like" || row.kind === "save")) c[row.kind] += 1;
+  }
+  return counts;
+}
+
+/** The set of reactionKey(folder, kind) the current user has made (from the given ids). */
+export async function myReactions(sb: SupabaseClient, folderIds: string[]): Promise<Set<string>> {
+  if (folderIds.length === 0) return new Set();
+  const { data: userData } = await sb.auth.getUser();
+  const userId = userData.user?.id;
+  if (!userId) return new Set();
+  const { data, error } = await sb
+    .from("reactions")
+    .select("folder_id, kind")
+    .eq("user_id", userId)
+    .in("folder_id", folderIds);
+  if (error) throw error;
+  return new Set(
+    ((data ?? []) as { folder_id: string; kind: ReactionKind }[]).map((r) => reactionKey(r.folder_id, r.kind)),
+  );
+}
+
 export async function unreact(sb: SupabaseClient, folderId: string, kind: ReactionKind): Promise<void> {
   const { data } = await sb.auth.getUser();
   const userId = data.user?.id;
