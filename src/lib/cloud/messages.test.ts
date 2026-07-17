@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { mockPb } from "./pb-mock";
 import { buildConversations, sendMessage } from "./messages";
 import type { DirectMessage } from "./types";
 
@@ -39,22 +40,16 @@ describe("buildConversations", () => {
 });
 
 describe("sendMessage", () => {
-  it("inserts a message from me to the recipient", async () => {
-    let inserted: unknown = null;
-    const client = {
-      auth: { getUser: vi.fn(async () => ({ data: { user: { id: "me" } } })) },
-      from: vi.fn(() => ({ insert: vi.fn(async (r: unknown) => ((inserted = r), { error: null })) })),
-    };
-    await sendMessage(client as never, "other", "  hey  ");
-    expect(inserted).toEqual({ sender_id: "me", recipient_id: "other", body: "hey" });
+  it("creates a message from me to the recipient", async () => {
+    const create = vi.fn(async (r: unknown) => r);
+    const pb = mockPb({ direct_messages: { create } }, "me");
+    await sendMessage(pb, "other", "  hey  ");
+    expect(create).toHaveBeenCalledWith({ sender_id: "me", recipient_id: "other", body: "hey" });
   });
 
   it("rejects empty body and self-messaging", async () => {
-    const client = {
-      auth: { getUser: vi.fn(async () => ({ data: { user: { id: "me" } } })) },
-      from: vi.fn(),
-    };
-    await expect(sendMessage(client as never, "other", "  ")).rejects.toThrow(/empty/i);
-    await expect(sendMessage(client as never, "me", "hi")).rejects.toThrow(/yourself/i);
+    const pb = mockPb({}, "me");
+    await expect(sendMessage(pb, "other", "  ")).rejects.toThrow(/empty/i);
+    await expect(sendMessage(pb, "me", "hi")).rejects.toThrow(/yourself/i);
   });
 });

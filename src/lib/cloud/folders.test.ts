@@ -1,45 +1,48 @@
 import { describe, expect, it, vi } from "vitest";
+import { mockPb } from "./pb-mock";
 import { publishFolder } from "./folders";
 import type { PublishFolderInput } from "./types";
 
-/** Minimal chainable fake of the Supabase query builder we use. */
-function fakeClient(overrides: Record<string, unknown> = {}) {
-  const calls: { upsertFolder: unknown; deletedItems: boolean; insertedItems: unknown } = {
-    upsertFolder: null,
-    deletedItems: false,
-    insertedItems: null,
-  };
-  const folderRow = { id: "folder-1" };
-  const client = {
-    auth: { getUser: vi.fn(async () => ({ data: { user: { id: "user-1" } }, error: null })) },
-    from: vi.fn((table: string) => {
-      if (table === "shared_folders") {
-        return {
-          upsert: vi.fn((row: unknown) => {
-            calls.upsertFolder = row;
-            return { select: () => ({ single: async () => ({ data: folderRow, error: null }) }) };
-          }),
-        };
-      }
-      if (table === "shared_items") {
-        return {
-          delete: vi.fn(() => ({
-            eq: vi.fn(async () => {
-              calls.deletedItems = true;
-              return { error: null };
-            }),
-          })),
-          insert: vi.fn(async (rows: unknown) => {
-            calls.insertedItems = rows;
-            return { error: null };
-          }),
-        };
-      }
-      throw new Error("unexpected table " + table);
-    }),
-    ...overrides,
-  };
-  return { client, calls };
+/** PocketBase fake covering the collections publishFolder touches. */
+function fakePb(opts: { existingFolderId?: string; userId?: string | null } = {}) {
+  const calls: {
+    createdFolder: unknown;
+    updatedFolder: unknown;
+    deletedItemIds: string[];
+    createdItems: unknown[];
+  } = { createdFolder: null, updatedFolder: null, deletedItemIds: [], createdItems: [] };
+
+  const pb = mockPb(
+    {
+      shared_folders: {
+        getFirstListItem: vi.fn(async () => {
+          if (opts.existingFolderId) return { id: opts.existingFolderId };
+          throw { status: 404 };
+        }),
+        create: vi.fn(async (data: unknown) => {
+          calls.createdFolder = data;
+          return { id: "folder-1" };
+        }),
+        update: vi.fn(async (id: string, data: unknown) => {
+          calls.updatedFolder = data;
+          return { id };
+        }),
+      },
+      shared_items: {
+        getFullList: vi.fn(async () => [{ id: "old-item" }]),
+        delete: vi.fn(async (id: string) => {
+          calls.deletedItemIds.push(id);
+          return true;
+        }),
+        create: vi.fn(async (row: unknown) => {
+          calls.createdItems.push(row);
+          return row;
+        }),
+      },
+    },
+    opts.userId === undefined ? "user-1" : opts.userId,
+  );
+  return { pb, calls };
 }
 
 const input: PublishFolderInput = {
@@ -51,10 +54,11 @@ const input: PublishFolderInput = {
 };
 
 describe("publishFolder", () => {
-  it("upserts the folder keyed on owner+source name with the owner id", async () => {
-    const { client, calls } = fakeClient();
-    await publishFolder(client as never, input);
-    expect(calls.upsertFolder).toMatchObject({
+  it("creates the folder with the owner id when none exists", async () => {
+    const { pb, calls } = fakePb();
+    const { folderId } = await publishFolder(pb, input);
+    expect(folderId).toBe("folder-1");
+    expect(calls.createdFolder).toMatchObject({
       owner_id: "user-1",
       source_folder_name: "AI",
       title: "AI papers",
@@ -63,11 +67,19 @@ describe("publishFolder", () => {
     });
   });
 
+  it("updates in place when re-sharing the same source folder", async () => {
+    const { pb, calls } = fakePb({ existingFolderId: "folder-7" });
+    const { folderId } = await publishFolder(pb, input);
+    expect(folderId).toBe("folder-7");
+    expect(calls.updatedFolder).toMatchObject({ title: "AI papers" });
+    expect(calls.createdFolder).toBeNull();
+  });
+
   it("replaces items: deletes existing then inserts the new set", async () => {
-    const { client, calls } = fakeClient();
-    await publishFolder(client as never, input);
-    expect(calls.deletedItems).toBe(true);
-    expect(calls.insertedItems).toEqual([
+    const { pb, calls } = fakePb();
+    await publishFolder(pb, input);
+    expect(calls.deletedItemIds).toEqual(["old-item"]);
+    expect(calls.createdItems).toEqual([
       {
         folder_id: "folder-1",
         title: "Attention",
@@ -79,9 +91,7 @@ describe("publishFolder", () => {
   });
 
   it("throws when there is no signed-in user", async () => {
-    const { client } = fakeClient({
-      auth: { getUser: vi.fn(async () => ({ data: { user: null }, error: null })) },
-    });
-    await expect(publishFolder(client as never, input)).rejects.toThrow(/signed in/i);
+    const { pb } = fakePb({ userId: null });
+    await expect(publishFolder(pb, input)).rejects.toThrow(/signed in/i);
   });
 });

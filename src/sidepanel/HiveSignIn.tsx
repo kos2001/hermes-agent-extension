@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { Session } from "@supabase/supabase-js";
+import type { HiveSession } from "@/lib/cloud/auth";
 import { t, type Lang } from "@/lib/i18n";
 import { cloudConfigured } from "@/lib/cloud/client";
 import { getSession, onAuthChange, sendEmailOtp, signOut, verifyEmailOtp } from "@/lib/cloud/auth";
@@ -8,10 +8,10 @@ import { isValidEmail } from "@/lib/cloud/email";
 /**
  * Hive auth affordance using email one-time codes (no external OAuth, no
  * redirect). Top-bar button toggles a small popover: enter email → receive a
- * code → enter code. Renders nothing when the build has no Supabase creds.
+ * code → enter code. Renders nothing when the build has no backend URL.
  */
 export function HiveSignIn({ lang }: { lang: Lang }) {
-  const [session, setSession] = useState<Session | null>(null);
+  const [session, setSession] = useState<HiveSession | null>(null);
   const [open, setOpen] = useState(false);
   const [phase, setPhase] = useState<"email" | "code">("email");
   const [email, setEmail] = useState("");
@@ -28,7 +28,7 @@ export function HiveSignIn({ lang }: { lang: Lang }) {
   if (!cloudConfigured) return null;
 
   const name =
-    (session?.user?.user_metadata?.full_name as string | undefined) ?? session?.user?.email ?? "";
+    session?.user?.name ?? session?.user?.email ?? "";
 
   function reset() {
     setOpen(false);

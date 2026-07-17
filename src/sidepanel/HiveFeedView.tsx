@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import type { ConnectionConfig } from "@/lib/types";
 import { t, type Lang } from "@/lib/i18n";
-import { cloudConfigured, supabase } from "@/lib/cloud/client";
+import { cloudConfigured, pb } from "@/lib/cloud/client";
 import { getSession } from "@/lib/cloud/auth";
 import { listFeed } from "@/lib/cloud/feed";
 import { getFolder } from "@/lib/cloud/folders";
@@ -70,13 +70,13 @@ export default function HiveFeedView({ config, lang }: { config: ConnectionConfi
 
   useEffect(() => {
     if (!signedIn) return;
-    listFeed(supabase)
+    listFeed(pb)
       .then(setEntries)
       .catch((e) => setError(e instanceof Error ? e.message : String(e)));
-    listLeaderboard(supabase, 3)
+    listLeaderboard(pb, 3)
       .then(setTop)
       .catch(() => {});
-    loadActivity(supabase).then(setActivity).catch(() => {});
+    loadActivity(pb).then(setActivity).catch(() => {});
   }, [signedIn]);
 
   const unseen = activity ? unseenCount(activity, seen) : 0;
@@ -180,21 +180,21 @@ function HiveMessages({ myId, initial, lang }: { myId: string; initial: { id: st
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(() => {
-    listMyMessages(supabase)
+    listMyMessages(pb)
       .then(async (msgs) => {
         setMessages(msgs);
         const ids = new Set<string>();
         for (const m of msgs) ids.add(m.sender_id === myId ? m.recipient_id : m.sender_id);
         if (initial) ids.add(initial.id);
         ids.delete(myId);
-        const fetched = ids.size ? await getProfileNames(supabase, [...ids]) : {};
+        const fetched = ids.size ? await getProfileNames(pb, [...ids]) : {};
         setNames((prev) => ({ ...prev, ...fetched }));
       })
       .catch(() => {});
   }, [myId, initial]);
   useEffect(load, [load]);
   useEffect(() => {
-    if (openOther) void markRead(supabase, openOther).then(load).catch(() => {});
+    if (openOther) void markRead(pb, openOther).then(load).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [openOther]);
 
@@ -203,7 +203,7 @@ function HiveMessages({ myId, initial, lang }: { myId: string; initial: { id: st
     if (!text || !openOther) return;
     setBusy(true);
     try {
-      await sendMessage(supabase, openOther, text);
+      await sendMessage(pb, openOther, text);
       setBody("");
       load();
     } finally {
@@ -264,11 +264,11 @@ function FolderThread({ folder, config, lang }: { folder: FeedEntry; config: Con
   const [error, setError] = useState("");
 
   const load = useCallback(() => {
-    listComments(supabase, folder.id)
+    listComments(pb, folder.id)
       .then(async (cs) => {
         setComments(cs);
         const ids = cs.map((c) => c.id);
-        const [vc, mv] = await Promise.all([opinionVoteCounts(supabase, ids), myOpinionVotes(supabase, ids)]);
+        const [vc, mv] = await Promise.all([opinionVoteCounts(pb, ids), myOpinionVotes(pb, ids)]);
         setCounts(vc);
         setMine(mv);
       })
@@ -288,8 +288,8 @@ function FolderThread({ folder, config, lang }: { folder: FeedEntry; config: Con
       });
       setCounts((p) => ({ ...p, [id]: (p[id] ?? 0) + (voted ? -1 : 1) }));
       try {
-        if (voted) await unvoteOpinion(supabase, id);
-        else await voteOpinion(supabase, id);
+        if (voted) await unvoteOpinion(pb, id);
+        else await voteOpinion(pb, id);
       } catch {
         load();
       }
@@ -309,7 +309,7 @@ function FolderThread({ folder, config, lang }: { folder: FeedEntry; config: Con
     }));
 
   const folderForOpinion = async () => {
-    const { items } = await getFolder(supabase, folder.id);
+    const { items } = await getFolder(pb, folder.id);
     return {
       title: folder.title,
       summary: folder.summary,
@@ -325,7 +325,7 @@ function FolderThread({ folder, config, lang }: { folder: FeedEntry; config: Con
     setError("");
     try {
       const opinion = await generateOpinion(config, await folderForOpinion(), priorOf(comments ?? []));
-      await postComment(supabase, folder.id, { body: opinion, kind: "agent", label: config.model });
+      await postComment(pb, folder.id, { body: opinion, kind: "agent", label: config.model });
       load();
     } catch (e) {
       setError(e instanceof Error ? e.message : t(lang, "hivePostFailed"));
@@ -342,7 +342,7 @@ function FolderThread({ folder, config, lang }: { folder: FeedEntry; config: Con
       setError("");
       try {
         const answer = await generateAnswer(config, await folderForOpinion(), question.body);
-        await postComment(supabase, folder.id, { body: answer, kind: "agent", label: config.model, parentId: question.id });
+        await postComment(pb, folder.id, { body: answer, kind: "agent", label: config.model, parentId: question.id });
         load();
       } catch (e) {
         setError(e instanceof Error ? e.message : t(lang, "hivePostFailed"));
@@ -361,10 +361,10 @@ function FolderThread({ folder, config, lang }: { folder: FeedEntry; config: Con
     try {
       const { for: pro, against: con } = await generateDebate(config, await folderForOpinion());
       if (pro) {
-        const id = await postComment(supabase, folder.id, { body: pro, kind: "agent", label: `${config.model} · for` });
-        if (con) await postComment(supabase, folder.id, { body: con, kind: "agent", label: `${config.model} · against`, parentId: id });
+        const id = await postComment(pb, folder.id, { body: pro, kind: "agent", label: `${config.model} · for` });
+        if (con) await postComment(pb, folder.id, { body: con, kind: "agent", label: `${config.model} · against`, parentId: id });
       } else if (con) {
-        await postComment(supabase, folder.id, { body: con, kind: "agent", label: `${config.model} · against` });
+        await postComment(pb, folder.id, { body: con, kind: "agent", label: `${config.model} · against` });
       }
       load();
     } catch (e) {
@@ -382,7 +382,7 @@ function FolderThread({ folder, config, lang }: { folder: FeedEntry; config: Con
       setError("");
       try {
         const opinion = await generateOpinion(config, await folderForOpinion(), priorOf([parent]));
-        await postComment(supabase, folder.id, { body: opinion, kind: "agent", label: config.model, parentId: parent.id });
+        await postComment(pb, folder.id, { body: opinion, kind: "agent", label: config.model, parentId: parent.id });
         load();
       } catch (e) {
         setError(e instanceof Error ? e.message : t(lang, "hivePostFailed"));
@@ -396,7 +396,7 @@ function FolderThread({ folder, config, lang }: { folder: FeedEntry; config: Con
   const recordMentions = async (commentId: string, text: string) => {
     const cands: MentionCandidate[] = (comments ?? []).map((c) => ({ id: c.user_id, name: c.author?.display_name ?? "" }));
     const ids = resolveMentions(extractMentionTokens(text), cands);
-    if (ids.length) await postMentions(supabase, commentId, ids);
+    if (ids.length) await postMentions(pb, commentId, ids);
   };
 
   const postHuman = useCallback(async () => {
@@ -405,7 +405,7 @@ function FolderThread({ folder, config, lang }: { folder: FeedEntry; config: Con
     setBusy("human");
     setError("");
     try {
-      const id = await postComment(supabase, folder.id, { body: text });
+      const id = await postComment(pb, folder.id, { body: text });
       await recordMentions(id, text);
       setBody("");
       load();
@@ -423,7 +423,7 @@ function FolderThread({ folder, config, lang }: { folder: FeedEntry; config: Con
       setBusy("reply");
       setError("");
       try {
-        const id = await postComment(supabase, folder.id, { body: text, parentId });
+        const id = await postComment(pb, folder.id, { body: text, parentId });
         await recordMentions(id, text);
         setReplyBody("");
         setReplyOpen(null);

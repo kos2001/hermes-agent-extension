@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { mockPb } from "./pb-mock";
 import { filterFollowing, followUser } from "./follows";
 import type { FeedEntry } from "./types";
 
@@ -32,17 +33,14 @@ describe("filterFollowing", () => {
 });
 
 describe("followUser", () => {
-  it("upserts a follow for the current user; ignores self", async () => {
-    let upserted: unknown = null;
-    const client = {
-      auth: { getUser: vi.fn(async () => ({ data: { user: { id: "me" } } })) },
-      from: vi.fn(() => ({ upsert: vi.fn(async (r: unknown) => ((upserted = r), { error: null })) })),
-    };
-    await followUser(client as never, "u9");
-    expect(upserted).toEqual({ follower_id: "me", following_id: "u9" });
+  it("creates a follow for the current user; ignores self", async () => {
+    const create = vi.fn(async (r: unknown) => r);
+    const pb = mockPb({ user_follows: { create } }, "me");
+    await followUser(pb, "u9");
+    expect(create).toHaveBeenCalledWith({ follower_id: "me", following_id: "u9" });
 
-    upserted = null;
-    await followUser(client as never, "me"); // self → no-op
-    expect(upserted).toBeNull();
+    create.mockClear();
+    await followUser(pb, "me"); // self → no-op
+    expect(create).not.toHaveBeenCalled();
   });
 });

@@ -23,7 +23,7 @@ import { loadConfig } from "@/lib/storage";
 import { loadBookmarks } from "@/lib/bookmarks";
 import { downloadReport, loadMarketSettings, MARKET_ALARM, runMarketReport, saveReport } from "@/lib/market-report";
 import { HEARTBEAT_ALARM, loadHeartbeatSettings, runHeartbeat } from "@/lib/cloud/heartbeat";
-import { supabase } from "@/lib/cloud/client";
+import { pb } from "@/lib/cloud/client";
 import { isLang, LANG_KEY } from "@/lib/i18n";
 
 /** Post a message to a port, ignoring failures from a closed port. */
@@ -166,7 +166,7 @@ async function runScheduledHeartbeat(): Promise<void> {
   const config = await loadConfig();
   if (!config.apiKey) return; // needs an LLM to form opinions
   try {
-    const { posted } = await runHeartbeat(supabase, config);
+    const { posted } = await runHeartbeat(pb, config);
     if (posted > 0) {
       chrome.notifications.create({
         type: "basic",

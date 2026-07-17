@@ -17,7 +17,7 @@ import {
   parseCleanupRemovals,
 } from "@/lib/bookmarks";
 import { runSemanticDedup } from "@/lib/semantic-dedup";
-import { cloudConfigured, supabase } from "@/lib/cloud/client";
+import { cloudConfigured, pb } from "@/lib/cloud/client";
 import { getSession } from "@/lib/cloud/auth";
 import { publishFolder } from "@/lib/cloud/folders";
 import { listCommunities } from "@/lib/cloud/communities";
@@ -273,7 +273,7 @@ export default function BookmarksView({
   // Load communities to offer as share targets (only when Hive is configured).
   useEffect(() => {
     if (!cloudConfigured) return;
-    void listCommunities(supabase)
+    void listCommunities(pb)
       .then(setCommunities)
       .catch(() => {});
   }, []);
@@ -309,7 +309,7 @@ export default function BookmarksView({
         onProgress: (done, total) => setProgress({ done, total }),
       });
       setProgress(null);
-      await publishFolder(supabase, {
+      await publishFolder(pb, {
         title: folder.path,
         sourceFolderName: folder.path,
         summary: summary.summary,

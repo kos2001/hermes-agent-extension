@@ -1,5 +1,6 @@
-import type { SupabaseClient } from "@supabase/supabase-js";
+import type PocketBase from "pocketbase";
 import type { FeedEntry } from "./types";
+import { and, eq, uid, createIgnoringDuplicate, deleteWhere } from "./pb";
 
 /** Keep folders whose owner is followed OR that carry a followed topic. Pure. */
 export function filterFollowing(
@@ -12,56 +13,47 @@ export function filterFollowing(
   );
 }
 
-async function uid(sb: SupabaseClient): Promise<string | null> {
-  const { data } = await sb.auth.getUser();
-  return data.user?.id ?? null;
-}
-
-export async function followUser(sb: SupabaseClient, followingId: string): Promise<void> {
-  const me = await uid(sb);
+export async function followUser(pb: PocketBase, followingId: string): Promise<void> {
+  const me = uid(pb);
   if (!me) throw new Error("Must be signed in to follow");
   if (me === followingId) return;
-  const { error } = await sb
-    .from("user_follows")
-    .upsert({ follower_id: me, following_id: followingId }, { onConflict: "follower_id,following_id" });
-  if (error) throw error;
+  await createIgnoringDuplicate(pb, "user_follows", { follower_id: me, following_id: followingId });
 }
 
-export async function unfollowUser(sb: SupabaseClient, followingId: string): Promise<void> {
-  const me = await uid(sb);
+export async function unfollowUser(pb: PocketBase, followingId: string): Promise<void> {
+  const me = uid(pb);
   if (!me) return;
-  const { error } = await sb.from("user_follows").delete().eq("follower_id", me).eq("following_id", followingId);
-  if (error) throw error;
+  await deleteWhere(pb, "user_follows", and(eq("follower_id", me), eq("following_id", followingId)));
 }
 
-export async function myFollowing(sb: SupabaseClient): Promise<Set<string>> {
-  const me = await uid(sb);
+export async function myFollowing(pb: PocketBase): Promise<Set<string>> {
+  const me = uid(pb);
   if (!me) return new Set();
-  const { data, error } = await sb.from("user_follows").select("following_id").eq("follower_id", me);
-  if (error) throw error;
-  return new Set((data ?? []).map((r: { following_id: string }) => r.following_id));
+  const rows = await pb.collection("user_follows").getFullList({
+    filter: eq("follower_id", me),
+    fields: "following_id",
+  });
+  return new Set((rows as unknown as { following_id: string }[]).map((r) => r.following_id));
 }
 
-export async function followTopic(sb: SupabaseClient, topic: string): Promise<void> {
-  const me = await uid(sb);
+export async function followTopic(pb: PocketBase, topic: string): Promise<void> {
+  const me = uid(pb);
   if (!me) throw new Error("Must be signed in to follow");
-  const { error } = await sb
-    .from("topic_follows")
-    .upsert({ user_id: me, topic: topic.trim().toLowerCase() }, { onConflict: "user_id,topic" });
-  if (error) throw error;
+  await createIgnoringDuplicate(pb, "topic_follows", { user_id: me, topic: topic.trim().toLowerCase() });
 }
 
-export async function unfollowTopic(sb: SupabaseClient, topic: string): Promise<void> {
-  const me = await uid(sb);
+export async function unfollowTopic(pb: PocketBase, topic: string): Promise<void> {
+  const me = uid(pb);
   if (!me) return;
-  const { error } = await sb.from("topic_follows").delete().eq("user_id", me).eq("topic", topic.trim().toLowerCase());
-  if (error) throw error;
+  await deleteWhere(pb, "topic_follows", and(eq("user_id", me), eq("topic", topic.trim().toLowerCase())));
 }
 
-export async function myTopics(sb: SupabaseClient): Promise<Set<string>> {
-  const me = await uid(sb);
+export async function myTopics(pb: PocketBase): Promise<Set<string>> {
+  const me = uid(pb);
   if (!me) return new Set();
-  const { data, error } = await sb.from("topic_follows").select("topic").eq("user_id", me);
-  if (error) throw error;
-  return new Set((data ?? []).map((r: { topic: string }) => r.topic));
+  const rows = await pb.collection("topic_follows").getFullList({
+    filter: eq("user_id", me),
+    fields: "topic",
+  });
+  return new Set((rows as unknown as { topic: string }[]).map((r) => r.topic));
 }
