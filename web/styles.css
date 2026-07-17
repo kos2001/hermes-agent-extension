@@ -292,6 +292,120 @@ code { background: var(--panel-2); padding: 2px 6px; border-radius: 6px; font-si
 
 .mention { color: var(--accent); font-weight: 600; }
 
+/* ---- Relative timestamps ---- */
+.time { color: var(--faint); font-size: 12px; white-space: nowrap; }
+
+/* ---- Skeleton loading (structure appears before the data does) ---- */
+@keyframes sk-pulse {
+  0%, 100% { opacity: 0.5; }
+  50% { opacity: 1; }
+}
+.sk {
+  background: var(--panel-3);
+  border-radius: 6px;
+  animation: sk-pulse 1.4s ease-in-out infinite;
+}
+.skeleton-card { pointer-events: none; }
+.sk-title { height: 18px; width: 45%; margin-bottom: 12px; }
+.sk-line { height: 12px; width: 92%; margin-bottom: 8px; }
+.sk-line.short { width: 60%; }
+.sk-chips { display: flex; gap: 6px; margin-top: 12px; }
+.sk-chip { height: 20px; width: 64px; border-radius: 999px; }
+.sk-avatar { width: 28px; height: 28px; border-radius: 50%; flex: none; }
+.sk-rows { display: flex; flex-direction: column; gap: 8px; }
+.sk-row {
+  display: flex; align-items: center; gap: 12px; padding: 14px 16px;
+  background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius-sm);
+}
+.sk-row .sk-line { flex: 1; margin: 0; }
+
+/* ---- Empty states ---- */
+.empty { text-align: center; padding: 36px 16px 28px; }
+.empty-icon { display: block; font-size: 40px; margin-bottom: 10px; filter: saturate(0.85); }
+.empty-title { margin: 0 0 4px; font-weight: 700; }
+.empty .hint { margin: 0; font-size: 14px; }
+
+/* ---- How Hive works (pipeline strip) ---- */
+@keyframes rise {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: none; }
+}
+.how {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+  margin: 28px 0 8px;
+  text-align: center;
+}
+.how-step {
+  position: relative;
+  display: flex; flex-direction: column; align-items: center; gap: 4px;
+  padding: 16px 10px 14px;
+  background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius);
+  animation: rise 0.4s ease both;
+}
+.how-step:not(:last-child)::after {
+  content: "→";
+  position: absolute;
+  right: -12px; top: 50%; transform: translateY(-50%);
+  color: var(--accent); font-weight: 700; z-index: 1;
+}
+.how-icon { font-size: 26px; }
+.how-title { font-weight: 700; font-size: 13px; }
+.how-desc { font-size: 12px; color: var(--muted); line-height: 1.4; }
+@media (max-width: 560px) {
+  .how { grid-template-columns: repeat(2, 1fr); }
+  .how-step:nth-child(2)::after { content: none; }
+}
+
+/* ---- "Fresh" flash: rows that just arrived (realtime) glow briefly ---- */
+@keyframes fresh-flash {
+  0% { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(245, 179, 36, 0.25); }
+  100% { border-color: var(--border); box-shadow: none; }
+}
+.card.fresh, .opinion.fresh { animation: fresh-flash 2.5s ease-out; }
+.chat-msg.fresh .chat-bubble { animation: fresh-flash 2.5s ease-out; border: 1px solid transparent; }
+
+/* ---- Reaction counts ---- */
+.rcount {
+  margin-left: 6px; padding: 0 6px; min-width: 16px;
+  display: inline-grid; place-items: center;
+  background: rgba(245, 179, 36, 0.15); color: var(--accent);
+  border-radius: 999px; font-size: 11px; font-weight: 800;
+}
+button.active .rcount { background: rgba(0, 0, 0, 0.18); color: var(--on-accent); }
+
+/* ---- Folder detail extras ---- */
+.detail-meta { margin: 0 0 10px; color: var(--faint); font-size: 13px; }
+.items li { display: flex; gap: 10px; align-items: baseline; }
+.item-num {
+  flex: none; display: inline-grid; place-items: center;
+  width: 22px; height: 22px; border-radius: 50%;
+  background: var(--panel-2); color: var(--muted);
+  font-size: 11px; font-weight: 700;
+}
+.item-body { min-width: 0; }
+
+/* ---- Leaderboard reputation bar ---- */
+.lb-main { flex: 1; display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+.lb-bar { display: block; height: 4px; border-radius: 999px; background: var(--panel-3); overflow: hidden; }
+.lb-bar-fill {
+  display: block; height: 100%; border-radius: 999px;
+  background: linear-gradient(90deg, var(--accent), var(--accent-2));
+  transition: width 0.5s ease;
+}
+
+/* ---- Message / chat timestamps ---- */
+.dm-wrap { display: flex; flex-direction: column; gap: 2px; max-width: 78%; }
+.dm-wrap.mine { align-self: flex-end; align-items: flex-end; }
+.dm-wrap.theirs { align-self: flex-start; align-items: flex-start; }
+.dm-wrap .dm-msg { max-width: none; }
+.msg-time { display: inline-flex; gap: 5px; align-items: center; font-size: 11px; color: var(--faint); padding: 0 4px; }
+.msg-read { color: var(--ok); font-size: 10px; letter-spacing: -1px; }
+.activity-row .time { margin-left: auto; flex: none; }
+.activity-icon.t-vote { color: var(--accent); }
+.activity-icon.t-mention { color: var(--accent-2); font-weight: 800; }
+
 /* Feed scope toggle (All / Following) */
 .scope { display: inline-flex; gap: 4px; margin-bottom: 14px; background: var(--panel); border: 1px solid var(--border); border-radius: 999px; padding: 3px; }
 .scope button { background: transparent; border: none; color: var(--muted); border-radius: 999px; padding: 5px 16px; font-weight: 600; }
