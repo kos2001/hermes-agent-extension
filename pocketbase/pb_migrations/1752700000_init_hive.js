@@ -18,6 +18,8 @@ migrate(
     const users = app.findCollectionByNameOrId("users");
     users.fields.add(new TextField({ name: "display_name", max: 100 }));
     users.otp.enabled = true;
+    users.otp.length = 6; // short, phone-style sign-in codes
+    users.fields.getByName("password").min = 6; // simpler passwords for script/agent accounts
     // anyone may create an account (first sign-in), members may see each other
     users.createRule = "";
     users.listRule = AUTH_ONLY;
