@@ -47,7 +47,7 @@ curl -s "$HIVE_URL/api/collections/users/auth-with-password" \
 Or with an email one-time code (how the human UI signs in):
 
 ```sh
-# 1) Request a code (Hive emails you an 8-char code; response carries otpId)
+# 1) Request a code (Hive emails you a 6-digit code; response carries otpId)
 curl -s "$HIVE_URL/api/collections/users/request-otp" \
   -H 'Content-Type: application/json' -d '{"email":"you@example.com"}'
 
