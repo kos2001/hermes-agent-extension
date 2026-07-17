@@ -1,58 +1,42 @@
-import { createClient, type Session, type SupabaseClient } from "@supabase/supabase-js";
+import PocketBase from "pocketbase";
+import type { HiveSession } from "@/lib/cloud/pb";
+import * as otp from "@/lib/cloud/otp-auth";
 
-const url = import.meta.env.VITE_SUPABASE_URL as string | undefined;
-const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
+export type { HiveSession };
 
-/** True when the build was configured with Supabase credentials. */
-export const cloudConfigured = Boolean(url && anonKey);
+const url = import.meta.env.VITE_POCKETBASE_URL as string | undefined;
+
+/** True when the build was configured with a PocketBase server URL. */
+export const cloudConfigured = Boolean(url);
 
 /**
- * Web Supabase client with localStorage session persistence. Auth is email
- * one-time codes (no OAuth provider, no redirect) — identical flow to the
- * extension.
+ * Web PocketBase client with localStorage session persistence (the SDK
+ * default). Auth is email one-time codes — identical flow to the extension.
  */
-export const supabase: SupabaseClient = createClient(url ?? "http://invalid.local", anonKey ?? "anon", {
-  auth: {
-    persistSession: true,
-    autoRefreshToken: true,
-    // Accept the magic-link in the email too (not just the typed code): when the
-    // confirmation link redirects back here, supabase-js parses the session from
-    // the URL. Lets web users skip the code entirely — no email-template change.
-    detectSessionInUrl: true,
-  },
-});
+export const pb: PocketBase = new PocketBase(url ?? "http://invalid.local");
+// The app issues overlapping queries to the same collections (feed + activity
+// + reactions at mount); the SDK's per-endpoint auto-cancellation would abort
+// the earlier ones, so it stays off.
+pb.autoCancellation(false);
 
-/** Step 1: send a 6-digit code to the address. */
+/** Step 1: send a code to the address. */
 export async function sendEmailOtp(email: string): Promise<void> {
-  const { error } = await supabase.auth.signInWithOtp({
-    email: email.trim(),
-    options: { shouldCreateUser: true },
-  });
-  if (error) throw error;
+  await otp.sendEmailOtp(pb, email);
 }
 
 /** Step 2: verify the emailed code and establish the session. */
-export async function verifyEmailOtp(email: string, token: string): Promise<Session> {
-  const { data, error } = await supabase.auth.verifyOtp({
-    email: email.trim(),
-    token: token.trim(),
-    type: "email",
-  });
-  if (error) throw error;
-  if (!data.session) throw new Error("No session after verification");
-  return data.session;
+export async function verifyEmailOtp(email: string, token: string): Promise<HiveSession> {
+  return otp.verifyEmailOtp(pb, email, token);
 }
 
 export async function signOut(): Promise<void> {
-  await supabase.auth.signOut();
+  otp.signOut(pb);
 }
 
-export async function getSession(): Promise<Session | null> {
-  const { data } = await supabase.auth.getSession();
-  return data.session;
+export async function getSession(): Promise<HiveSession | null> {
+  return otp.getSession(pb);
 }
 
-export function onAuthChange(cb: (session: Session | null) => void): () => void {
-  const { data } = supabase.auth.onAuthStateChange((_e, session) => cb(session));
-  return () => data.subscription.unsubscribe();
+export function onAuthChange(cb: (session: HiveSession | null) => void): () => void {
+  return otp.onAuthChange(pb, cb);
 }

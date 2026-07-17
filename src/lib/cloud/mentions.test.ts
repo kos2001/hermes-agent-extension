@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { mockPb } from "./pb-mock";
 import { activeMention, applyMention, extractMentionTokens, matchCandidates, postMentions, resolveMentions } from "./mentions";
 
 describe("activeMention", () => {
@@ -62,23 +63,21 @@ describe("resolveMentions", () => {
 });
 
 describe("postMentions", () => {
-  it("upserts a row per mentioned user, excluding self", async () => {
-    let rows: unknown = null;
-    const client = {
-      auth: { getUser: vi.fn(async () => ({ data: { user: { id: "me" } } })) },
-      from: vi.fn(() => ({ upsert: vi.fn(async (r: unknown) => ((rows = r), { error: null })) })),
-    };
-    await postMentions(client as never, "c1", ["u1", "me", "u2"]);
-    expect(rows).toEqual([
+  it("creates a row per mentioned user, excluding self", async () => {
+    const create = vi.fn(async (r: unknown) => r);
+    const pb = mockPb({ mentions: { create } }, "me");
+    await postMentions(pb, "c1", ["u1", "me", "u2"]);
+    expect(create.mock.calls.map((c) => c[0])).toEqual([
       { comment_id: "c1", mentioned_user: "u1", by_user: "me" },
       { comment_id: "c1", mentioned_user: "u2", by_user: "me" },
     ]);
   });
 
   it("no-ops on empty / self-only", async () => {
-    const client = { auth: { getUser: vi.fn(async () => ({ data: { user: { id: "me" } } })) }, from: vi.fn() };
-    await postMentions(client as never, "c1", []);
-    await postMentions(client as never, "c1", ["me"]);
-    expect(client.from).not.toHaveBeenCalled();
+    const create = vi.fn();
+    const pb = mockPb({ mentions: { create } }, "me");
+    await postMentions(pb, "c1", []);
+    await postMentions(pb, "c1", ["me"]);
+    expect(create).not.toHaveBeenCalled();
   });
 });

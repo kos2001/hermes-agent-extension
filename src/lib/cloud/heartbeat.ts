@@ -1,5 +1,6 @@
-import type { SupabaseClient } from "@supabase/supabase-js";
+import type PocketBase from "pocketbase";
 import type { ConnectionConfig } from "@/lib/types";
+import { uid } from "./pb";
 import type { Comment, FeedEntry } from "./types";
 import { listFeed } from "./feed";
 import { getFolder } from "./folders";
@@ -61,24 +62,23 @@ export function alreadyOpined(comments: Comment[], myUserId: string): boolean {
  * it posted and how many candidates it scanned.
  */
 export async function runHeartbeat(
-  sb: SupabaseClient,
+  pb: PocketBase,
   config: ConnectionConfig,
   opts: { cap?: number; signal?: AbortSignal } = {},
 ): Promise<{ posted: number; scanned: number }> {
-  const { data: userData } = await sb.auth.getUser();
-  const myUserId = userData.user?.id;
+  const myUserId = uid(pb);
   if (!myUserId) return { posted: 0, scanned: 0 };
 
-  const feed = await listFeed(sb);
+  const feed = await listFeed(pb);
   const candidates = pickHeartbeatCandidates(feed, myUserId, opts.cap ?? HEARTBEAT_CAP);
 
   let posted = 0;
   for (const folder of candidates) {
     if (opts.signal?.aborted) break;
-    const comments = await listComments(sb, folder.id);
+    const comments = await listComments(pb, folder.id);
     if (alreadyOpined(comments, myUserId)) continue;
 
-    const { items } = await getFolder(sb, folder.id);
+    const { items } = await getFolder(pb, folder.id);
     const prior = comments.map((c) => ({
       label: c.author_kind === "agent" ? c.author_label ?? "agent" : c.author?.display_name ?? "member",
       body: c.body,
@@ -94,7 +94,7 @@ export async function runHeartbeat(
       prior,
       opts.signal,
     );
-    await postComment(sb, folder.id, { body: opinion, kind: "agent", label: config.model });
+    await postComment(pb, folder.id, { body: opinion, kind: "agent", label: config.model });
     posted++;
   }
 

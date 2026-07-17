@@ -1,4 +1,5 @@
-import type { SupabaseClient } from "@supabase/supabase-js";
+import type PocketBase from "pocketbase";
+import { eq, inList } from "./pb";
 
 /** One row of the contributor_reputation view. */
 export interface Contributor {
@@ -28,25 +29,30 @@ export function rankContributors(rows: Contributor[]): Contributor[] {
 }
 
 /** Fetch the contributor leaderboard, ranked and capped. */
-export async function listLeaderboard(sb: SupabaseClient, limit = 20): Promise<Contributor[]> {
-  const { data, error } = await sb.from("contributor_reputation").select("*");
-  if (error) throw error;
-  return rankContributors((data ?? []) as Contributor[]).slice(0, limit);
+export async function listLeaderboard(pb: PocketBase, limit = 20): Promise<Contributor[]> {
+  const rows = await pb.collection("contributor_reputation").getFullList();
+  return rankContributors(rows as unknown as Contributor[]).slice(0, limit);
 }
 
 /** Upvotes-received per user id (for inline reputation badges). */
-export async function getReputations(sb: SupabaseClient, ids: string[]): Promise<Record<string, number>> {
+export async function getReputations(pb: PocketBase, ids: string[]): Promise<Record<string, number>> {
   if (ids.length === 0) return {};
-  const { data, error } = await sb.from("contributor_reputation").select("user_id, votes_received").in("user_id", ids);
-  if (error) throw error;
+  const rows = await pb.collection("contributor_reputation").getFullList({
+    filter: inList("user_id", ids),
+    fields: "user_id,votes_received",
+  });
   const out: Record<string, number> = {};
-  for (const r of (data ?? []) as { user_id: string; votes_received: number }[]) out[r.user_id] = r.votes_received;
+  for (const r of rows as unknown as { user_id: string; votes_received: number }[]) {
+    out[r.user_id] = r.votes_received;
+  }
   return out;
 }
 
 /** One member's reputation row (for their profile). */
-export async function getContributor(sb: SupabaseClient, userId: string): Promise<Contributor | null> {
-  const { data, error } = await sb.from("contributor_reputation").select("*").eq("user_id", userId).maybeSingle();
-  if (error) throw error;
-  return (data as Contributor | null) ?? null;
+export async function getContributor(pb: PocketBase, userId: string): Promise<Contributor | null> {
+  const row = await pb
+    .collection("contributor_reputation")
+    .getFirstListItem(eq("user_id", userId))
+    .catch(() => null);
+  return (row as unknown as Contributor | null) ?? null;
 }

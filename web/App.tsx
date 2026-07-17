@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
-import type { Session } from "@supabase/supabase-js";
 import { listFeed, listOwnerFolders, myReactions, react, reactionCounts, reactionKey, unreact } from "@/lib/cloud/feed";
 import { isRecent, timeAgo } from "@/lib/cloud/time";
 import { getFolder } from "@/lib/cloud/folders";
@@ -31,7 +30,7 @@ function renderBody(text: string): ReactNode {
 import type { ActivityItem, Comment, Community, CommunityMessage, DirectMessage, FeedEntry, SharedFolder, SharedItem } from "@/lib/cloud/types";
 import { isValidEmail } from "@/lib/cloud/email";
 import { feedStats, topicCounts, topicWeight } from "@/lib/cloud/feed-stats";
-import { cloudConfigured, getSession, onAuthChange, sendEmailOtp, signOut, supabase, verifyEmailOtp } from "./cloud";
+import { cloudConfigured, getSession, onAuthChange, pb, sendEmailOtp, signOut, verifyEmailOtp, type HiveSession } from "./cloud";
 
 type ReactionKind = "like" | "save";
 type ReactionTally = { like: number; save: number };
@@ -116,7 +115,7 @@ function HowItWorks() {
   );
 }
 
-/** Readable message from any thrown value — Supabase errors are plain objects. */
+/** Readable message from any thrown value — API errors may be plain objects. */
 function errMsg(e: unknown): string {
   if (e instanceof Error) return e.message;
   if (e && typeof e === "object" && typeof (e as { message?: unknown }).message === "string") {
@@ -126,7 +125,7 @@ function errMsg(e: unknown): string {
 }
 
 export function App() {
-  const [session, setSession] = useState<Session | null>(null);
+  const [session, setSession] = useState<HiveSession | null>(null);
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
@@ -145,8 +144,7 @@ export function App() {
     return (
       <Shell>
         <p className="hint">
-          Hive is not configured. Set <code>VITE_SUPABASE_URL</code> and{" "}
-          <code>VITE_SUPABASE_ANON_KEY</code> and rebuild.
+          Hive is not configured. Set <code>VITE_POCKETBASE_URL</code> and rebuild.
         </p>
       </Shell>
     );
@@ -165,7 +163,7 @@ export function App() {
   return <SignedIn session={session} />;
 }
 
-function SignIn({ onSignedIn }: { onSignedIn: (s: Session) => void }) {
+function SignIn({ onSignedIn }: { onSignedIn: (s: HiveSession) => void }) {
   const [phase, setPhase] = useState<"email" | "code">("email");
   const [email, setEmail] = useState("");
   const [code, setCode] = useState("");
@@ -244,7 +242,7 @@ function SignIn({ onSignedIn }: { onSignedIn: (s: Session) => void }) {
   );
 }
 
-function SignedIn({ session }: { session: Session }) {
+function SignedIn({ session }: { session: HiveSession }) {
   const [openId, setOpenId] = useState<string | null>(null);
   const [tab, setTab] = useState<"feed" | "leaderboard" | "communities" | "messages" | "activity">("feed");
   const [community, setCommunity] = useState<{ id: string; name: string } | null>(null);
@@ -254,10 +252,10 @@ function SignedIn({ session }: { session: Session }) {
   const [activity, setActivity] = useState<ActivityItem[] | null>(null);
   const [seen, setSeen] = useState<string | null>(() => localStorage.getItem("hive.activity.seen"));
   const myId = session.user.id;
-  const name = (session.user.user_metadata?.full_name as string | undefined) ?? session.user.email ?? "";
+  const name = session.user.name ?? session.user.email ?? "";
 
   useEffect(() => {
-    loadActivity(supabase).then(setActivity).catch(() => {});
+    loadActivity(pb).then(setActivity).catch(() => {});
   }, []);
   const unseen = activity ? unseenCount(activity, seen) : 0;
   const openActivity = () => {
@@ -368,12 +366,12 @@ function CommunityChat({ communityId, myId }: { communityId: string; myId: strin
   const [error, setError] = useState("");
 
   const load = useCallback(() => {
-    listCommunityMessages(supabase, communityId)
+    listCommunityMessages(pb, communityId)
       .then(setMessages)
       .catch((e) => setError(errMsg(e)));
   }, [communityId]);
   useEffect(load, [load]);
-  useEffect(() => onTableInserts(supabase, "community_messages", eqFilter("community_id", communityId), load), [communityId, load]);
+  useEffect(() => onTableInserts(pb, "community_messages", eqFilter("community_id", communityId), load), [communityId, load]);
 
   async function send() {
     const text = body.trim();
@@ -381,7 +379,7 @@ function CommunityChat({ communityId, myId }: { communityId: string; myId: strin
     setBusy(true);
     setError("");
     try {
-      await sendCommunityMessage(supabase, communityId, text);
+      await sendCommunityMessage(pb, communityId, text);
       setBody("");
       load();
     } catch (e) {
@@ -432,7 +430,7 @@ function Communities({ onOpen, myId }: { onOpen: (c: { id: string; name: string 
   const [error, setError] = useState("");
 
   const load = useCallback(() => {
-    Promise.all([listCommunities(supabase), myCommunityIds(supabase)])
+    Promise.all([listCommunities(pb), myCommunityIds(pb)])
       .then(([cs, mv]) => {
         setRows(cs);
         setMine(mv);
@@ -445,7 +443,7 @@ function Communities({ onOpen, myId }: { onOpen: (c: { id: string; name: string 
     setBusy(true);
     setError("");
     try {
-      await createCommunity(supabase, name, desc);
+      await createCommunity(pb, name, desc);
       setName("");
       setDesc("");
       load();
@@ -464,8 +462,8 @@ function Communities({ onOpen, myId }: { onOpen: (c: { id: string; name: string 
       return n;
     });
     try {
-      if (joined) await leaveCommunity(supabase, id);
-      else await joinCommunity(supabase, id);
+      if (joined) await leaveCommunity(pb, id);
+      else await joinCommunity(pb, id);
       load();
     } catch {
       load();
@@ -475,7 +473,7 @@ function Communities({ onOpen, myId }: { onOpen: (c: { id: string; name: string 
   async function remove(id: string, cname: string) {
     if (!window.confirm(`Delete community "${cname}"? Folders stay but leave the community.`)) return;
     try {
-      await deleteCommunity(supabase, id);
+      await deleteCommunity(pb, id);
       load();
     } catch (e) {
       setError(errMsg(e));
@@ -530,14 +528,14 @@ function Messages({ myId, initialOther }: { myId: string; initialOther: { id: st
   const [error, setError] = useState("");
 
   const load = useCallback(() => {
-    listMyMessages(supabase)
+    listMyMessages(pb)
       .then(async (msgs) => {
         setMessages(msgs);
         const ids = new Set<string>();
         for (const m of msgs) ids.add(m.sender_id === myId ? m.recipient_id : m.sender_id);
         if (initialOther) ids.add(initialOther.id);
         ids.delete(myId);
-        const fetched = ids.size ? await getProfileNames(supabase, [...ids]) : {};
+        const fetched = ids.size ? await getProfileNames(pb, [...ids]) : {};
         setNames((prev) => ({ ...prev, ...fetched }));
       })
       .catch((e) => setError(errMsg(e)));
@@ -545,7 +543,7 @@ function Messages({ myId, initialOther }: { myId: string; initialOther: { id: st
   useEffect(load, [load]);
 
   useEffect(() => {
-    if (openOther) void markRead(supabase, openOther).then(load).catch(() => {});
+    if (openOther) void markRead(pb, openOther).then(load).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [openOther]);
 
@@ -555,7 +553,7 @@ function Messages({ myId, initialOther }: { myId: string; initialOther: { id: st
     setBusy(true);
     setError("");
     try {
-      await sendMessage(supabase, openOther, text);
+      await sendMessage(pb, openOther, text);
       setBody("");
       load();
     } catch (e) {
@@ -642,13 +640,13 @@ function Feed({
   const [rMine, setRMine] = useState<Set<string>>(new Set());
 
   const load = useCallback(() => {
-    listFeed(supabase, 50, communityId)
+    listFeed(pb, 50, communityId)
       .then(setEntries)
       .catch((e) => setError(errMsg(e)));
   }, [communityId]);
   useEffect(load, [load]);
   useEffect(() => {
-    Promise.all([myFollowing(supabase), myTopics(supabase)]).then(([u, t]) => {
+    Promise.all([myFollowing(pb), myTopics(pb)]).then(([u, t]) => {
       setFUsers(u);
       setFTopics(t);
     }).catch(() => {});
@@ -657,7 +655,7 @@ function Feed({
   useEffect(() => {
     if (!entries || entries.length === 0) return;
     const ids = entries.map((e) => e.id);
-    Promise.all([reactionCounts(supabase, ids), myReactions(supabase, ids)])
+    Promise.all([reactionCounts(pb, ids), myReactions(pb, ids)])
       .then(([c, m]) => {
         setRCounts(c);
         setRMine(m);
@@ -665,7 +663,7 @@ function Feed({
       .catch(() => {});
   }, [entries]);
   // Live: a newly shared (or re-shared) folder appears without a refresh.
-  useEffect(() => onTableInserts(supabase, "shared_folders", undefined, load), [load]);
+  useEffect(() => onTableInserts(pb, "shared_folders", undefined, load), [load]);
 
   const toggleReaction = useCallback(
     async (folderId: string, kind: ReactionKind) => {
@@ -683,8 +681,8 @@ function Feed({
       });
       setRCounts((p) => bump(p, on ? -1 : 1));
       try {
-        if (on) await unreact(supabase, folderId, kind);
-        else await react(supabase, folderId, kind);
+        if (on) await unreact(pb, folderId, kind);
+        else await react(pb, folderId, kind);
       } catch {
         // revert on failure
         setRMine((p) => {
@@ -717,7 +715,7 @@ function Feed({
   async function toggleTopicFollow(tp: string) {
     const has = fTopics.has(tp);
     setFTopics((p) => { const n = new Set(p); has ? n.delete(tp) : n.add(tp); return n; });
-    try { has ? await unfollowTopic(supabase, tp) : await followTopic(supabase, tp); } catch { /* revert silently */ }
+    try { has ? await unfollowTopic(pb, tp) : await followTopic(pb, tp); } catch { /* revert silently */ }
   }
 
   return (
@@ -842,7 +840,7 @@ function Profile({
   const [error, setError] = useState("");
 
   useEffect(() => {
-    Promise.all([getContributor(supabase, userId), listOwnerFolders(supabase, userId), myFollowing(supabase)])
+    Promise.all([getContributor(pb, userId), listOwnerFolders(pb, userId), myFollowing(pb)])
       .then(([r, f, fset]) => {
         setRep(r);
         setFolders(f);
@@ -856,7 +854,7 @@ function Profile({
   async function toggleFollow() {
     const next = !following;
     setFollowing(next);
-    try { next ? await followUser(supabase, userId) : await unfollowUser(supabase, userId); } catch { setFollowing(!next); }
+    try { next ? await followUser(pb, userId) : await unfollowUser(pb, userId); } catch { setFollowing(!next); }
   }
 
   return (
@@ -909,7 +907,7 @@ function Leaderboard({ onOpenProfile }: { onOpenProfile: (id: string, name: stri
   const [error, setError] = useState("");
 
   useEffect(() => {
-    listLeaderboard(supabase)
+    listLeaderboard(pb)
       .then(setRows)
       .catch((e) => setError(errMsg(e)));
   }, []);
@@ -1035,7 +1033,7 @@ function Detail({ folderId, onBack }: { folderId: string; onBack: () => void }) 
   const [error, setError] = useState("");
 
   useEffect(() => {
-    getFolder(supabase, folderId)
+    getFolder(pb, folderId)
       .then(setData)
       .catch((e) => setError(errMsg(e)));
   }, [folderId]);
@@ -1090,15 +1088,15 @@ function Discussion({ folderId }: { folderId: string }) {
   const taRef = useRef<HTMLTextAreaElement>(null);
 
   const load = useCallback(() => {
-    listComments(supabase, folderId)
+    listComments(pb, folderId)
       .then(async (cs) => {
         setComments(cs);
         const ids = cs.map((c) => c.id);
         const authorIds = [...new Set(cs.map((c) => c.user_id))];
         const [vc, mv, rp] = await Promise.all([
-          opinionVoteCounts(supabase, ids),
-          myOpinionVotes(supabase, ids),
-          getReputations(supabase, authorIds),
+          opinionVoteCounts(pb, ids),
+          myOpinionVotes(pb, ids),
+          getReputations(pb, authorIds),
         ]);
         setCounts(vc);
         setMine(mv);
@@ -1109,14 +1107,14 @@ function Discussion({ folderId }: { folderId: string }) {
 
   useEffect(load, [load]);
   // Live: refresh when anyone posts an opinion/reply on this folder.
-  useEffect(() => onTableInserts(supabase, "comments", eqFilter("folder_id", folderId), load), [folderId, load]);
+  useEffect(() => onTableInserts(pb, "comments", eqFilter("folder_id", folderId), load), [folderId, load]);
 
   const participants = (): MentionCandidate[] => (comments ?? []).map((c) => ({ id: c.user_id, name: c.author?.display_name ?? "" }));
 
   // Resolve @mentions in `text` against thread participants and record them.
   async function recordMentions(commentId: string, text: string) {
     const ids = resolveMentions(extractMentionTokens(text), participants());
-    if (ids.length) await postMentions(supabase, commentId, ids);
+    if (ids.length) await postMentions(pb, commentId, ids);
   }
 
   // Compose handler driving the @mention autocomplete menu.
@@ -1145,7 +1143,7 @@ function Discussion({ folderId }: { folderId: string }) {
     setBusy(true);
     setError("");
     try {
-      const id = await postComment(supabase, folderId, { body: text, isQuestion: asQuestion });
+      const id = await postComment(pb, folderId, { body: text, isQuestion: asQuestion });
       await recordMentions(id, text);
       setBody("");
       setAsQuestion(false);
@@ -1168,8 +1166,8 @@ function Discussion({ folderId }: { folderId: string }) {
       });
       setCounts((p) => ({ ...p, [id]: (p[id] ?? 0) + (voted ? -1 : 1) }));
       try {
-        if (voted) await unvoteOpinion(supabase, id);
-        else await voteOpinion(supabase, id);
+        if (voted) await unvoteOpinion(pb, id);
+        else await voteOpinion(pb, id);
       } catch {
         load(); // reconcile on failure
       }
@@ -1183,7 +1181,7 @@ function Discussion({ folderId }: { folderId: string }) {
     setBusy(true);
     setError("");
     try {
-      const id = await postComment(supabase, folderId, { body: text, parentId });
+      const id = await postComment(pb, folderId, { body: text, parentId });
       await recordMentions(id, text);
       setReplyBody("");
       setReplyOpen(null);

@@ -1,5 +1,6 @@
-import type { SupabaseClient } from "@supabase/supabase-js";
+import type PocketBase from "pocketbase";
 import type { RawEngagement } from "./activity";
+import { eq, uid, createIgnoringDuplicate } from "./pb";
 
 /** A member that can be @mentioned (from a thread/feed). */
 export interface MentionCandidate {
@@ -87,17 +88,18 @@ export function resolveMentions(tokens: string[], candidates: MentionCandidate[]
 }
 
 /** Record mentions for a freshly posted comment (author = current user). */
-export async function postMentions(sb: SupabaseClient, commentId: string, userIds: string[]): Promise<void> {
+export async function postMentions(pb: PocketBase, commentId: string, userIds: string[]): Promise<void> {
   if (userIds.length === 0) return;
-  const { data: userData } = await sb.auth.getUser();
-  const byUser = userData.user?.id;
+  const byUser = uid(pb);
   if (!byUser) return;
-  const rows = userIds
-    .filter((uid) => uid !== byUser)
-    .map((uid) => ({ comment_id: commentId, mentioned_user: uid, by_user: byUser }));
-  if (rows.length === 0) return;
-  const { error } = await sb.from("mentions").upsert(rows, { onConflict: "comment_id,mentioned_user" });
-  if (error) throw error;
+  for (const mentioned of userIds) {
+    if (mentioned === byUser) continue;
+    await createIgnoringDuplicate(pb, "mentions", {
+      comment_id: commentId,
+      mentioned_user: mentioned,
+      by_user: byUser,
+    });
+  }
 }
 
 /**
@@ -105,22 +107,20 @@ export async function postMentions(sb: SupabaseClient, commentId: string, userId
  * mentioner, folder = the comment's folder) so the activity loader can merge
  * them uniformly.
  */
-export async function mentionsForMe(sb: SupabaseClient): Promise<RawEngagement[]> {
-  const { data: userData } = await sb.auth.getUser();
-  const myId = userData.user?.id;
+export async function mentionsForMe(pb: PocketBase): Promise<RawEngagement[]> {
+  const myId = uid(pb);
   if (!myId) return [];
-  const { data, error } = await sb
-    .from("mentions")
-    .select("id, by_user, created_at, comments!mentions_comment_id_fkey(folder_id)")
-    .eq("mentioned_user", myId);
-  if (error) throw error;
-  return (data ?? []).map((row: Record<string, unknown>) => {
-    const comment = row.comments as { folder_id?: string } | null;
+  const rows = await pb.collection("mentions").getFullList({
+    filter: eq("mentioned_user", myId),
+    expand: "comment_id",
+  });
+  return rows.map((row) => {
+    const r = row as Record<string, unknown> & { expand?: { comment_id?: { folder_id?: string } } };
     return {
-      id: row.id as string,
-      user_id: row.by_user as string,
-      folder_id: comment?.folder_id ?? "",
-      created_at: row.created_at as string,
+      id: r.id as string,
+      user_id: r.by_user as string,
+      folder_id: r.expand?.comment_id?.folder_id ?? "",
+      created_at: r.created_at as string,
     };
   });
 }
