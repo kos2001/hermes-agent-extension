@@ -22,6 +22,17 @@ type Entry = Record<Lang, string>;
 const STR: Record<string, Entry> = {
   online: { ko: "● 온라인", en: "● online", zh: "● 在线" },
   offline: { ko: "● 오프라인", en: "● offline", zh: "● 离线" },
+  "status.auth": { ko: "● 키 오류", en: "● key error", zh: "● 密钥错误" },
+  "status.authTip": {
+    ko: "서버는 켜져 있지만 저장된 API 키를 거절했습니다 (토큰이 바뀐 듯) — 클릭해서 설정의 '빠른 연결'을 다시 실행하세요.",
+    en: "The server is up but rejected the stored API key (token likely rotated) — click to re-run quick connect in Settings.",
+    zh: "服务器在线但拒绝了已保存的 API 密钥（令牌可能已更换）— 点击后在设置中重新运行快速连接。",
+  },
+  "err.401.hint": {
+    ko: "API 키가 서버와 일치하지 않습니다. 설정(⚙) → 게이트웨이 탭의 '빠른 연결'을 다시 실행하세요.",
+    en: "The API key no longer matches the server. Re-run quick connect in Settings (⚙) → Gateway tab.",
+    zh: "API 密钥与服务器不匹配。请在设置（⚙）→ 网关标签页重新运行快速连接。",
+  },
   statusTitle: { ko: "Hermes 서버 연결 상태", en: "Hermes server connection status", zh: "Hermes 服务器连接状态" },
   switchLang: { ko: "UI 언어: {name}", en: "UI language: {name}", zh: "界面语言：{name}" },
   translateTo: { ko: "📄 페이지 번역", en: "📄 Translate page", zh: "📄 翻译页面" },
