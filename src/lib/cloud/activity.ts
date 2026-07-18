@@ -1,7 +1,8 @@
-import type { SupabaseClient } from "@supabase/supabase-js";
+import type PocketBase from "pocketbase";
 import type { ActivityItem } from "./types";
 import { getProfileNames } from "./messages";
 import { mentionsForMe } from "./mentions";
+import { and, eq, inList, neq, uid } from "./pb";
 
 /** A raw engagement row (a comment by someone else, on my comment or folder). */
 export interface RawEngagement {
@@ -67,52 +68,49 @@ export function unseenCount(items: ActivityItem[], lastSeen: string | null): num
   return items.filter((i) => i.when > lastSeen).length;
 }
 
-/** Load the current member's activity feed (derived from existing tables). */
-export async function loadActivity(sb: SupabaseClient): Promise<ActivityItem[]> {
-  const { data: userData } = await sb.auth.getUser();
-  const myId = userData.user?.id;
+/** Load the current member's activity feed (derived from existing collections). */
+export async function loadActivity(pb: PocketBase): Promise<ActivityItem[]> {
+  const myId = uid(pb);
   if (!myId) return [];
 
-  const { data: myComments } = await sb.from("comments").select("id, folder_id").eq("user_id", myId);
-  const commentRows = (myComments ?? []) as { id: string; folder_id: string }[];
+  const commentRows = (await pb.collection("comments").getFullList({
+    filter: eq("user_id", myId),
+    fields: "id,folder_id",
+  })) as unknown as { id: string; folder_id: string }[];
   const myCommentIds = commentRows.map((c) => c.id);
   const commentFolder: Record<string, string> = {};
   for (const c of commentRows) commentFolder[c.id] = c.folder_id;
 
-  const { data: myFolders } = await sb.from("shared_folders").select("id, title").eq("owner_id", myId);
-  const myFolderIds = (myFolders ?? []).map((f: { id: string }) => f.id);
+  const myFolders = (await pb.collection("shared_folders").getFullList({
+    filter: eq("owner_id", myId),
+    fields: "id,title",
+  })) as unknown as { id: string; title: string }[];
+  const myFolderIds = myFolders.map((f) => f.id);
   const titles: Record<string, string> = {};
-  for (const f of (myFolders ?? []) as { id: string; title: string }[]) titles[f.id] = f.title;
+  for (const f of myFolders) titles[f.id] = f.title;
 
   let replies: RawEngagement[] = [];
   let votes: RawVote[] = [];
   if (myCommentIds.length) {
-    const { data: rep } = await sb
-      .from("comments")
-      .select("id, user_id, folder_id, created_at")
-      .in("parent_id", myCommentIds)
-      .neq("user_id", myId);
-    replies = (rep ?? []) as RawEngagement[];
-    const { data: v } = await sb
-      .from("opinion_votes")
-      .select("comment_id, user_id, created_at")
-      .in("comment_id", myCommentIds)
-      .neq("user_id", myId);
-    votes = (v ?? []) as RawVote[];
+    replies = (await pb.collection("comments").getFullList({
+      filter: and(inList("parent_id", myCommentIds), neq("user_id", myId)),
+      fields: "id,user_id,folder_id,created_at",
+    })) as unknown as RawEngagement[];
+    votes = (await pb.collection("opinion_votes").getFullList({
+      filter: and(inList("comment_id", myCommentIds), neq("user_id", myId)),
+      fields: "comment_id,user_id,created_at",
+    })) as unknown as RawVote[];
   }
 
   let opinions: RawEngagement[] = [];
   if (myFolderIds.length) {
-    const { data } = await sb
-      .from("comments")
-      .select("id, user_id, folder_id, created_at")
-      .in("folder_id", myFolderIds)
-      .is("parent_id", null)
-      .neq("user_id", myId);
-    opinions = (data ?? []) as RawEngagement[];
+    opinions = (await pb.collection("comments").getFullList({
+      filter: and(inList("folder_id", myFolderIds), `parent_id = ""`, neq("user_id", myId)),
+      fields: "id,user_id,folder_id,created_at",
+    })) as unknown as RawEngagement[];
   }
 
-  const mentions = await mentionsForMe(sb);
+  const mentions = await mentionsForMe(pb);
 
   // Resolve titles for any folders not already known (reply / vote / mention folders).
   const involved = new Set<string>([
@@ -122,12 +120,15 @@ export async function loadActivity(sb: SupabaseClient): Promise<ActivityItem[]> 
   ]);
   const missing = [...involved].filter((id) => id && !titles[id]);
   if (missing.length) {
-    const { data } = await sb.from("shared_folders").select("id, title").in("id", missing);
-    for (const f of (data ?? []) as { id: string; title: string }[]) titles[f.id] = f.title;
+    const rows = (await pb.collection("shared_folders").getFullList({
+      filter: inList("id", missing),
+      fields: "id,title",
+    })) as unknown as { id: string; title: string }[];
+    for (const f of rows) titles[f.id] = f.title;
   }
 
   const actorIds = [...new Set([...replies, ...opinions, ...votes, ...mentions].map((r) => r.user_id))];
-  const names = await getProfileNames(sb, actorIds);
+  const names = await getProfileNames(pb, actorIds);
 
   return buildActivity({ replies, opinions, votes, mentions }, { myId, names, titles, commentFolder });
 }

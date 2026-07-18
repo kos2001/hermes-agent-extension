@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { mockPb } from "./pb-mock";
 import {
   createCommunity,
   isValidCommunityName,
@@ -24,61 +25,54 @@ describe("isValidCommunityName", () => {
 });
 
 describe("createCommunity", () => {
-  it("inserts the normalized name and auto-joins the creator", async () => {
-    const inserts: Record<string, unknown[]> = {};
-    const client = {
-      auth: { getUser: vi.fn(async () => ({ data: { user: { id: "u1" } } })) },
-      from: vi.fn((table: string) => {
-        if (table === "communities") {
-          return {
-            insert: vi.fn((row: unknown) => {
-              inserts.communities = [row];
-              return { select: () => ({ single: async () => ({ data: { id: "c1" }, error: null }) }) };
-            }),
-          };
-        }
-        return {
-          insert: vi.fn(async (row: unknown) => {
-            inserts.members = [row];
-            return { error: null };
-          }),
-        };
-      }),
-    };
-    const { id } = await createCommunity(client as never, "  Deep   Learning ", "  papers  ");
+  it("creates the normalized name and auto-joins the creator", async () => {
+    const createdCommunity = vi.fn(async (_d: Record<string, unknown>) => ({ id: "c1" }));
+    const createdMember = vi.fn(async (r: unknown) => r);
+    const pb = mockPb({
+      communities: { create: createdCommunity },
+      community_members: { create: createdMember },
+    });
+    const { id } = await createCommunity(pb, "  Deep   Learning ", "  papers  ");
     expect(id).toBe("c1");
-    expect(inserts.communities[0]).toMatchObject({ name: "Deep Learning", description: "papers", created_by: "u1" });
-    expect(inserts.members[0]).toEqual({ community_id: "c1", user_id: "u1" });
+    expect(createdCommunity.mock.calls[0][0]).toMatchObject({
+      name: "Deep Learning",
+      description: "papers",
+      created_by: "u1",
+    });
+    expect(createdMember).toHaveBeenCalledWith({ community_id: "c1", user_id: "u1" });
   });
 
-  it("rejects a too-short name before any insert", async () => {
-    const client = { auth: { getUser: vi.fn() }, from: vi.fn() };
-    await expect(createCommunity(client as never, "x")).rejects.toThrow(/2.40|characters/i);
-    expect(client.from).not.toHaveBeenCalled();
+  it("rejects a too-short name before any request", async () => {
+    const pb = mockPb({});
+    await expect(createCommunity(pb, "x")).rejects.toThrow(/2.40|characters/i);
   });
 });
 
 describe("joinCommunity", () => {
-  it("upserts membership for the current user", async () => {
-    let upserted: unknown = null;
-    const client = {
-      auth: { getUser: vi.fn(async () => ({ data: { user: { id: "u1" } } })) },
-      from: vi.fn(() => ({ upsert: vi.fn(async (r: unknown) => ((upserted = r), { error: null })) })),
-    };
-    await joinCommunity(client as never, "c1");
-    expect(upserted).toEqual({ community_id: "c1", user_id: "u1" });
+  it("creates membership for the current user; duplicate join is a no-op", async () => {
+    const create = vi.fn(async (r: unknown) => r);
+    const pb = mockPb({ community_members: { create } });
+    await joinCommunity(pb, "c1");
+    expect(create).toHaveBeenCalledWith({ community_id: "c1", user_id: "u1" });
+
+    const dup = vi.fn(async () => {
+      throw { status: 400 };
+    });
+    const pb2 = mockPb({ community_members: { create: dup } });
+    await expect(joinCommunity(pb2, "c1")).resolves.toBeUndefined();
   });
 });
 
 describe("myCommunityIds", () => {
   it("returns the joined ids; empty when signed out", async () => {
-    const signedIn = {
-      auth: { getUser: vi.fn(async () => ({ data: { user: { id: "u1" } } })) },
-      from: vi.fn(() => ({ select: vi.fn(() => ({ eq: vi.fn(async () => ({ data: [{ community_id: "c1" }], error: null })) })) })),
-    };
-    expect([...(await myCommunityIds(signedIn as never))]).toEqual(["c1"]);
+    const getFullList = vi.fn(async (opts: { filter: string }) => {
+      expect(opts.filter).toBe("user_id = 'u1'");
+      return [{ community_id: "c1" }];
+    });
+    const signedIn = mockPb({ community_members: { getFullList } });
+    expect([...(await myCommunityIds(signedIn))]).toEqual(["c1"]);
 
-    const signedOut = { auth: { getUser: vi.fn(async () => ({ data: { user: null } })) }, from: vi.fn() };
-    expect((await myCommunityIds(signedOut as never)).size).toBe(0);
+    const signedOut = mockPb({}, null);
+    expect((await myCommunityIds(signedOut)).size).toBe(0);
   });
 });

@@ -1,51 +1,79 @@
 import { describe, expect, it, vi } from "vitest";
-import { eqFilter, onTableInserts } from "./realtime";
+import { mockPb } from "./pb-mock";
+import { eqFilter, onTableEvents, onTableInserts } from "./realtime";
+
+const tick = () => new Promise((r) => setTimeout(r, 0));
 
 describe("eqFilter", () => {
-  it("builds an equality filter string", () => {
-    expect(eqFilter("folder_id", "abc")).toBe("folder_id=eq.abc");
+  it("builds a column/value predicate", () => {
+    expect(eqFilter("folder_id", "abc")).toEqual({ column: "folder_id", value: "abc" });
   });
 });
 
 describe("onTableInserts", () => {
-  it("subscribes to INSERTs with the filter and unsubscribes via removeChannel", () => {
-    let onArgs: unknown[] = [];
-    const channel = {
-      on: vi.fn(function (this: unknown, ...args: unknown[]) {
-        onArgs = args;
-        return this;
-      }),
-      subscribe: vi.fn(function (this: unknown) {
-        return this;
-      }),
-    };
-    const sb = { channel: vi.fn(() => channel), removeChannel: vi.fn() };
+  it("fires on matching creations only, and unsubscribes", async () => {
+    let handler: ((e: { action: string; record: Record<string, unknown> }) => void) | null = null;
+    const unsub = vi.fn();
+    const subscribe = vi.fn(async (topic: string, h: typeof handler) => {
+      expect(topic).toBe("*");
+      handler = h;
+      return unsub;
+    });
+    const pb = mockPb({ comments: { subscribe } });
     const cb = vi.fn();
 
-    const off = onTableInserts(sb as never, "comments", "folder_id=eq.f1", cb);
-    expect(onArgs[0]).toBe("postgres_changes");
-    expect(onArgs[1]).toMatchObject({ event: "INSERT", schema: "public", table: "comments", filter: "folder_id=eq.f1" });
-    // invoking the registered handler triggers the callback
-    (onArgs[2] as () => void)();
-    expect(cb).toHaveBeenCalledOnce();
+    const off = onTableInserts(pb, "comments", eqFilter("folder_id", "f1"), cb);
+    await tick();
+
+    handler!({ action: "create", record: { folder_id: "f1" } });
+    expect(cb).toHaveBeenCalledTimes(1);
+    handler!({ action: "create", record: { folder_id: "other" } }); // filtered out
+    handler!({ action: "update", record: { folder_id: "f1" } }); // not a creation
+    expect(cb).toHaveBeenCalledTimes(1);
 
     off();
-    expect(sb.removeChannel).toHaveBeenCalledWith(channel);
+    expect(unsub).toHaveBeenCalled();
   });
 
-  it("omits the filter key when none is given", () => {
-    let cfg: Record<string, unknown> = {};
-    const channel = {
-      on: vi.fn(function (this: unknown, _e: unknown, c: Record<string, unknown>) {
-        cfg = c;
-        return this;
-      }),
-      subscribe: vi.fn(function (this: unknown) {
-        return this;
-      }),
-    };
-    const sb = { channel: vi.fn(() => channel), removeChannel: vi.fn() };
-    onTableInserts(sb as never, "shared_folders", undefined, vi.fn());
-    expect("filter" in cfg).toBe(false);
+  it("fires on any creation when no filter is given", async () => {
+    let handler: ((e: { action: string; record: Record<string, unknown> }) => void) | null = null;
+    const subscribe = vi.fn(async (_t: string, h: typeof handler) => {
+      handler = h;
+      return vi.fn();
+    });
+    const pb = mockPb({ shared_folders: { subscribe } });
+    const cb = vi.fn();
+    onTableInserts(pb, "shared_folders", undefined, cb);
+    await tick();
+    handler!({ action: "create", record: { id: "x" } });
+    expect(cb).toHaveBeenCalledOnce();
+  });
+
+  it("onTableEvents also fires on updates", async () => {
+    let handler: ((e: { action: string; record: Record<string, unknown> }) => void) | null = null;
+    const subscribe = vi.fn(async (_t: string, h: typeof handler) => {
+      handler = h;
+      return vi.fn();
+    });
+    const pb = mockPb({ agent_tasks: { subscribe } });
+    const cb = vi.fn();
+    onTableEvents(pb, "agent_tasks", undefined, cb);
+    await tick();
+    handler!({ action: "create", record: {} });
+    handler!({ action: "update", record: {} });
+    handler!({ action: "delete", record: {} });
+    expect(cb).toHaveBeenCalledTimes(2);
+  });
+
+  it("unsubscribes even when off() is called before the subscription resolves", async () => {
+    const unsub = vi.fn();
+    let resolve: (u: () => void) => void = () => {};
+    const subscribe = vi.fn(() => new Promise<() => void>((r) => (resolve = r)));
+    const pb = mockPb({ comments: { subscribe } });
+    const off = onTableInserts(pb, "comments", undefined, vi.fn());
+    off(); // before resolution
+    resolve(unsub);
+    await tick();
+    expect(unsub).toHaveBeenCalled();
   });
 });

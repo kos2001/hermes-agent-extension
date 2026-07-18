@@ -1,55 +1,45 @@
-import type { SupabaseClient } from "@supabase/supabase-js";
+import type PocketBase from "pocketbase";
+import { and, eq, inList, uid, createIgnoringDuplicate, deleteWhere } from "./pb";
 
-/** Upvote an opinion as the current user (idempotent via the unique constraint). */
-export async function voteOpinion(sb: SupabaseClient, commentId: string): Promise<void> {
-  const { data } = await sb.auth.getUser();
-  const userId = data.user?.id;
+/** Upvote an opinion as the current user (idempotent via the unique index). */
+export async function voteOpinion(pb: PocketBase, commentId: string): Promise<void> {
+  const userId = uid(pb);
   if (!userId) throw new Error("Must be signed in to vote");
-  const { error } = await sb
-    .from("opinion_votes")
-    .upsert({ comment_id: commentId, user_id: userId }, { onConflict: "comment_id,user_id" });
-  if (error) throw error;
+  await createIgnoringDuplicate(pb, "opinion_votes", { comment_id: commentId, user_id: userId });
 }
 
 /** Remove the current user's upvote from an opinion. */
-export async function unvoteOpinion(sb: SupabaseClient, commentId: string): Promise<void> {
-  const { data } = await sb.auth.getUser();
-  const userId = data.user?.id;
+export async function unvoteOpinion(pb: PocketBase, commentId: string): Promise<void> {
+  const userId = uid(pb);
   if (!userId) throw new Error("Must be signed in to vote");
-  const { error } = await sb
-    .from("opinion_votes")
-    .delete()
-    .eq("comment_id", commentId)
-    .eq("user_id", userId);
-  if (error) throw error;
+  await deleteWhere(pb, "opinion_votes", and(eq("comment_id", commentId), eq("user_id", userId)));
 }
 
 /** Upvote tallies per comment id. */
 export async function opinionVoteCounts(
-  sb: SupabaseClient,
+  pb: PocketBase,
   commentIds: string[],
 ): Promise<Record<string, number>> {
   if (commentIds.length === 0) return {};
-  const { data, error } = await sb.from("opinion_votes").select("comment_id").in("comment_id", commentIds);
-  if (error) throw error;
+  const rows = await pb.collection("opinion_votes").getFullList({
+    filter: inList("comment_id", commentIds),
+    fields: "comment_id",
+  });
   const counts: Record<string, number> = {};
-  for (const row of (data ?? []) as { comment_id: string }[]) {
+  for (const row of rows as unknown as { comment_id: string }[]) {
     counts[row.comment_id] = (counts[row.comment_id] ?? 0) + 1;
   }
   return counts;
 }
 
 /** The set of comment ids the current user has upvoted (from the given ids). */
-export async function myOpinionVotes(sb: SupabaseClient, commentIds: string[]): Promise<Set<string>> {
+export async function myOpinionVotes(pb: PocketBase, commentIds: string[]): Promise<Set<string>> {
   if (commentIds.length === 0) return new Set();
-  const { data: userData } = await sb.auth.getUser();
-  const userId = userData.user?.id;
+  const userId = uid(pb);
   if (!userId) return new Set();
-  const { data, error } = await sb
-    .from("opinion_votes")
-    .select("comment_id")
-    .eq("user_id", userId)
-    .in("comment_id", commentIds);
-  if (error) throw error;
-  return new Set((data ?? []).map((r: { comment_id: string }) => r.comment_id));
+  const rows = await pb.collection("opinion_votes").getFullList({
+    filter: and(eq("user_id", userId), inList("comment_id", commentIds)),
+    fields: "comment_id",
+  });
+  return new Set((rows as unknown as { comment_id: string }[]).map((r) => r.comment_id));
 }

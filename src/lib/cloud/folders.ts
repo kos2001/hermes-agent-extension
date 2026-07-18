@@ -1,5 +1,6 @@
-import type { SupabaseClient } from "@supabase/supabase-js";
+import type PocketBase from "pocketbase";
 import type { PublishFolderInput, SharedFolder, SharedItem } from "./types";
+import { and, eq, uid, deleteWhere } from "./pb";
 
 /**
  * Publish (or re-publish) a folder. Idempotent on (owner_id, source_folder_name):
@@ -7,47 +8,42 @@ import type { PublishFolderInput, SharedFolder, SharedItem } from "./types";
  * creating duplicates.
  */
 export async function publishFolder(
-  sb: SupabaseClient,
+  pb: PocketBase,
   input: PublishFolderInput,
 ): Promise<{ folderId: string }> {
-  const { data: userData } = await sb.auth.getUser();
-  const userId = userData.user?.id;
+  const userId = uid(pb);
   if (!userId) throw new Error("Must be signed in to publish");
 
-  const { data: folder, error: upErr } = await sb
-    .from("shared_folders")
-    .upsert(
-      {
-        owner_id: userId,
-        title: input.title,
-        source_folder_name: input.sourceFolderName,
-        summary: input.summary,
-        topics: input.topics,
-        item_count: input.items.length,
-        community_id: input.communityId ?? null,
-        updated_at: new Date().toISOString(),
-      },
-      { onConflict: "owner_id,source_folder_name" },
-    )
-    .select()
-    .single();
-  if (upErr) throw upErr;
+  const data = {
+    owner_id: userId,
+    title: input.title,
+    source_folder_name: input.sourceFolderName,
+    summary: input.summary,
+    topics: input.topics,
+    item_count: input.items.length,
+    community_id: input.communityId ?? null,
+  };
 
-  const folderId = (folder as { id: string }).id;
+  const existing = await pb
+    .collection("shared_folders")
+    .getFirstListItem(and(eq("owner_id", userId), eq("source_folder_name", input.sourceFolderName)))
+    .catch(() => null);
 
-  const { error: delErr } = await sb.from("shared_items").delete().eq("folder_id", folderId);
-  if (delErr) throw delErr;
+  const folder = existing
+    ? await pb.collection("shared_folders").update(existing.id, data)
+    : await pb.collection("shared_folders").create(data);
+  const folderId = folder.id;
 
-  if (input.items.length > 0) {
-    const rows = input.items.map((it, i) => ({
+  await deleteWhere(pb, "shared_items", eq("folder_id", folderId));
+
+  for (const [i, it] of input.items.entries()) {
+    await pb.collection("shared_items").create({
       folder_id: folderId,
       title: it.title,
       url: it.url,
       item_summary: it.itemSummary ?? null,
       position: i,
-    }));
-    const { error: insErr } = await sb.from("shared_items").insert(rows);
-    if (insErr) throw insErr;
+    });
   }
 
   return { folderId };
@@ -55,22 +51,13 @@ export async function publishFolder(
 
 /** Fetch one folder with its items, ordered by position. */
 export async function getFolder(
-  sb: SupabaseClient,
+  pb: PocketBase,
   folderId: string,
 ): Promise<{ folder: SharedFolder; items: SharedItem[] }> {
-  const { data: folder, error: fErr } = await sb
-    .from("shared_folders")
-    .select("*")
-    .eq("id", folderId)
-    .single();
-  if (fErr) throw fErr;
-
-  const { data: items, error: iErr } = await sb
-    .from("shared_items")
-    .select("*")
-    .eq("folder_id", folderId)
-    .order("position", { ascending: true });
-  if (iErr) throw iErr;
-
-  return { folder: folder as SharedFolder, items: (items ?? []) as SharedItem[] };
+  const folder = await pb.collection("shared_folders").getOne(folderId);
+  const items = await pb.collection("shared_items").getFullList({
+    filter: eq("folder_id", folderId),
+    sort: "position",
+  });
+  return { folder: folder as unknown as SharedFolder, items: items as unknown as SharedItem[] };
 }
