@@ -8,6 +8,7 @@ const task = (over: Partial<AgentTask>): AgentTask => ({
   requester_id: "u1",
   title: "Summarize X",
   body: "Please summarize X.",
+  category: "general",
   status: "open",
   claimed_by: "",
   worker_label: "",
@@ -32,6 +33,20 @@ describe("pickOpenTask", () => {
     expect(pickOpenTask([task({ status: "claimed" })], "me")).toBeNull();
     expect(pickOpenTask([task({ requester_id: "me" })], "me")).toBeNull();
   });
+
+  it("participates per category when the agent declares some", () => {
+    const tasks = [
+      task({ id: "code-old", category: "coding", created_at: "2026-07-16T00:00:00Z" }),
+      task({ id: "res", category: "research", created_at: "2026-07-15T00:00:00Z" }),
+      task({ id: "legacy", category: "", created_at: "2026-07-14T00:00:00Z" }),
+    ];
+    expect(pickOpenTask(tasks, "me", ["coding"])?.id).toBe("code-old");
+    // pre-category rows count as "general"
+    expect(pickOpenTask(tasks, "me", ["general"])?.id).toBe("legacy");
+    expect(pickOpenTask(tasks, "me", ["writing"])).toBeNull();
+    // no declared categories = work anything (oldest wins)
+    expect(pickOpenTask(tasks, "me")?.id).toBe("legacy");
+  });
 });
 
 describe("buildTaskPrompt / parseTaskAnswer", () => {
@@ -48,13 +63,25 @@ describe("buildTaskPrompt / parseTaskAnswer", () => {
 
 describe("listTasks", () => {
   it("lists newest first with the requester expanded", async () => {
-    const getList = vi.fn(async (_p: number, _l: number, opts: { sort: string; expand: string }) => {
+    const getList = vi.fn(async (_p: number, _l: number, opts: { sort: string; expand: string; filter?: string }) => {
       expect(opts).toMatchObject({ sort: "-created_at", expand: "requester_id" });
+      expect(opts.filter).toBeUndefined();
       return { items: [{ id: "t1", expand: { requester_id: { display_name: "Kim" } } }] };
     });
     const pb = mockPb({ agent_tasks: { getList } });
     const out = await listTasks(pb);
     expect(out[0]).toMatchObject({ id: "t1", requester: { display_name: "Kim" } });
+  });
+
+  it("filters by category, folding legacy rows into general", async () => {
+    const getList = vi.fn(async (_p: number, _l: number, opts: { filter?: string }) => {
+      return { items: [], filterSeen: opts.filter } as { items: never[]; filterSeen?: string };
+    });
+    const pb = mockPb({ agent_tasks: { getList } });
+    await listTasks(pb, 50, "research");
+    expect(getList.mock.calls[0][2].filter).toBe("category = 'research'");
+    await listTasks(pb, 50, "general");
+    expect(getList.mock.calls[1][2].filter).toBe("(category = 'general' || category = '')");
   });
 });
 
@@ -68,8 +95,16 @@ describe("postTask", () => {
       requester_id: "u1",
       title: "Title",
       body: "Body",
+      category: "general",
       status: "open",
     });
+  });
+
+  it("carries the chosen category", async () => {
+    const create = vi.fn(async (_d: Record<string, unknown>) => ({ id: "t-new" }));
+    const pb = mockPb({ agent_tasks: { create } });
+    await postTask(pb, "T", "B", "coding");
+    expect(create).toHaveBeenCalledWith(expect.objectContaining({ category: "coding" }));
   });
 
   it("rejects empty fields and signed-out", async () => {

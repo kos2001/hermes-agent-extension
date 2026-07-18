@@ -1,7 +1,7 @@
 import type PocketBase from "pocketbase";
 import type { ChatMessage, ConnectionConfig } from "@/lib/types";
 import { collectChat } from "@/lib/hermes-client";
-import { uid } from "./pb";
+import { eq, uid } from "./pb";
 
 /**
  * The agent blackboard: members post requests; any member's agent — the
@@ -13,6 +13,7 @@ export interface AgentTask {
   requester_id: string;
   title: string;
   body: string;
+  category: TaskCategory | "";
   status: "open" | "claimed" | "done";
   claimed_by: string;
   worker_label: string;
@@ -22,10 +23,24 @@ export interface AgentTask {
   requester?: { display_name: string | null };
 }
 
-/** The oldest open task someone else posted, or null. Pure. */
-export function pickOpenTask(tasks: AgentTask[], myId: string): AgentTask | null {
+/** Work topics a request can belong to (stored English; UIs translate). */
+export const TASK_CATEGORIES = ["general", "research", "coding", "writing", "data", "review", "ops"] as const;
+export type TaskCategory = (typeof TASK_CATEGORIES)[number];
+
+/** A task's category, with pre-category rows counting as "general". Pure. */
+export function taskCategory(task: Pick<AgentTask, "category">): TaskCategory {
+  return task.category || "general";
+}
+
+/**
+ * The oldest open task someone else posted, or null. Pure. When `categories`
+ * is given, only tasks in those categories qualify — this is how an agent
+ * participates per topic.
+ */
+export function pickOpenTask(tasks: AgentTask[], myId: string, categories?: TaskCategory[]): AgentTask | null {
   const open = tasks
     .filter((t) => t.status === "open" && t.requester_id !== myId)
+    .filter((t) => !categories?.length || categories.includes(taskCategory(t)))
     .sort((a, b) => (a.created_at < b.created_at ? -1 : 1));
   return open[0] ?? null;
 }
@@ -62,11 +77,15 @@ export function parseTaskAnswer(text: string): string {
   return plain;
 }
 
-/** All board tasks, newest first, with the requester joined. */
-export async function listTasks(pb: PocketBase, limit = 50): Promise<AgentTask[]> {
+/** All board tasks, newest first, with the requester joined; optionally one category. */
+export async function listTasks(pb: PocketBase, limit = 50, category?: TaskCategory): Promise<AgentTask[]> {
   const result = await pb.collection("agent_tasks").getList(1, limit, {
     sort: "-created_at",
     expand: "requester_id",
+    // pre-category rows count as "general"
+    ...(category
+      ? { filter: category === "general" ? `(${eq("category", "general")} || category = '')` : eq("category", category) }
+      : {}),
   });
   return result.items.map((row) => {
     const { expand, ...t } = row as Record<string, unknown> & {
@@ -77,7 +96,12 @@ export async function listTasks(pb: PocketBase, limit = 50): Promise<AgentTask[]
 }
 
 /** Post a request to the board; returns the new task id. */
-export async function postTask(pb: PocketBase, title: string, body: string): Promise<string> {
+export async function postTask(
+  pb: PocketBase,
+  title: string,
+  body: string,
+  category: TaskCategory = "general",
+): Promise<string> {
   const cleanTitle = title.trim();
   const cleanBody = body.trim();
   if (!cleanTitle || !cleanBody) throw new Error("Title and body must not be empty");
@@ -87,6 +111,7 @@ export async function postTask(pb: PocketBase, title: string, body: string): Pro
     requester_id: userId,
     title: cleanTitle,
     body: cleanBody,
+    category,
     status: "open",
   });
   return created.id;
