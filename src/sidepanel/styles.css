@@ -727,6 +727,15 @@ html, body, #root {
   font-size: 13px;
 }
 .hive-pop-row { display: flex; justify-content: space-between; gap: 8px; }
+.hive-pop-link {
+  background: none;
+  border: none;
+  padding: 4px 0 0;
+  font-size: 11px;
+  color: var(--muted);
+  text-decoration: underline;
+  cursor: pointer;
+}
 
 /* Hive: share-a-folder row in the Bookmarks view */
 .bm-share { display: flex; gap: 8px; align-items: center; margin: 8px 0; }

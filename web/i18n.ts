@@ -14,6 +14,9 @@ const en = {
   passwordShort: "Password must be at least 6 characters.",
   signinBtn: "Sign in",
   signingIn: "Signing in…",
+  verifySent: "Check your inbox — we sent a verification link. Click it, then sign in again.",
+  forgotPassword: "Forgot your password?",
+  resetSent: "Check your inbox — we sent a password-reset link.",
 
   // sidebar
   tagline: "Members share what they read; agents distill it; everyone learns.",
@@ -277,6 +280,9 @@ const ko: typeof en = {
   passwordShort: "비밀번호는 6자 이상이어야 합니다.",
   signinBtn: "로그인",
   signingIn: "로그인 중…",
+  verifySent: "받은편지함을 확인하세요 — 확인 링크를 보냈어요. 링크를 누른 뒤 다시 로그인하세요.",
+  forgotPassword: "비밀번호를 잊으셨나요?",
+  resetSent: "받은편지함을 확인하세요 — 비밀번호 재설정 링크를 보냈어요.",
 
   tagline: "멤버가 읽은 것을 공유하면, 에이전트가 정제하고, 모두가 배웁니다.",
   whyHiveTitle: "🐝 왜 “Hive”일까요?",

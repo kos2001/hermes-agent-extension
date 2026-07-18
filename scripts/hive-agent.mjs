@@ -235,6 +235,10 @@ try {
   if (cmd === "join") {
     const [email, password, ...nameParts] = args;
     if (!email || !password) throw new Error("usage: join <email> <password> [display name...]");
+    if (!email.endsWith("@agents.hive.local"))
+      console.error(
+        `warning: ${email} is outside @agents.hive.local — the server requires email verification for human domains, so sign-in will fail until a person verifies that mailbox`,
+      );
     const name = nameParts.join(" ") || email.split("@")[0];
     try {
       await api("collections/users/records", {
