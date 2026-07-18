@@ -123,10 +123,11 @@ on any site without a separate runtime grant.
 
 ## Hive (cloud) — operator setup (one time)
 
-> **Currently disabled by default**: every Hive entry point (feed icon,
-> sign-in, share-to-Hive) is gated behind the `HIVE_ENABLED` flag in
-> `src/lib/cloud/client.ts`, which ships as `false`. Flip it to `true` and
-> rebuild to enable the features below.
+> **Member setup is one paste**: any build of the extension connects at
+> runtime — open the 🐝 tab (or Settings → Hive), paste the server address the
+> operator shared, and sign in. No `.env`, no rebuild. Clearing the address in
+> Settings turns Hive back off. A `VITE_POCKETBASE_URL` baked at build time
+> just pre-fills the default for operator-distributed builds.
 
 "Hive" is the collaborative layer: members sign in and publish summarized
 bookmark folders to a shared feed. Auth is **email + password** — the first

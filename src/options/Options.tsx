@@ -4,6 +4,14 @@ import { DEFAULT_CONFIG, type ConnectionConfig } from "@/lib/types";
 import { getProvider, OPENROUTER_HEADERS, PROVIDERS, type ProviderProfile } from "@/lib/providers";
 import { loadConfig, saveConfig } from "@/lib/storage";
 import { isLang, LANG_KEY, LANGS, t, type Lang } from "@/lib/i18n";
+import {
+  clearHiveUrl,
+  loadHiveUrl,
+  normalizeHiveUrl,
+  onHiveUrlChange,
+  probeHive,
+  saveHiveUrl,
+} from "@/lib/cloud/config";
 
 type ProbeState =
   | { kind: "idle" }
@@ -18,7 +26,35 @@ export default function Options() {
   const [probe, setProbe] = useState<ProbeState>({ kind: "idle" });
   const [providerId, setProviderId] = useState<string>("");
   const [lang, setLang] = useState<Lang>("ko");
-  const [tab, setTab] = useState<"connection" | "gateway" | "language">("connection");
+  const [tab, setTab] = useState<"connection" | "gateway" | "hive" | "language">("connection");
+
+  // Hive server (runtime URL — see lib/cloud/config.ts and the hive-easy-setup spec).
+  const [hiveUrl, setHiveUrl] = useState<string | null>(null);
+  const [hiveInput, setHiveInput] = useState("");
+  const [hiveState, setHiveState] = useState<"idle" | "checking" | "invalid" | "unreachable" | "saved">("idle");
+  useEffect(() => {
+    void loadHiveUrl().then(setHiveUrl);
+    return onHiveUrlChange(setHiveUrl);
+  }, []);
+  const hiveConnect = async () => {
+    const normalized = normalizeHiveUrl(hiveInput);
+    if (!normalized) {
+      setHiveState("invalid");
+      return;
+    }
+    setHiveState("checking");
+    if (!(await probeHive(normalized))) {
+      setHiveState("unreachable");
+      return;
+    }
+    await saveHiveUrl(normalized);
+    setHiveInput("");
+    setHiveState("saved");
+  };
+  const hiveDisconnect = async () => {
+    await clearHiveUrl();
+    setHiveState("idle");
+  };
 
   useEffect(() => {
     loadConfig().then((loaded) => {
@@ -188,10 +224,50 @@ export default function Options() {
         <button type="button" className={`tab${tab === "gateway" ? " active" : ""}`} onClick={() => setTab("gateway")}>
           {t(lang, "opt.sec.gateway")}
         </button>
+        <button type="button" className={`tab${tab === "hive" ? " active" : ""}`} onClick={() => setTab("hive")}>
+          Hive
+        </button>
         <button type="button" className={`tab${tab === "language" ? " active" : ""}`} onClick={() => setTab("language")}>
           {t(lang, "langName")}
         </button>
       </div>
+
+      {tab === "hive" && (
+      <section className="section">
+        <p className="section-note">{t(lang, "hive.setup.desc")}</p>
+        <p className={`note ${hiveUrl ? "ok" : ""}`}>
+          {hiveUrl
+            ? t(lang, "hive.setup.current").replace("{url}", hiveUrl)
+            : t(lang, "hive.setup.off")}
+        </p>
+        <div className="field">
+          <label>{t(lang, "hive.setup.title")}</label>
+          <input
+            type="url"
+            value={hiveInput}
+            placeholder={t(lang, "hive.setup.placeholder")}
+            disabled={hiveState === "checking"}
+            onChange={(e) => {
+              setHiveInput(e.target.value);
+              setHiveState("idle");
+            }}
+          />
+          <div className="row" style={{ marginTop: 6 }}>
+            <button onClick={() => void hiveConnect()} disabled={!hiveInput.trim() || hiveState === "checking"}>
+              {hiveState === "checking" ? t(lang, "hive.setup.checking") : t(lang, "hive.setup.connect")}
+            </button>
+            {hiveUrl && (
+              <button className="secondary" onClick={() => void hiveDisconnect()}>
+                {t(lang, "hive.setup.disconnect")}
+              </button>
+            )}
+            {hiveState === "saved" && <span className="note ok">{t(lang, "hive.setup.saved")}</span>}
+            {hiveState === "invalid" && <span className="note err">{t(lang, "hive.setup.invalid")}</span>}
+            {hiveState === "unreachable" && <span className="note err">{t(lang, "hive.setup.fail")}</span>}
+          </div>
+        </div>
+      </section>
+      )}
 
       {tab === "language" && (
       <section className="section">

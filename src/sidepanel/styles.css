@@ -870,3 +870,18 @@ html, body, #root {
 .hive-dm-msg.theirs { align-self: flex-start; background: var(--panel-2); }
 
 .hive-mention { color: var(--accent); font-weight: 600; }
+
+/* Hive onboarding card (🐝 tab before a server URL is configured) */
+.hive-setup {
+  margin: 14px 12px;
+  padding: 14px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.hive-setup-title { font-size: 13px; font-weight: 700; color: var(--text); }
+.hive-setup-desc { margin: 0; font-size: 12px; color: var(--muted); line-height: 1.5; }
+.hive-setup .hive-pop-row { justify-content: flex-end; }
