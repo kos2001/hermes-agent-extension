@@ -533,13 +533,15 @@ html, body, #root {
 .icon-btn.hive-in, .icon-btn.hive-out { font-size: 12px; padding: 3px 8px; }
 .hive-auth-error { font-size: 11px; color: #e5534b; margin-top: 4px; }
 
-/* Email-code sign-in popover anchored under the button */
+/* Email+password sign-in popover anchored under the button (which sits at
+   the left of the top bar, so it opens rightward to stay in the viewport) */
 .hive-popover {
   position: absolute;
   top: calc(100% + 6px);
-  right: 0;
+  left: 0;
   z-index: 10;
   width: 220px;
+  max-width: calc(100vw - 24px);
   padding: 10px;
   border: 1px solid var(--border, #2a2f3a);
   border-radius: 8px;
