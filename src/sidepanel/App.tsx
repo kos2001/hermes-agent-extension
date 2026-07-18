@@ -35,7 +35,8 @@ function extractLinksInPage(): string {
   return items.length ? `**${items.length} links**\n\n${items.join("\n")}` : "링크를 찾지 못했습니다.";
 }
 
-type HealthState = "unknown" | "online" | "offline";
+/** "auth" = server reachable but it rejected the stored key (rotated token). */
+type HealthState = "unknown" | "online" | "offline" | "auth";
 type Theme = "dark" | "light";
 
 const THEME_KEY = "hermes.theme";
@@ -178,7 +179,7 @@ export default function App() {
           setHealth("offline");
           return;
         }
-        setHealth(res?.ok ? "online" : "offline");
+        setHealth(res?.state === "auth" ? "auth" : res?.ok ? "online" : "offline");
       });
     };
     probe();
@@ -260,7 +261,14 @@ export default function App() {
               toolLines.push(line);
               schedule();
             },
-            onError: (msg) => updateAssistant({ error: msg }),
+            onError: (msg) =>
+              updateAssistant({
+                // A rejected key (401) is opaque JSON to users — append the fix.
+                error:
+                  /HTTP 401/.test(msg) && isHermesEndpoint(config.baseUrl)
+                    ? `${msg}\n→ ${t(lang, "err.401.hint")}`
+                    : msg,
+              }),
             onDone: () => schedule(),
           },
         );
@@ -476,8 +484,20 @@ export default function App() {
       {/* Top row: online status + settings-related controls. UI language is set
           in the options page (Hermes Agent Chrome — Settings). */}
       <div className="topbar">
-        <span className={`status ${health}`} title={t(lang, "statusTitle")}>
-          {health === "online" ? t(lang, "online") : health === "offline" ? t(lang, "offline") : "…"}
+        <span
+          className={`status ${health}`}
+          title={health === "auth" ? undefined : t(lang, "statusTitle")}
+          data-tip={health === "auth" ? t(lang, "status.authTip") : undefined}
+          onClick={health === "auth" ? openOptions : undefined}
+          role={health === "auth" ? "button" : undefined}
+        >
+          {health === "online"
+            ? t(lang, "online")
+            : health === "auth"
+              ? t(lang, "status.auth")
+              : health === "offline"
+                ? t(lang, "offline")
+                : "…"}
         </span>
         {/* Icon buttons use data-tip (instant CSS tooltip on hover) instead of
             the slow, easy-to-miss native title; aria-label keeps them readable. */}

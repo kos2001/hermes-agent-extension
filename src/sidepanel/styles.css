@@ -81,6 +81,27 @@ html, body, #root {
 }
 .topbar .status.online { color: #62d488; }
 .topbar .status.offline { color: var(--error); }
+/* Server up but the stored key was rejected — amber, clickable (opens Settings). */
+.topbar .status.auth { color: var(--tool); cursor: pointer; }
+.topbar .status { position: relative; }
+.topbar .status[data-tip]:hover::after {
+  content: attr(data-tip);
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  background: var(--panel-2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: 11px;
+  line-height: 1.4;
+  white-space: normal;
+  width: 230px;
+  z-index: 60;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.28);
+  pointer-events: none;
+}
 
 /* Icon buttons (theme, settings) pushed to the right edge of the bar. */
 .icon-btn {
