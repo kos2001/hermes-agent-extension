@@ -109,9 +109,9 @@ Saved in `chrome.storage.local` under `hermes.config`:
 
 | Field      | Default                          | Notes                                                        |
 |------------|----------------------------------|--------------------------------------------------------------|
-| `baseUrl`  | `https://openrouter.ai/api/v1`   | Full OpenAI base URL incl. version path; `/chat/completions` is appended |
+| `baseUrl`  | `http://127.0.0.1:8642`          | Local hermes-agent api_server by default; any OpenAI base URL works (version path auto-inserted for bare hosts) |
 | `apiKey`   | _empty_                          | Sent as `Authorization: Bearer <key>`; trimmed + Latin-1 validated on save |
-| `model`    | `openrouter/auto`                | Set from the provider preset or the "Test connection" model list |
+| `model`    | `hermes-agent`                   | Set from the provider preset or the "Test connection" model list |
 | `headers`  | OpenRouter attribution headers   | Extra JSON headers (e.g. gateway auth)                       |
 
 Other keys: `hermes.theme` (`dark`/`light`), `hermes.translateTarget` (page +

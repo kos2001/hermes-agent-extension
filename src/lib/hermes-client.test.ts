@@ -99,3 +99,11 @@ describe("assertHeadersLatin1", () => {
     ).toThrowError(/API key contains a character/);
   });
 });
+
+describe("DEFAULT_CONFIG", () => {
+  it("targets the local hermes api_server out of the box (session header applies)", async () => {
+    const { DEFAULT_CONFIG } = await import("./types");
+    expect(isHermesEndpoint(DEFAULT_CONFIG.baseUrl)).toBe(true);
+    expect(DEFAULT_CONFIG.model).toBe("hermes-agent");
+  });
+});

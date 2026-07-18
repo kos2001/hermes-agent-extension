@@ -198,6 +198,17 @@ const STR: Record<string, Entry> = {
   "skill.explain.user": { ko: "이 페이지를 쉽게 설명해줘", en: "Explain this page simply", zh: "请通俗解释此页面" },
   "skill.links.user": { ko: "🔗 링크 추출", en: "🔗 Extract links", zh: "🔗 提取链接" },
 
+  // Selection toolbar: no-API-key guidance (thrown by the SW before any fetch)
+  "sel.noKeyLocal": {
+    ko: "로컬 Hermes 서버는 실행 중인데 API 키가 없습니다 — 설정(⚙) → 게이트웨이 탭의 '빠른 연결' 한 줄만 실행하면 됩니다.",
+    en: "Your local Hermes server is running but no API key is set — run the one-line quick connect in Settings (⚙) → Gateway tab.",
+    zh: "本地 Hermes 服务器正在运行，但未设置 API 密钥 — 请在设置（⚙）→ 网关标签页运行一行快速连接。",
+  },
+  "sel.noKey": {
+    ko: "API 키가 설정되지 않았습니다 — 설정(⚙)에서 연결을 구성하세요.",
+    en: "No API key configured — open Settings (⚙) to set up a connection.",
+    zh: "未配置 API 密钥 — 请在设置（⚙）中配置连接。",
+  },
   // Hive (cloud) sign-in — email + password
   hiveSignIn: { ko: "Hive 로그인", en: "Sign in to Hive", zh: "登录 Hive" },
   hiveSignInTitle: { ko: "이메일·비밀번호로 Hive에 로그인", en: "Sign in to Hive with email & password", zh: "使用邮箱和密码登录 Hive" },
