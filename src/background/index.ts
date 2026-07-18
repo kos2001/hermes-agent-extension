@@ -10,7 +10,7 @@
  *     status even if it is closed.
  */
 
-import { checkHealth, streamChat } from "@/lib/hermes-client";
+import { checkHealth, isHermesEndpoint, normaliseBaseUrl, streamChat } from "@/lib/hermes-client";
 import {
   buildSelectionMessages,
   getTranslateTarget,
@@ -25,7 +25,27 @@ import { downloadReport, loadMarketSettings, MARKET_ALARM, runMarketReport, save
 import { HEARTBEAT_ALARM, loadHeartbeatSettings, runHeartbeat } from "@/lib/cloud/heartbeat";
 import { runBoardWork } from "@/lib/cloud/board";
 import { initHive, pb } from "@/lib/cloud/client";
-import { isLang, LANG_KEY } from "@/lib/i18n";
+import { isLang, LANG_KEY, t, type Lang } from "@/lib/i18n";
+
+/** UI language stored by the options page (defaults to Korean). */
+async function uiLang(): Promise<Lang> {
+  const stored = (await chrome.storage.local.get(LANG_KEY))[LANG_KEY];
+  return isLang(stored) ? stored : "ko";
+}
+
+/** Is a (local Hermes) server answering its no-auth /health endpoint? */
+async function serverAlive(baseUrl: string): Promise<boolean> {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 1500);
+  try {
+    const res = await fetch(`${normaliseBaseUrl(baseUrl)}/health`, { signal: ctrl.signal });
+    return res.ok;
+  } catch {
+    return false;
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 /** Post a message to a port, ignoring failures from a closed port. */
 function safePost(port: chrome.runtime.Port, msg: SelectionResponse): void {
@@ -66,7 +86,12 @@ chrome.runtime.onConnect.addListener((port) => {
           return;
         }
         const cfg = await loadConfig();
-        if (!cfg.apiKey) throw new Error("No API key configured — open extension options");
+        if (!cfg.apiKey) {
+          // Fresh install / wiped storage. Point the user at the exact fix, in
+          // their UI language — and say so when the local server is right there.
+          const local = isHermesEndpoint(cfg.baseUrl) && (await serverAlive(cfg.baseUrl));
+          throw new Error(t(await uiLang(), local ? "sel.noKeyLocal" : "sel.noKey"));
+        }
         const messages = buildSelectionMessages(req.action, req.text, target, req.context);
         let produced = false;
         let lastError = "";

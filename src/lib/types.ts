@@ -32,14 +32,14 @@ export interface ConnectionConfig {
 }
 
 export const DEFAULT_CONFIG: ConnectionConfig = {
-  baseUrl: "https://openrouter.ai/api/v1",
+  // Out of the box the extension targets the local hermes-agent api_server —
+  // its primary use case. A key is still required (Settings → quick connect);
+  // cloud providers are opt-in via the provider picker, which applies their
+  // base URL / model / attribution headers (see providers.ts).
+  baseUrl: "http://127.0.0.1:8642",
   apiKey: "",
-  model: "openrouter/auto",
-  headers: {
-    // OpenRouter attribution headers (optional but recommended).
-    "HTTP-Referer": "https://github.com/local/hermes-agent-extension",
-    "X-Title": "Hermes Agent Chrome",
-  },
+  model: "hermes-agent",
+  headers: {},
 };
 
 // Provider presets now live in `src/lib/providers.ts` (the full Hermes Agent
