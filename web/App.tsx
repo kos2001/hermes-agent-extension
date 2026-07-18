@@ -32,7 +32,7 @@ function renderBody(text: string): ReactNode {
 import type { ActivityItem, Comment, Community, CommunityMessage, DirectMessage, FeedEntry, SharedFolder, SharedItem } from "@/lib/cloud/types";
 import { isValidEmail } from "@/lib/cloud/email";
 import { feedStats, topicCounts, topicWeight } from "@/lib/cloud/feed-stats";
-import { cloudConfigured, getSession, onAuthChange, pb, sendEmailOtp, signOut, verifyEmailOtp, type HiveSession } from "./cloud";
+import { cloudConfigured, getSession, onAuthChange, pb, signInWithPassword, signOut, type HiveSession } from "./cloud";
 
 type ReactionKind = "like" | "save";
 type ReactionTally = { like: number; save: number };
@@ -263,35 +263,24 @@ export function App() {
 
 function SignIn({ onSignedIn }: { onSignedIn: (s: HiveSession) => void }) {
   const t = useT();
-  const [phase, setPhase] = useState<"email" | "code">("email");
   const [email, setEmail] = useState("");
-  const [code, setCode] = useState("");
+  const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
-  async function send() {
+  async function submit() {
     if (!isValidEmail(email)) {
       setError(t("emailInvalid"));
+      return;
+    }
+    if (password.length < 6) {
+      setError(t("passwordShort"));
       return;
     }
     setBusy(true);
     setError("");
     try {
-      await sendEmailOtp(email);
-      setPhase("code");
-    } catch (e) {
-      setError(errMsg(e));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function verify() {
-    if (!code.trim()) return;
-    setBusy(true);
-    setError("");
-    try {
-      onSignedIn(await verifyEmailOtp(email, code));
+      onSignedIn(await signInWithPassword(email, password));
     } catch (e) {
       setError(errMsg(e));
     } finally {
@@ -303,38 +292,27 @@ function SignIn({ onSignedIn }: { onSignedIn: (s: HiveSession) => void }) {
     <div className="signin">
       <h2>{t("signinTitle")}</h2>
       <p className="hint">{t("signinSub")}</p>
-      {phase === "email" ? (
-        <div className="signin-form">
-          <input
-            type="email"
-            placeholder={t("emailPlaceholder")}
-            value={email}
-            disabled={busy}
-            onChange={(e) => setEmail(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && void send()}
-          />
-          <button className="primary" onClick={() => void send()} disabled={busy}>
-            {busy ? t("sending") : t("sendCode")}
-          </button>
-        </div>
-      ) : (
-        <div className="signin-form">
-          <p className="hint">{t("codeSentTo", { email })}</p>
-          <input
-            inputMode="numeric"
-            placeholder={t("codePlaceholder")}
-            value={code}
-            disabled={busy}
-            autoFocus
-            onChange={(e) => setCode(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && void verify()}
-          />
-          <button className="primary" onClick={() => void verify()} disabled={busy}>
-            {busy ? t("verifying") : t("verify")}
-          </button>
-          <button onClick={() => void send()} disabled={busy}>{t("resend")}</button>
-        </div>
-      )}
+      <div className="signin-form">
+        <input
+          type="email"
+          placeholder={t("emailPlaceholder")}
+          value={email}
+          disabled={busy}
+          onChange={(e) => setEmail(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && void submit()}
+        />
+        <input
+          type="password"
+          placeholder={t("passwordPlaceholder")}
+          value={password}
+          disabled={busy}
+          onChange={(e) => setPassword(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && void submit()}
+        />
+        <button className="primary" onClick={() => void submit()} disabled={busy}>
+          {busy ? t("signingIn") : t("signinBtn")}
+        </button>
+      </div>
       {error && <p className="hint err">⚠ {error}</p>}
       <HowItWorks />
       <JoinGuide />
