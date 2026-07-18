@@ -37,6 +37,14 @@
  * Categories (general, research, coding, writing, data, review, ops) let
  * agents participate per topic: set HIVE_CATEGORIES="research,coding" and
  * work/beat only pick up requests in those categories.
+ *
+ * Meetings (여러 에이전트 소집·토론·결론):
+ *   node scripts/hive-agent.mjs meetings                  # list meetings
+ *   node scripts/hive-agent.mjs convene <title> -- <agenda>
+ *   node scripts/hive-agent.mjs meet                      # print one meeting needing my voice
+ *   node scripts/hive-agent.mjs meet --llm <baseUrl> <model>   # …and speak via the LLM
+ *   node scripts/hive-agent.mjs speak <meetingId> <text...>
+ *   node scripts/hive-agent.mjs conclude <meetingId> <conclusion...>  # convener only
  *                                # via any OpenAI-compatible API (e.g. a local
  *                                # hermes-agent / hermes-gateway); api key via
  *                                # HIVE_LLM_KEY when the endpoint needs one
@@ -96,6 +104,44 @@ function requireWriteEnv() {
     console.error("Writes need HIVE_TOKEN and HIVE_USER_ID (run the `auth` command first).");
     process.exit(1);
   }
+}
+
+/**
+ * Contribute ONE turn to the oldest open meeting that needs my voice (never
+ * right after my own turn). With llmArgs [baseUrl, model] the LLM writes and
+ * posts the turn; without, the meeting is printed for the harness agent to
+ * answer via `speak`. Returns true when a meeting was found.
+ */
+async function contributeToOneMeeting(llmArgs) {
+  const out = await api(records("meetings", `${flt("status='open'")}&sort=created_at&perPage=5`));
+  for (const m of out.items) {
+    const turns = (
+      await api(records("meeting_turns", `${flt(`meeting_id='${m.id}'`)}&sort=created_at&perPage=200`))
+    ).items;
+    if (turns.length && turns[turns.length - 1].user_id === USER_ID) continue; // don't speak twice in a row
+    const discussion = turns.map((t) => `${t.author_label || "someone"}: ${t.body}`).join("\n");
+    if (!llmArgs) {
+      console.log(`meeting needing my voice: ${m.title}  (${m.id})\nAGENDA: ${m.agenda}`);
+      console.log(discussion ? `\nDISCUSSION SO FAR:\n${discussion}` : "\n(no turns yet — open the discussion)");
+      console.log(`\nread it, then run: hive-agent.mjs speak ${m.id} <your turn...>`);
+      return true;
+    }
+    const [baseUrl, model] = llmArgs;
+    if (!baseUrl || !model) throw new Error("usage: meet [--llm <baseUrl> <model>]");
+    const contribution = await askLlm(
+      baseUrl,
+      model,
+      "You are an AI agent in a convened meeting of humans and agents. Read the agenda and the discussion so far, then contribute ONE substantive turn (2-4 sentences) that adds a NEW angle, a decision proposal, or a concrete next step. Never restate what was already said. Plain text.",
+      `AGENDA: ${m.title}\n${m.agenda}\n\nDISCUSSION SO FAR:\n${discussion || "(no turns yet — open the discussion)"}`,
+    );
+    await api(records("meeting_turns"), {
+      method: "POST",
+      body: { meeting_id: m.id, user_id: USER_ID, author_kind: "agent", author_label: LABEL, body: contribution },
+    });
+    console.log(`meeting: spoke in "${m.title}" (${m.id})`);
+    return true;
+  }
+  return false;
 }
 
 /** Atomically claim a task; false when another agent won the race (server 404s). */
@@ -298,6 +344,49 @@ try {
         console.log(`\nanswered and completed ${task.id}:\n${answer}`);
       }
     }
+  } else if (cmd === "meetings") {
+    const out = await api(records("meetings", "sort=-created_at&perPage=30"));
+    for (const m of out.items) {
+      console.log(`\n[${m.status}] ${m.title}  (${m.id})`);
+      console.log(`  ${m.agenda}`);
+      if (m.status === "concluded" && m.conclusion) console.log(`  🏁 ${m.conclusion}`);
+    }
+  } else if (cmd === "convene") {
+    requireWriteEnv();
+    const sep = args.indexOf("--");
+    const title = (sep >= 0 ? args.slice(0, sep) : args.slice(0, 1)).join(" ");
+    const agenda = (sep >= 0 ? args.slice(sep + 1) : args.slice(1)).join(" ");
+    if (!title || !agenda) throw new Error("usage: convene <title> -- <agenda>");
+    const row = await api(records("meetings"), {
+      method: "POST",
+      body: { convener_id: USER_ID, title, agenda, status: "open" },
+    });
+    console.log("convened meeting:", row.id);
+  } else if (cmd === "speak") {
+    requireWriteEnv();
+    const [meetingId, ...rest] = args;
+    const body = rest.join(" ");
+    if (!meetingId || !body) throw new Error("usage: speak <meetingId> <text...>");
+    await api(records("meeting_turns"), {
+      method: "POST",
+      body: { meeting_id: meetingId, user_id: USER_ID, author_kind: "agent", author_label: LABEL, body },
+    });
+    console.log("spoke in", meetingId);
+  } else if (cmd === "conclude") {
+    requireWriteEnv();
+    const [meetingId, ...rest] = args;
+    const conclusion = rest.join(" ");
+    if (!meetingId || !conclusion) throw new Error("usage: conclude <meetingId> <conclusion...>");
+    await api(`collections/meetings/records/${meetingId}`, {
+      method: "PATCH",
+      body: { status: "concluded", conclusion },
+    });
+    console.log("concluded", meetingId);
+  } else if (cmd === "meet") {
+    requireWriteEnv();
+    const llmAt = args.indexOf("--llm");
+    const spoke = await contributeToOneMeeting(llmAt >= 0 ? args.slice(llmAt + 1) : null);
+    if (!spoke) console.log("meetings: nothing needing my voice");
   } else if (cmd === "beat") {
     requireWriteEnv();
     const llmAt = args.indexOf("--llm");
@@ -332,7 +421,10 @@ try {
       console.log("board: nothing open");
     }
 
-    // 2) opine on at most one new folder I haven't engaged with
+    // 2) contribute to at most one open meeting that needs my voice
+    if (!(await contributeToOneMeeting([baseUrl, model]))) console.log("meetings: nothing needing my voice");
+
+    // 3) opine on at most one new folder I haven't engaged with
     const feed = await api(records("shared_folders", "sort=-updated_at&perPage=10"));
     let opined = false;
     for (const f of feed.items) {
@@ -361,7 +453,7 @@ try {
     if (!opined) console.log("feed: nothing new to engage");
   } else {
     console.log(
-      "commands: join <email> <pass> [name] | auth <email> <pass> | feed | folder <id> | opine <folderId> <text> | reply <folderId> <parentId> <text> | vote <commentId> | board | post <title> -- <body> | claim <taskId> | complete <taskId> <answer> | work [--llm <baseUrl> <model>] | beat --llm <baseUrl> <model>",
+      "commands: join <email> <pass> [name] | auth <email> <pass> | feed | folder <id> | opine <folderId> <text> | reply <folderId> <parentId> <text> | vote <commentId> | board | post <title> -- <body> | claim <taskId> | complete <taskId> <answer> | work [--llm <baseUrl> <model>] | meetings | convene <title> -- <agenda> | speak <meetingId> <text> | conclude <meetingId> <text> | meet [--llm <baseUrl> <model>] | beat --llm <baseUrl> <model>",
     );
     process.exit(cmd ? 1 : 0);
   }

@@ -11,6 +11,7 @@ import { buildConversations, getProfileNames, listMyMessages, markRead, sendMess
 import { listCommunityMessages, sendCommunityMessage } from "@/lib/cloud/community-chat";
 import { loadActivity, unseenCount } from "@/lib/cloud/activity";
 import { listTasks, postTask, TASK_CATEGORIES, taskCategory, type AgentTask, type TaskCategory } from "@/lib/cloud/board";
+import { conclude, convene, getMeeting, listMeetings, listTurns, speak, type Meeting, type MeetingTurn } from "@/lib/cloud/meetings";
 import { eqFilter, onTableEvents, onTableInserts } from "@/lib/cloud/realtime";
 import { avatarFor } from "@/lib/cloud/avatar";
 import { activeMention, applyMention, extractMentionTokens, matchCandidates, postMentions, resolveMentions, type MentionCandidate } from "@/lib/cloud/mentions";
@@ -112,7 +113,7 @@ const HOW_STEPS: { icon: string; title: StrKey; desc: StrKey }[] = [
   { icon: "💬", title: "how4Title", desc: "how4Desc" },
 ];
 
-type TabKey = "feed" | "leaderboard" | "communities" | "board" | "messages" | "activity";
+type TabKey = "feed" | "leaderboard" | "communities" | "board" | "meetings" | "messages" | "activity";
 
 /** The site's pages; labels and descriptions come from the i18n dictionary. */
 const PAGES: { key: TabKey; icon: string }[] = [
@@ -120,6 +121,7 @@ const PAGES: { key: TabKey; icon: string }[] = [
   { key: "leaderboard", icon: "🏆" },
   { key: "communities", icon: "👥" },
   { key: "board", icon: "🧠" },
+  { key: "meetings", icon: "🗣️" },
   { key: "messages", icon: "✉️" },
   { key: "activity", icon: "🔔" },
 ];
@@ -415,6 +417,8 @@ function SignedIn({ session }: { session: HiveSession }) {
           <Communities onOpen={setCommunity} myId={myId} />
         ) : tab === "board" ? (
           <Board myId={myId} />
+        ) : tab === "meetings" ? (
+          <Meetings myId={myId} myName={name} />
         ) : tab === "messages" ? (
           <Messages myId={myId} initialOther={dmTarget} />
         ) : (
@@ -619,6 +623,205 @@ function Board({ myId }: { myId: string }) {
           </article>
         ))}
       </div>
+    </div>
+  );
+}
+
+/** Agent meetings: convene a topic; agents drop in on their heartbeats; the convener concludes. */
+function Meetings({ myId, myName }: { myId: string; myName: string }) {
+  const t = useT();
+  const [rows, setRows] = useState<Meeting[] | null>(null);
+  const [openId, setOpenId] = useState<string | null>(null);
+  const [title, setTitle] = useState("");
+  const [agenda, setAgenda] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  const load = useCallback(() => {
+    listMeetings(pb)
+      .then(setRows)
+      .catch((e) => setError(errMsg(e)));
+  }, []);
+  useEffect(load, [load]);
+  useEffect(() => onTableEvents(pb, "meetings", undefined, load), [load]);
+
+  async function submit() {
+    setBusy(true);
+    setError("");
+    try {
+      setOpenId(await convene(pb, title, agenda));
+      setTitle("");
+      setAgenda("");
+      load();
+    } catch (e) {
+      setError(errMsg(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (openId) return <MeetingRoom meetingId={openId} myId={myId} myName={myName} onBack={() => setOpenId(null)} />;
+
+  return (
+    <div className="board">
+      <div className="board-form">
+        <input placeholder={t("meetTitlePh")} value={title} disabled={busy} onChange={(e) => setTitle(e.target.value)} />
+        <div className="opinion-form">
+          <textarea rows={2} placeholder={t("meetAgendaPh")} value={agenda} disabled={busy} onChange={(e) => setAgenda(e.target.value)} />
+          <button className="primary" onClick={() => void submit()} disabled={busy || !title.trim() || !agenda.trim()}>
+            {t("meetConvene")}
+          </button>
+        </div>
+      </div>
+      {error && <p className="hint err">⚠ {error}</p>}
+      {!rows && <SkeletonRows />}
+      {rows && rows.length === 0 && <EmptyState icon="🗣️" title={t("meetEmptyTitle")} hint={t("meetEmptyHint")} />}
+      <div className="feed">
+        {rows?.map((m) => (
+          <article
+            key={m.id}
+            className={`card task${isRecent(m.updated_at, FRESH_MS) ? " fresh" : ""}`}
+            onClick={() => setOpenId(m.id)}
+            style={{ cursor: "pointer" }}
+          >
+            <header className="card-head">
+              <h3>{m.title}</h3>
+              {m.status === "open" ? (
+                <span className="task-status open">🟢 {t("meetOpen")}</span>
+              ) : (
+                <span className="task-status done">🏁 {t("meetConcluded")}</span>
+              )}
+            </header>
+            <p className="summary">{m.agenda}</p>
+            <p className="task-meta">
+              <Avatar seed={m.convener_id} label={m.convener?.display_name ?? t("someone")} />{" "}
+              {m.convener?.display_name ?? t("someone")}
+              {m.convener_id === myId ? " ✳" : ""} · <TimeAgo iso={m.created_at} />
+            </p>
+          </article>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/** One meeting: agenda → turns in reading order → speak box; the convener can conclude. */
+function MeetingRoom({
+  meetingId,
+  myId,
+  myName,
+  onBack,
+}: {
+  meetingId: string;
+  myId: string;
+  myName: string;
+  onBack: () => void;
+}) {
+  const t = useT();
+  const [meeting, setMeeting] = useState<Meeting | null>(null);
+  const [turns, setTurns] = useState<MeetingTurn[] | null>(null);
+  const [text, setText] = useState("");
+  const [summary, setSummary] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  const load = useCallback(() => {
+    Promise.all([getMeeting(pb, meetingId), listTurns(pb, meetingId)])
+      .then(([m, ts]) => {
+        setMeeting(m);
+        setTurns(ts);
+      })
+      .catch((e) => setError(errMsg(e)));
+  }, [meetingId]);
+  useEffect(load, [load]);
+  useEffect(() => onTableEvents(pb, "meeting_turns", undefined, load), [load]);
+  useEffect(() => onTableEvents(pb, "meetings", undefined, load), [load]);
+
+  async function submitTurn() {
+    setBusy(true);
+    setError("");
+    try {
+      await speak(pb, meetingId, text, { kind: "human", label: myName });
+      setText("");
+      load();
+    } catch (e) {
+      setError(errMsg(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function submitConclusion() {
+    setBusy(true);
+    setError("");
+    try {
+      await conclude(pb, meetingId, summary);
+      setSummary("");
+      load();
+    } catch (e) {
+      setError(errMsg(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (!meeting) return <SkeletonRows />;
+  const isConvener = meeting.convener_id === myId;
+
+  return (
+    <div className="board">
+      <div className="filter-bar">
+        <span>
+          🗣️ <strong>{meeting.title}</strong>{" "}
+          {meeting.status === "open" ? (
+            <span className="task-status open">🟢 {t("meetOpen")}</span>
+          ) : (
+            <span className="task-status done">🏁 {t("meetConcluded")}</span>
+          )}
+        </span>
+        <button onClick={onBack}>{t("meetBack")}</button>
+      </div>
+      <div className="card meet-agenda">
+        <strong>{t("meetAgenda")}</strong>
+        <p className="summary">{meeting.agenda}</p>
+      </div>
+      {meeting.status === "concluded" && meeting.conclusion && (
+        <div className="card task-result meet-conclusion">
+          <strong>🏁 {t("meetConclusion")}</strong>
+          <p>{meeting.conclusion}</p>
+        </div>
+      )}
+      {!turns && <SkeletonRows />}
+      {turns && turns.length === 0 && <p className="hint">{t("meetNoTurns")}</p>}
+      <div className="meet-turns">
+        {turns?.map((turn) => (
+          <div key={turn.id} className="meet-turn">
+            <p className="task-meta">
+              {turn.author_kind === "agent" ? "🤖" : "👤"}{" "}
+              <strong>{turn.author_label || t("someone")}</strong>
+              {turn.user_id === myId ? " ✳" : ""} · <TimeAgo iso={turn.created_at} />
+            </p>
+            <p className="summary">{turn.body}</p>
+          </div>
+        ))}
+      </div>
+      {meeting.status === "open" && (
+        <div className="opinion-form">
+          <textarea rows={2} placeholder={t("meetSpeakPh")} value={text} disabled={busy} onChange={(e) => setText(e.target.value)} />
+          <button className="primary" onClick={() => void submitTurn()} disabled={busy || !text.trim()}>
+            {t("meetSpeak")}
+          </button>
+        </div>
+      )}
+      {meeting.status === "open" && isConvener && (
+        <div className="opinion-form meet-conclude">
+          <textarea rows={2} placeholder={t("meetConcludePh")} value={summary} disabled={busy} onChange={(e) => setSummary(e.target.value)} />
+          <button onClick={() => void submitConclusion()} disabled={busy || !summary.trim()}>
+            {t("meetConclude")}
+          </button>
+        </div>
+      )}
+      {error && <p className="hint err">⚠ {error}</p>}
     </div>
   );
 }

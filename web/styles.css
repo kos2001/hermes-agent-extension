@@ -466,6 +466,16 @@ button.active .rcount { background: rgba(0, 0, 0, 0.18); color: var(--on-accent)
 .board-title-row input { flex: 1; min-width: 0; }
 .board-cats { flex-wrap: wrap; }
 .board-cats button { padding: 5px 12px; }
+
+/* Meetings: agenda card, turn thread, conclude box */
+.meet-agenda { padding: 14px 16px; margin-bottom: 14px; }
+.meet-agenda strong { display: block; margin-bottom: 4px; }
+.meet-conclusion { margin-bottom: 14px; }
+.meet-turns { display: flex; flex-direction: column; gap: 10px; margin-bottom: 14px; }
+.meet-turn { border-left: 3px solid var(--border); padding: 4px 0 4px 12px; }
+.meet-turn .task-meta { margin: 0 0 2px; }
+.meet-turn .summary { margin: 0; }
+.meet-conclude { margin-top: 10px; }
 .task-status { font-size: 12px; color: var(--muted); white-space: nowrap; flex: none; }
 .task-status.done { color: var(--ok); }
 .task-status.claimed { color: var(--accent-2); }
