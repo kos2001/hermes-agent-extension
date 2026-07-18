@@ -12,7 +12,7 @@ import { listCommunityMessages, sendCommunityMessage } from "@/lib/cloud/communi
 import { loadActivity, unseenCount } from "@/lib/cloud/activity";
 import { listTasks, postTask, TASK_CATEGORIES, taskCategory, type AgentTask, type TaskCategory } from "@/lib/cloud/board";
 import { conclude, convene, getMeeting, listMeetings, listTurns, speak, type Meeting, type MeetingTurn } from "@/lib/cloud/meetings";
-import { getChallenge, judgeChallenge, listChallenges, listEarnings, listSubmissions, postChallenge, submitSolution, type Challenge, type ChallengeEarning, type ChallengeSubmission } from "@/lib/cloud/challenges";
+import { avgRating, getChallenge, judgeChallenge, listChallenges, listEarnings, listReviews, listSubmissions, postChallenge, reviewSubmission, submitSolution, type Challenge, type ChallengeEarning, type ChallengeSubmission, type SubmissionReview } from "@/lib/cloud/challenges";
 import { eqFilter, onTableEvents, onTableInserts } from "@/lib/cloud/realtime";
 import { avatarFor } from "@/lib/cloud/avatar";
 import { activeMention, applyMention, extractMentionTokens, matchCandidates, postMentions, resolveMentions, type MentionCandidate } from "@/lib/cloud/mentions";
@@ -762,21 +762,24 @@ function ChallengeRoom({
   const t = useT();
   const [challenge, setChallenge] = useState<Challenge | null>(null);
   const [subs, setSubs] = useState<ChallengeSubmission[] | null>(null);
+  const [reviews, setReviews] = useState<SubmissionReview[]>([]);
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
   const load = useCallback(() => {
     Promise.all([getChallenge(pb, challengeId), listSubmissions(pb, challengeId)])
-      .then(([c, ss]) => {
+      .then(async ([c, ss]) => {
         setChallenge(c);
         setSubs(ss);
+        setReviews(await listReviews(pb, ss.map((s) => s.id)));
       })
       .catch((e) => setError(errMsg(e)));
   }, [challengeId]);
   useEffect(load, [load]);
   useEffect(() => onTableEvents(pb, "challenge_submissions", undefined, load), [load]);
   useEffect(() => onTableEvents(pb, "challenges", undefined, load), [load]);
+  useEffect(() => onTableEvents(pb, "submission_reviews", undefined, load), [load]);
 
   async function submitEntry() {
     setBusy(true);
@@ -830,15 +833,27 @@ function ChallengeRoom({
       <div className="meet-turns">
         {subs?.map((sub) => {
           const won = challenge.winner_submission_id === sub.id;
+          const subReviews = reviews.filter((r) => r.submission_id === sub.id);
+          const avg = avgRating(subReviews);
           return (
             <div key={sub.id} className={`meet-turn${won ? " ch-winner" : ""}`}>
               <p className="task-meta">
                 {sub.author_kind === "agent" ? "🤖" : "👤"}{" "}
                 <strong>{sub.author_label || t("someone")}</strong>
                 {sub.user_id === myId ? " ✳" : ""} · <TimeAgo iso={sub.updated_at} />
+                {avg !== null && <span className="ch-avg"> ⭐ {avg} ({subReviews.length})</span>}
                 {won && <span className="task-status done"> 🏆 {t("chWinner")} +{challenge.bounty}pt</span>}
               </p>
               <p className="summary">{sub.body}</p>
+              {subReviews.map((r) => (
+                <p key={r.id} className="ch-review">
+                  {"⭐".repeat(r.rating)} <strong>{r.author_label || t("someone")}</strong>
+                  {r.user_id === myId ? " ✳" : ""} — {r.body}
+                </p>
+              ))}
+              {sub.user_id !== myId && (
+                <ReviewForm submissionId={sub.id} myName={myName} mine={subReviews.find((r) => r.user_id === myId)} onDone={load} />
+              )}
               {isPoster && challenge.status === "open" && (
                 <button className="ch-award" disabled={busy} onClick={() => void award(sub)}>
                   {t("chPickWinner")}
@@ -857,6 +872,58 @@ function ChallengeRoom({
         </div>
       )}
       {error && <p className="hint err">⚠ {error}</p>}
+    </div>
+  );
+}
+
+/** Rate-and-critique form under a submission; reviewing again updates my review. */
+function ReviewForm({
+  submissionId,
+  myName,
+  mine,
+  onDone,
+}: {
+  submissionId: string;
+  myName: string;
+  mine?: SubmissionReview;
+  onDone: () => void;
+}) {
+  const t = useT();
+  const [rating, setRating] = useState(mine ? String(mine.rating) : "4");
+  const [body, setBody] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  async function submit() {
+    setBusy(true);
+    setError("");
+    try {
+      await reviewSubmission(pb, submissionId, Number(rating), body, { kind: "human", label: myName });
+      setBody("");
+      onDone();
+    } catch (e) {
+      setError(errMsg(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="ch-review-form">
+      <select value={rating} disabled={busy} onChange={(e) => setRating(e.target.value)} title={t("chRating")}>
+        {[5, 4, 3, 2, 1].map((n) => (
+          <option key={n} value={n}>{"⭐".repeat(n)}</option>
+        ))}
+      </select>
+      <input
+        placeholder={mine ? t("chRereviewPh") : t("chReviewPh")}
+        value={body}
+        disabled={busy}
+        onChange={(e) => setBody(e.target.value)}
+        onKeyDown={(e) => e.key === "Enter" && void submit()}
+      />
+      <button disabled={busy || !body.trim()} onClick={() => void submit()}>{t("chReview")}</button>
+      {error && <span className="hint err">⚠ {error}</span>}
     </div>
   );
 }
