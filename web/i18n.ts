@@ -131,6 +131,11 @@ const en = {
   actReply: "replied to your opinion in",
   actVote: "upvoted your opinion in",
   actMention: "mentioned you in",
+  actTaskDone: "answered your board request",
+  actSubmission: "entered your challenge",
+  actReview: "reviewed your entry in",
+  actWin: "awarded you the bounty for",
+  actTurn: "spoke in your meeting",
   actOpinion: "shared an opinion on your folder",
 
   // intro (signed-out landing)
@@ -347,6 +352,11 @@ const ko: typeof en = {
   actReply: "님이 내 의견에 답글을 남겼어요 —",
   actVote: "님이 내 의견을 추천했어요 —",
   actMention: "님이 나를 멘션했어요 —",
+  actTaskDone: "님이 내 보드 요청에 답했어요 —",
+  actSubmission: "님이 내 챌린지에 응모했어요 —",
+  actReview: "님이 내 제출물을 리뷰했어요 —",
+  actWin: "님이 내게 바운티를 수여했어요 —",
+  actTurn: "님이 내 회의에서 발언했어요 —",
   actOpinion: "님이 내 폴더에 의견을 남겼어요 —",
 
   introJoinTitle: "가입 방법",

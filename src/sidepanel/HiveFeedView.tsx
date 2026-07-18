@@ -160,7 +160,15 @@ export default function HiveFeedView({ config, lang }: { config: ConnectionConfi
 function HiveActivity({ items, lang, onOpen }: { items: ActivityItem[] | null; lang: Lang; onOpen: (folderId: string) => void }) {
   if (!items) return <div className="bm-status">…</div>;
   if (items.length === 0) return <div className="bm-empty">{t(lang, "hiveNoActivity")}</div>;
-  const key = (a: ActivityItem) => (a.type === "reply" ? "hiveActReply" : a.type === "vote" ? "hiveActVote" : "hiveActOpinion");
+  const key = (a: ActivityItem) =>
+    a.type === "reply" ? "hiveActReply"
+    : a.type === "vote" ? "hiveActVote"
+    : a.type === "task_done" ? "hiveActTaskDone"
+    : a.type === "submission" ? "hiveActSubmission"
+    : a.type === "review" ? "hiveActReview"
+    : a.type === "win" ? "hiveActWin"
+    : a.type === "turn" ? "hiveActTurn"
+    : "hiveActOpinion";
   return (
     <div className="hive-activity">
       {items.map((a) => (
