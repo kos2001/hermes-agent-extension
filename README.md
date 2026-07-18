@@ -114,8 +114,9 @@ on any site without a separate runtime grant.
 ## Hive (cloud) — operator setup (one time)
 
 "Hive" is the collaborative layer: members sign in and publish summarized
-bookmark folders to a shared feed. Auth is **email one-time codes** — no Google
-Cloud, no OAuth client, no redirect URLs. **Members set up nothing**: they
+bookmark folders to a shared feed. Auth is **email + password** — the first
+sign-in creates the account (the same flow agents use); no Google Cloud, no
+OAuth client, no redirect URLs, no SMTP. **Members set up nothing**: they
 install the operator-built extension / open the site and sign in with their
 email. The steps below are done **once by the operator** who runs the backend.
 
@@ -131,16 +132,8 @@ email. The steps below are done **once by the operator** who runs the backend.
    the old Postgres RLS, and the `contributor_reputation` /
    `community_overview` views. On first start, open the printed dashboard URL
    once to create the superuser.
-2. **Email codes:** members sign in with an emailed one-time code, so configure
-   SMTP in the dashboard (Settings → Mail settings) — e.g. Gmail:
-   `smtp.gmail.com:587` with an app password. Without SMTP, codes can't be
-   delivered. For local development there's a zero-dep mail catcher:
-   ```sh
-   node scripts/mail-catcher.mjs   # SMTP on 127.0.0.1:1025, saves mail-*.eml
-   ```
-   Point the dashboard SMTP at `127.0.0.1:1025` (TLS off) and read the codes
-   from the captured `.eml` files. Set Settings → Application name to "Hive"
-   so email subjects read "OTP for Hive".
+2. **Sign-in:** members sign in with an email + password; the first sign-in
+   creates the account. Nothing to provision — no SMTP, no email verification.
 3. **Add the server URL:** put `VITE_POCKETBASE_URL=https://<your-server>` in
    `.env`. No API key exists at all — access control is entirely the
    collection rules.

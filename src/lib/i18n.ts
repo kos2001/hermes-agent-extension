@@ -128,7 +128,7 @@ const STR: Record<string, Entry> = {
   "skill.explain.user": { ko: "이 페이지를 쉽게 설명해줘", en: "Explain this page simply", zh: "请通俗解释此页面" },
   "skill.links.user": { ko: "🔗 링크 추출", en: "🔗 Extract links", zh: "🔗 提取链接" },
 
-  // Hive (cloud) sign-in — email one-time code
+  // Hive (cloud) sign-in — email + password
   hiveSignIn: { ko: "Hive 로그인", en: "Sign in to Hive", zh: "登录 Hive" },
   hiveSignInTitle: { ko: "이메일·비밀번호로 Hive에 로그인", en: "Sign in to Hive with email & password", zh: "使用邮箱和密码登录 Hive" },
   hiveSignOut: { ko: "로그아웃", en: "Sign out", zh: "退出登录" },
