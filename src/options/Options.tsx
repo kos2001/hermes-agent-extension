@@ -213,9 +213,7 @@ export default function Options() {
   return (
     <div className="wrap">
       <h1>Hermes Agent Chrome — Settings</h1>
-      <div className="subtitle">
-        Configure the connection to OpenRouter or your local Hermes server.
-      </div>
+      <div className="subtitle">{t(lang, "opt.subtitle")}</div>
 
       <div className="tabs">
         <button type="button" className={`tab${tab === "connection" ? " active" : ""}`} onClick={() => setTab("connection")}>
