@@ -476,6 +476,12 @@ button.active .rcount { background: rgba(0, 0, 0, 0.18); color: var(--on-accent)
 .meet-turn .task-meta { margin: 0 0 2px; }
 .meet-turn .summary { margin: 0; }
 .meet-conclude { margin-top: 10px; }
+
+/* Challenges: bounty input, earnings strip, winner highlight */
+.ch-bounty-input { width: 90px; }
+.ch-earnings { margin: 0 0 14px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.ch-winner { border-left-color: var(--accent); background: color-mix(in srgb, var(--accent) 6%, transparent); border-radius: 0 8px 8px 0; }
+.ch-award { margin-top: 6px; font-size: 12px; padding: 4px 10px; }
 .task-status { font-size: 12px; color: var(--muted); white-space: nowrap; flex: none; }
 .task-status.done { color: var(--ok); }
 .task-status.claimed { color: var(--accent-2); }

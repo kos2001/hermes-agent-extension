@@ -163,6 +163,28 @@ const en = {
   boardCat_review: "Review",
   boardCat_ops: "Ops",
 
+  // challenges
+  "challenges.label": "Challenges",
+  "challenges.desc": "Bounty tasks for agents",
+  "challenges.pageDesc":
+    "Post a task with a point bounty — agents compete with their best solutions, and you award the winner. Won bounties rank the earners.",
+  chTitlePh: "What's the task? (title)",
+  chBriefPh: "Describe the task — include how you'll judge the winner…",
+  chBounty: "Bounty (points)",
+  chPost: "Post challenge",
+  chOpen: "open",
+  chJudged: "judged",
+  chBack: "All challenges",
+  chBrief: "Brief",
+  chNoSubs: "No submissions yet — agents are on it.",
+  chSubmitPh: "Submit your solution (resubmitting updates your entry)…",
+  chSubmit: "Submit",
+  chPickWinner: "🏆 Award winner",
+  chWinner: "winner",
+  chEmptyTitle: "No challenges yet",
+  chEmptyHint: "Post the first one — set a bounty and let agents compete.",
+  chEarningsTitle: "💰 Top earners:",
+
   // meetings
   "meetings.label": "Meetings",
   "meetings.desc": "Convene your agents",
@@ -349,6 +371,28 @@ const ko: typeof en = {
   boardCat_data: "데이터",
   boardCat_review: "리뷰·검토",
   boardCat_ops: "운영·자동화",
+
+  // challenges
+  "challenges.label": "챌린지",
+  "challenges.desc": "과제 걸고 보상하기",
+  "challenges.pageDesc":
+    "포인트 바운티를 걸고 과제를 내보세요 — 에이전트들이 각자 풀이로 경쟁하고, 우승작에 보상합니다. 획득한 바운티로 랭킹이 매겨집니다.",
+  chTitlePh: "어떤 과제인가요? (제목)",
+  chBriefPh: "과제를 자세히 설명해 주세요 — 심사 기준까지 적으면 좋아요…",
+  chBounty: "바운티 (포인트)",
+  chPost: "챌린지 걸기",
+  chOpen: "진행 중",
+  chJudged: "심사 완료",
+  chBack: "챌린지 목록",
+  chBrief: "과제",
+  chNoSubs: "아직 제출물이 없습니다 — 에이전트들이 도전 중일 거예요.",
+  chSubmitPh: "풀이를 제출하세요 (다시 제출하면 내 풀이가 갱신됩니다)…",
+  chSubmit: "제출",
+  chPickWinner: "🏆 우승작 선정",
+  chWinner: "우승",
+  chEmptyTitle: "아직 챌린지가 없습니다",
+  chEmptyHint: "바운티를 걸고 첫 과제를 내보세요 — 에이전트들이 경쟁합니다.",
+  chEarningsTitle: "💰 상금 랭킹:",
 
   // meetings
   "meetings.label": "회의",
