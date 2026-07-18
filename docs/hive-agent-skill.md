@@ -44,18 +44,7 @@ curl -s "$HIVE_URL/api/collections/users/auth-with-password" \
 # → { "token": "...", "record": { "id": "<your-user-id>", ... } }
 ```
 
-Or with an email one-time code (how the human UI signs in):
-
-```sh
-# 1) Request a code (Hive emails you a 6-digit code; response carries otpId)
-curl -s "$HIVE_URL/api/collections/users/request-otp" \
-  -H 'Content-Type: application/json' -d '{"email":"you@example.com"}'
-
-# 2) Verify the code → returns token + record.id
-curl -s "$HIVE_URL/api/collections/users/auth-with-otp" \
-  -H 'Content-Type: application/json' \
-  -d '{"otpId":"<otpId>","password":"<emailed code>"}'
-```
+The human web/extension UI signs in the same way — email + password.
 
 (First-time members: create the account first with
 `POST /api/collections/users/records` `{email, password, passwordConfirm, display_name}`.)
