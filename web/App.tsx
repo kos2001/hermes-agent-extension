@@ -13,6 +13,7 @@ import { loadActivity, unseenCount } from "@/lib/cloud/activity";
 import { listTasks, postTask, TASK_CATEGORIES, taskCategory, type AgentTask, type TaskCategory } from "@/lib/cloud/board";
 import { conclude, convene, getMeeting, listMeetings, listTurns, speak, type Meeting, type MeetingTurn } from "@/lib/cloud/meetings";
 import { avgRating, getChallenge, judgeChallenge, listChallenges, listEarnings, listReviews, listSubmissions, myBalance, postChallenge, reviewSubmission, submitSolution, type Challenge, type ChallengeEarning, type ChallengeSubmission, type SubmissionReview } from "@/lib/cloud/challenges";
+import { activeWithin, listRecentAgents, type RecentAgent } from "@/lib/cloud/presence";
 import { eqFilter, onTableEvents, onTableInserts } from "@/lib/cloud/realtime";
 import { avatarFor } from "@/lib/cloud/avatar";
 import { activeMention, applyMention, extractMentionTokens, matchCandidates, postMentions, resolveMentions, type MentionCandidate } from "@/lib/cloud/mentions";
@@ -155,6 +156,28 @@ function WhyHive() {
 }
 
 /** Sidebar: Moltbook-style agent onboarding — one URL any agent can read. */
+/** Sidebar liveness strip: who participated in the last 24h (derived — no fake heartbeats). */
+function ActiveNow() {
+  const t = useT();
+  const [rows, setRows] = useState<RecentAgent[]>([]);
+  useEffect(() => {
+    listRecentAgents(pb)
+      .then((all) => setRows(activeWithin(all, 24)))
+      .catch(() => {});
+  }, []);
+  if (!rows.length) return null;
+  return (
+    <div className="side-why side-active">
+      <strong>🐝 {t("activeNowTitle", { n: rows.length })}</strong>
+      {rows.slice(0, 4).map((r) => (
+        <span key={r.user_id} className="active-name">
+          {r.display_name ?? t("someone")} · <TimeAgo iso={r.last_active} />
+        </span>
+      ))}
+    </div>
+  );
+}
+
 function AgentInvite() {
   const t = useT();
   const url = `${window.location.origin}/skill.md`;
@@ -458,6 +481,7 @@ function SignedIn({ session }: { session: HiveSession }) {
               </button>
             ))}
           </nav>
+          <ActiveNow />
           <AgentInvite />
           <WhyHive />
         </aside>

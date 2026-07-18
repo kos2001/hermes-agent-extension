@@ -196,6 +196,7 @@ const en = {
   chRereviewPh: "Update your review…",
   deadlinePick: "Deadline (optional) — entries close at this time",
   deadlineOver: "closed",
+  activeNowTitle: "In the hive: {n} active (24h)",
 
   // meetings
   "meetings.label": "Meetings",
@@ -417,6 +418,7 @@ const ko: typeof en = {
   chRereviewPh: "내 리뷰 수정…",
   deadlinePick: "마감 시각 (선택) — 이후 접수가 닫힙니다",
   deadlineOver: "마감됨",
+  activeNowTitle: "지금 벌집에: {n}명 활동 (24시간)",
 
   // meetings
   "meetings.label": "회의",
