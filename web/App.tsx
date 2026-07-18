@@ -10,7 +10,7 @@ import { createCommunity, deleteCommunity, joinCommunity, leaveCommunity, listCo
 import { buildConversations, getProfileNames, listMyMessages, markRead, sendMessage } from "@/lib/cloud/messages";
 import { listCommunityMessages, sendCommunityMessage } from "@/lib/cloud/community-chat";
 import { loadActivity, unseenCount } from "@/lib/cloud/activity";
-import { listTasks, postTask, type AgentTask } from "@/lib/cloud/board";
+import { listTasks, postTask, TASK_CATEGORIES, taskCategory, type AgentTask, type TaskCategory } from "@/lib/cloud/board";
 import { eqFilter, onTableEvents, onTableInserts } from "@/lib/cloud/realtime";
 import { avatarFor } from "@/lib/cloud/avatar";
 import { activeMention, applyMention, extractMentionTokens, matchCandidates, postMentions, resolveMentions, type MentionCandidate } from "@/lib/cloud/mentions";
@@ -528,14 +528,17 @@ function Board({ myId }: { myId: string }) {
   const [tasks, setTasks] = useState<AgentTask[] | null>(null);
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
+  const [cat, setCat] = useState<TaskCategory>("general");
+  const [filterCat, setFilterCat] = useState<TaskCategory | "">("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const catLabel = (c: TaskCategory) => t(`boardCat_${c}` as StrKey);
 
   const load = useCallback(() => {
-    listTasks(pb)
+    listTasks(pb, 50, filterCat || undefined)
       .then(setTasks)
       .catch((e) => setError(errMsg(e)));
-  }, []);
+  }, [filterCat]);
   useEffect(load, [load]);
   // Live: new requests appear and claims/answers update without a refresh.
   useEffect(() => onTableEvents(pb, "agent_tasks", undefined, load), [load]);
@@ -544,7 +547,7 @@ function Board({ myId }: { myId: string }) {
     setBusy(true);
     setError("");
     try {
-      await postTask(pb, title, body);
+      await postTask(pb, title, body, cat);
       setTitle("");
       setBody("");
       load();
@@ -567,13 +570,28 @@ function Board({ myId }: { myId: string }) {
   return (
     <div className="board">
       <div className="board-form">
-        <input placeholder={t("boardTitlePh")} value={title} disabled={busy} onChange={(e) => setTitle(e.target.value)} />
+        <div className="board-title-row">
+          <input placeholder={t("boardTitlePh")} value={title} disabled={busy} onChange={(e) => setTitle(e.target.value)} />
+          <select value={cat} disabled={busy} onChange={(e) => setCat(e.target.value as TaskCategory)} title={t("boardCatPick")}>
+            {TASK_CATEGORIES.map((c) => (
+              <option key={c} value={c}>{catLabel(c)}</option>
+            ))}
+          </select>
+        </div>
         <div className="opinion-form">
           <textarea rows={2} placeholder={t("boardBodyPh")} value={body} disabled={busy} onChange={(e) => setBody(e.target.value)} />
           <button className="primary" onClick={() => void submit()} disabled={busy || !title.trim() || !body.trim()}>
             {t("boardPost")}
           </button>
         </div>
+      </div>
+      <div className="scope board-cats">
+        <button className={filterCat === "" ? "active" : ""} onClick={() => setFilterCat("")}>{t("boardCatAll")}</button>
+        {TASK_CATEGORIES.map((c) => (
+          <button key={c} className={filterCat === c ? "active" : ""} onClick={() => setFilterCat(c)}>
+            {catLabel(c)}
+          </button>
+        ))}
       </div>
       {error && <p className="hint err">⚠ {error}</p>}
       {!tasks && <SkeletonRows />}
@@ -585,6 +603,7 @@ function Board({ myId }: { myId: string }) {
               <h3>{task.title}</h3>
               {statusChip(task)}
             </header>
+            <div className="tags"><span className="chip">#{catLabel(taskCategory(task))}</span></div>
             <p className="summary">{task.body}</p>
             <p className="task-meta">
               <Avatar seed={task.requester_id} label={task.requester?.display_name ?? t("someone")} />{" "}

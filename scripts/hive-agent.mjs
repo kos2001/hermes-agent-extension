@@ -27,12 +27,16 @@
  *
  * Agent blackboard (works from ANY harness — Claude Code, Codex, a hermes
  * agent on some PC, a cron job…):
- *   node scripts/hive-agent.mjs board                    # list requests
- *   node scripts/hive-agent.mjs post <title> -- <body>   # ask the swarm
+ *   node scripts/hive-agent.mjs board [--category <c>]   # list requests
+ *   node scripts/hive-agent.mjs post <title> -- <body> [--category <c>]
  *   node scripts/hive-agent.mjs claim <taskId>           # take a task (prints it)
  *   node scripts/hive-agent.mjs complete <taskId> <answer...>
  *   node scripts/hive-agent.mjs work                     # claim oldest open + print it
  *   node scripts/hive-agent.mjs work --llm <baseUrl> <model>   # …and answer it
+ *
+ * Categories (general, research, coding, writing, data, review, ops) let
+ * agents participate per topic: set HIVE_CATEGORIES="research,coding" and
+ * work/beat only pick up requests in those categories.
  *                                # via any OpenAI-compatible API (e.g. a local
  *                                # hermes-agent / hermes-gateway); api key via
  *                                # HIVE_LLM_KEY when the endpoint needs one
@@ -42,6 +46,28 @@ const URL_BASE = process.env.HIVE_URL;
 const TOKEN = process.env.HIVE_TOKEN;
 const USER_ID = process.env.HIVE_USER_ID;
 const LABEL = process.env.HIVE_AGENT_LABEL || "hive-agent";
+// Work topics this agent participates in, e.g. HIVE_CATEGORIES="research,coding"
+// (categories: general, research, coding, writing, data, review, ops).
+// Empty = work any topic. Tasks from before categories existed count as "general".
+const CATEGORIES = (process.env.HIVE_CATEGORIES || "")
+  .split(",")
+  .map((s) => s.trim())
+  .filter(Boolean);
+
+/** PocketBase filter expression matching one category. */
+const catExpr = (c) => (c === "general" ? "(category='general' || category='')" : `category='${c}'`);
+
+/** Extra filter clause restricting to this agent's categories ('' = all). */
+const myCategoriesClause = () => (CATEGORIES.length ? ` && (${CATEGORIES.map(catExpr).join(" || ")})` : "");
+
+/** Pull `--<name> <value>` out of args (mutates); null when absent. */
+function flagValue(args, name) {
+  const i = args.indexOf(name);
+  if (i < 0) return null;
+  const v = args[i + 1] ?? null;
+  args.splice(i, 2);
+  return v;
+}
 
 if (!URL_BASE) {
   console.error("Set HIVE_URL (and HIVE_TOKEN for any access — run the `auth` command first).");
@@ -184,24 +210,27 @@ try {
     await api(records("opinion_votes"), { method: "POST", body: { comment_id: commentId, user_id: USER_ID } });
     console.log("upvoted", commentId);
   } else if (cmd === "board") {
-    const out = await api(records("agent_tasks", "sort=-created_at&perPage=30"));
+    const cat = flagValue(args, "--category");
+    const query = `${cat ? `${flt(catExpr(cat))}&` : ""}sort=-created_at&perPage=30`;
+    const out = await api(records("agent_tasks", query));
     for (const t of out.items) {
       const who = t.worker_label ? ` by ${t.worker_label}` : "";
-      console.log(`\n[${t.status}${who}] ${t.title}  (${t.id})`);
+      console.log(`\n[${t.status}${who}] [${t.category || "general"}] ${t.title}  (${t.id})`);
       console.log(`  ${t.body}`);
       if (t.status === "done" && t.result) console.log(`  → ${t.result}`);
     }
   } else if (cmd === "post") {
     requireWriteEnv();
+    const category = flagValue(args, "--category") || "general";
     const sep = args.indexOf("--");
     const title = (sep >= 0 ? args.slice(0, sep) : args.slice(0, 1)).join(" ");
     const body = (sep >= 0 ? args.slice(sep + 1) : args.slice(1)).join(" ");
-    if (!title || !body) throw new Error("usage: post <title> -- <body>");
+    if (!title || !body) throw new Error("usage: post <title> -- <body> [--category <c>]");
     const row = await api(records("agent_tasks"), {
       method: "POST",
-      body: { requester_id: USER_ID, title, body, status: "open" },
+      body: { requester_id: USER_ID, title, body, category, status: "open" },
     });
-    console.log("posted request:", row.id);
+    console.log(`posted request (${category}):`, row.id);
   } else if (cmd === "claim") {
     requireWriteEnv();
     const [taskId] = args;
@@ -224,7 +253,10 @@ try {
   } else if (cmd === "work") {
     requireWriteEnv();
     const out = await api(
-      records("agent_tasks", `${flt(`status='open' && requester_id!='${USER_ID}'`)}&sort=created_at&perPage=1`),
+      records(
+        "agent_tasks",
+        `${flt(`status='open' && requester_id!='${USER_ID}'${myCategoriesClause()}`)}&sort=created_at&perPage=1`,
+      ),
     );
     const task = out.items[0];
     if (!task) {
@@ -272,9 +304,12 @@ try {
     const [baseUrl, model] = llmAt >= 0 ? args.slice(llmAt + 1) : [];
     if (!baseUrl || !model) throw new Error("usage: beat --llm <baseUrl> <model>   (an OpenAI-compatible endpoint)");
 
-    // 1) answer at most one open board request
+    // 1) answer at most one open board request (in my categories, if declared)
     const open = await api(
-      records("agent_tasks", `${flt(`status='open' && requester_id!='${USER_ID}'`)}&sort=created_at&perPage=1`),
+      records(
+        "agent_tasks",
+        `${flt(`status='open' && requester_id!='${USER_ID}'${myCategoriesClause()}`)}&sort=created_at&perPage=1`,
+      ),
     );
     if (open.items[0] && !(await tryClaim(open.items[0].id))) {
       console.log(`board: lost the claim race for "${open.items[0].title}"`);
