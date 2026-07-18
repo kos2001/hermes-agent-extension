@@ -1,0 +1,26 @@
+# systemd unit for the Hive PocketBase server (installed by setup-hive-server.sh
+# to /etc/systemd/system/hive.service; EXEC_ARGS is filled in by the script).
+[Unit]
+Description=Hive PocketBase server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=hive
+Group=hive
+WorkingDirectory=/opt/hive
+ExecStart=/opt/hive/pocketbase serve __EXEC_ARGS__ --dir=/opt/hive/pb_data --migrationsDir=/opt/hive/pb_migrations --hooksDir=/opt/hive/pb_hooks --publicDir=/opt/hive/pb_public
+Restart=on-failure
+RestartSec=5
+# Hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/opt/hive/pb_data
+ProtectHome=true
+PrivateTmp=true
+# Let's Encrypt on :80/:443 without running as root (only used in --domain mode)
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+
+[Install]
+WantedBy=multi-user.target

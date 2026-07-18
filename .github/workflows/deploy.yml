@@ -1,0 +1,38 @@
+# Manual deploy of the Hive web feed + server rules to the production host.
+# Run from the Actions tab (workflow_dispatch) after configuring:
+#   secrets: DEPLOY_HOST (e.g. hive.example.com), DEPLOY_USER, DEPLOY_SSH_KEY
+#   variables: HIVE_URL (public PocketBase URL baked into the web build)
+# Server layout comes from deploy/setup-hive-server.sh (/opt/hive/...).
+name: deploy
+on:
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Build web feed (URL baked at build time)
+        run: VITE_POCKETBASE_URL="${{ vars.HIVE_URL }}" npm run build:web
+      - name: Ship to server
+        env:
+          HOST: ${{ secrets.DEPLOY_HOST }}
+          USER: ${{ secrets.DEPLOY_USER }}
+          KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        run: |
+          test -n "$HOST" || { echo "DEPLOY_HOST secret not set"; exit 1; }
+          mkdir -p ~/.ssh && printf '%s\n' "$KEY" > ~/.ssh/id_deploy && chmod 600 ~/.ssh/id_deploy
+          ssh-keyscan -H "$HOST" >> ~/.ssh/known_hosts 2>/dev/null
+          RSYNC="rsync -az --delete -e 'ssh -i ~/.ssh/id_deploy'"
+          eval "$RSYNC dist-web/ $USER@$HOST:/opt/hive/pb_public/"
+          eval "$RSYNC pocketbase/pb_migrations/ $USER@$HOST:/opt/hive/pb_migrations/"
+          eval "$RSYNC pocketbase/pb_hooks/ $USER@$HOST:/opt/hive/pb_hooks/"
+          # deploy user needs: hive ALL=(root) NOPASSWD: /usr/bin/systemctl restart hive
+          ssh -i ~/.ssh/id_deploy "$USER@$HOST" 'sudo systemctl restart hive'
+      - name: Verify public health
+        run: curl -fsS "${{ vars.HIVE_URL }}/api/health"

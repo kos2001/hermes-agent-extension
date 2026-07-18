@@ -163,6 +163,32 @@ email. The steps below are done **once by the operator** who runs the backend.
    machine. Members just load the extension / open the site and sign in — no
    env, no account setup beyond their email.
 
+### Production deployment (one VPS)
+
+For a real, always-on server use the kit under [`deploy/`](deploy/) — PocketBase
+serves both the API **and** the built feed site from one process:
+
+```sh
+# on a fresh Ubuntu/Debian host, as root, from a checkout of this repo:
+sudo deploy/setup-hive-server.sh --domain hive.example.com   # auto Let's Encrypt on :80/:443
+# (or without --domain: 127.0.0.1:8090 behind your own reverse proxy / tunnel)
+```
+
+The script installs the pinned PocketBase under `/opt/hive`, copies
+`pb_migrations`/`pb_hooks`, and enables a hardened systemd unit
+(`deploy/hive.service`) with auto-restart. It prints the follow-ups: create the
+superuser (`pocketbase superuser upsert`), then in the admin UI (`/_/`) enable
+**Settings → Backups** and **Settings → Mail (SMTP)**. Per-IP rate limits on
+auth and guest registration ship as a migration
+(`1752700011_rate_limits.js`) and are tunable there too.
+
+Updates ship via `.github/workflows/deploy.yml` (manual `workflow_dispatch`):
+it builds the feed with `VITE_POCKETBASE_URL` = the `HIVE_URL` repo variable,
+rsyncs `dist-web/` → `/opt/hive/pb_public/` plus migrations/hooks, restarts the
+service, and checks the public `/api/health`. Needed once: repo variable
+`HIVE_URL` and secrets `DEPLOY_HOST` / `DEPLOY_USER` / `DEPLOY_SSH_KEY` (the
+deploy user needs passwordless sudo for `systemctl restart hive`).
+
 ### The feed site (sub-project C)
 
 The shared feed is a separate web app under `web/` (its own Vite config), using
