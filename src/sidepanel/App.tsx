@@ -14,7 +14,6 @@ import { buildSkillMessages, PROMPT_SKILLS, type PromptSkill } from "@/lib/skill
 import { isLang, LANG_KEY, replyLanguageInstruction, t, type Lang } from "@/lib/i18n";
 import { isEnterSubmit } from "@/lib/keyboard";
 import { HiveSignIn } from "./HiveSignIn";
-import { HIVE_ENABLED } from "@/lib/cloud/client";
 // Lazy-loaded: keep the bookmark/market views and their AI modules out of the
 // initial (chat) bundle — they load only when the user opens those views.
 const BookmarksView = lazy(() => import("./BookmarksView"));
@@ -508,15 +507,15 @@ export default function App() {
         >
           🔖
         </button>
-        {HIVE_ENABLED && (
-          <button
-            className={`icon-btn hive${view === "hive" ? " active" : ""}`}
-            onClick={() => setView((v) => (v === "hive" ? "chat" : "hive"))}
-            title={view === "hive" ? t(lang, "backToChat") : t(lang, "hiveFeedTitle")}
-          >
-            🐝
-          </button>
-        )}
+        {/* Always shown: when no Hive server is configured the tab renders an
+            onboarding card instead of the feed (spec: hive-easy-setup). */}
+        <button
+          className={`icon-btn hive${view === "hive" ? " active" : ""}`}
+          onClick={() => setView((v) => (v === "hive" ? "chat" : "hive"))}
+          title={view === "hive" ? t(lang, "backToChat") : t(lang, "hiveFeedTitle")}
+        >
+          🐝
+        </button>
         <button
           className="icon-btn new-chat"
           onClick={newChat}
@@ -525,7 +524,7 @@ export default function App() {
         >
           ✎
         </button>
-        {HIVE_ENABLED && <HiveSignIn lang={lang} />}
+        <HiveSignIn lang={lang} />
         <button className="icon-btn settings" onClick={openOptions} title={t(lang, "settings")}>⚙</button>
       </div>
 
@@ -577,7 +576,7 @@ export default function App() {
         </div>
       )}
 
-      {HIVE_ENABLED && view === "hive" ? (
+      {view === "hive" ? (
         <Suspense fallback={<div className="bm-status">…</div>}>
           <HiveFeedView config={config} lang={lang} />
         </Suspense>

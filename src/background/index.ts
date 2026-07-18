@@ -24,7 +24,7 @@ import { loadBookmarks } from "@/lib/bookmarks";
 import { downloadReport, loadMarketSettings, MARKET_ALARM, runMarketReport, saveReport } from "@/lib/market-report";
 import { HEARTBEAT_ALARM, loadHeartbeatSettings, runHeartbeat } from "@/lib/cloud/heartbeat";
 import { runBoardWork } from "@/lib/cloud/board";
-import { pb } from "@/lib/cloud/client";
+import { initHive, pb } from "@/lib/cloud/client";
 import { isLang, LANG_KEY } from "@/lib/i18n";
 
 /** Post a message to a port, ignoring failures from a closed port. */
@@ -164,6 +164,7 @@ async function runScheduledMarketReport(): Promise<void> {
 async function runScheduledHeartbeat(): Promise<void> {
   const { freq } = await loadHeartbeatSettings();
   if (freq === "off") return;
+  if (!(await initHive())) return; // no Hive server configured
   const config = await loadConfig();
   if (!config.apiKey) return; // needs an LLM to form opinions
   try {
