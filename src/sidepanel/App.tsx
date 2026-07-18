@@ -479,31 +479,37 @@ export default function App() {
         <span className={`status ${health}`} title={t(lang, "statusTitle")}>
           {health === "online" ? t(lang, "online") : health === "offline" ? t(lang, "offline") : "…"}
         </span>
+        {/* Icon buttons use data-tip (instant CSS tooltip on hover) instead of
+            the slow, easy-to-miss native title; aria-label keeps them readable. */}
         <button
           className="icon-btn theme"
           onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-          title={theme === "dark" ? t(lang, "toLight") : t(lang, "toDark")}
+          data-tip={theme === "dark" ? t(lang, "toLight") : t(lang, "toDark")}
+          aria-label={theme === "dark" ? t(lang, "toLight") : t(lang, "toDark")}
         >
           {theme === "dark" ? "☀" : "🌙"}
         </button>
         <button
           className={`icon-btn home${view === "chat" ? " active" : ""}`}
           onClick={() => setView("chat")}
-          title={t(lang, "home")}
+          data-tip={t(lang, "home")}
+          aria-label={t(lang, "home")}
         >
           🏠
         </button>
         <button
           className={`icon-btn market${view === "market" ? " active" : ""}`}
           onClick={() => setView((v) => (v === "market" ? "chat" : "market"))}
-          title={t(lang, "marketTitle")}
+          data-tip={t(lang, "marketTitle")}
+          aria-label={t(lang, "marketTitle")}
         >
           📈
         </button>
         <button
           className={`icon-btn bookmarks${view === "bookmarks" ? " active" : ""}`}
           onClick={() => setView((v) => (v === "bookmarks" ? "chat" : "bookmarks"))}
-          title={view === "bookmarks" ? t(lang, "backToChat") : t(lang, "bookmarksTitle")}
+          data-tip={view === "bookmarks" ? t(lang, "backToChat") : t(lang, "bookmarksTitle")}
+          aria-label={view === "bookmarks" ? t(lang, "backToChat") : t(lang, "bookmarksTitle")}
         >
           🔖
         </button>
@@ -512,20 +518,20 @@ export default function App() {
         <button
           className={`icon-btn hive${view === "hive" ? " active" : ""}`}
           onClick={() => setView((v) => (v === "hive" ? "chat" : "hive"))}
-          title={view === "hive" ? t(lang, "backToChat") : t(lang, "hiveFeedTitle")}
+          data-tip={view === "hive" ? t(lang, "backToChat") : t(lang, "hiveFeedTitle")}
+          aria-label={view === "hive" ? t(lang, "backToChat") : t(lang, "hiveFeedTitle")}
         >
           🐝
         </button>
-        <button
-          className="icon-btn new-chat"
-          onClick={newChat}
-          disabled={messages.length === 0 && !streaming}
-          title={t(lang, "newChatTitle")}
-        >
-          ✎
-        </button>
         <HiveSignIn lang={lang} />
-        <button className="icon-btn settings" onClick={openOptions} title={t(lang, "settings")}>⚙</button>
+        <button
+          className="icon-btn settings"
+          onClick={openOptions}
+          data-tip={t(lang, "settings")}
+          aria-label={t(lang, "settings")}
+        >
+          ⚙
+        </button>
       </div>
 
       {/* Second row: page translation controls. */}
@@ -659,6 +665,17 @@ export default function App() {
         </div>
       )}
       <div className="input-row">
+        {/* New chat lives next to the message box — it acts on the conversation,
+            not on app-level views, so it belongs with the composer. */}
+        <button
+          className="icon-btn new-chat"
+          onClick={newChat}
+          disabled={messages.length === 0 && !streaming}
+          data-tip={t(lang, "newChatTitle")}
+          aria-label={t(lang, "newChatTitle")}
+        >
+          ✎
+        </button>
         <textarea
           ref={inputRef}
           value={input}
@@ -674,7 +691,7 @@ export default function App() {
         {streaming ? (
           <button className="stop" onClick={stop}>{t(lang, "stop")}</button>
         ) : (
-          <button onClick={() => void send()} disabled={!config || !input.trim()}>{t(lang, "send")}</button>
+          <button className="send" onClick={() => void send()} disabled={!config || !input.trim()}>{t(lang, "send")}</button>
         )}
       </div>
         </>

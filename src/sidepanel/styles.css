@@ -95,7 +95,28 @@ html, body, #root {
 .icon-btn:hover { background: var(--panel-2); }
 .icon-btn.active { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
 .icon-btn.settings { font-size: 19px; line-height: 1; padding: 3px 9px; }
-.icon-btn.new-chat { font-size: 16px; line-height: 1; padding: 3px 9px; }
+
+/* Instant hover tooltip for icon buttons — the native `title` is slow (~1s)
+   and easy to miss, so icons carry data-tip rendered via ::after. */
+.icon-btn { position: relative; }
+.icon-btn[data-tip]:hover::after {
+  content: attr(data-tip);
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  background: var(--panel-2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: 11px;
+  font-weight: 400;
+  line-height: 1.3;
+  white-space: nowrap;
+  z-index: 60;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.28);
+  pointer-events: none;
+}
 
 /* Language switcher (한 / EN / 中) — pushed to the right of the bar. */
 .lang-switch {
@@ -389,6 +410,25 @@ html, body, #root {
   resize: none;
   min-height: 36px;
   max-height: 160px;
+}
+
+/* New-chat (✎) sits beside the composer; restore the quiet icon-button look
+   against the accent styling `.input-row button` applies to send/stop. */
+.input-row .new-chat {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-weight: 400;
+  font-size: 15px;
+  padding: 0 10px;
+}
+.input-row .new-chat:hover:not(:disabled) { background: var(--panel-2); }
+/* The composer is at the bottom edge — its tooltip opens upward, left-aligned. */
+.input-row .icon-btn[data-tip]:hover::after {
+  top: auto;
+  bottom: calc(100% + 6px);
+  right: auto;
+  left: 0;
 }
 
 .input-row button {
