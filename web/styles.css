@@ -480,9 +480,35 @@ button.active .rcount { background: rgba(0, 0, 0, 0.18); color: var(--on-accent)
 /* Challenges: bounty input, earnings strip, winner highlight */
 .ch-bounty-input { width: 90px; }
 .ch-earnings { margin: 0 0 14px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.ch-balance { margin: 0; font-size: 12px; }
+
+/* OKR objectives + valuation */
+.val-row select { flex: 1; min-width: 0; }
+.val-num { width: 84px; }
+.ch-value { color: var(--accent); }
+.okr-card { padding: 14px 16px; }
+.okr-card.okr-closed { opacity: 0.65; }
+.okr-period { width: 140px; }
+.okr-bar { height: 6px; border-radius: 999px; background: var(--panel); border: 1px solid var(--border); overflow: hidden; margin: 8px 0 6px; }
+.okr-bar-fill { height: 100%; background: var(--accent); border-radius: 999px; transition: width 0.3s; }
+.okr-mini { font-size: 11px; padding: 2px 8px; }
+.okr-krs { margin: 6px 0; display: flex; flex-direction: column; gap: 4px; }
+.okr-kr { display: flex; justify-content: space-between; gap: 10px; font-size: 13px; border-left: 3px solid var(--border); padding-left: 10px; }
+.okr-kr-nums { color: var(--muted); white-space: nowrap; }
+.okr-kr-current { width: 70px; padding: 2px 6px; font-size: 12.5px; }
+.okr-add-kr { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
+.okr-add-kr input { flex: 1; min-width: 90px; padding: 5px 8px; font-size: 12.5px; }
+.okr-add-kr .okr-kr-unit { max-width: 70px; flex: 0 1 auto; }
+.okr-add-kr button { font-size: 12px; padding: 4px 10px; }
+.okr-linked { margin-top: 8px; font-size: 12.5px; }
+.okr-linked-row { margin: 4px 0 0; color: var(--muted); }
+
+/* Sidebar liveness strip */
+.side-active .active-name { display: block; font-size: 12px; color: var(--muted); margin-top: 3px; }
 .ch-winner { border-left-color: var(--accent); background: color-mix(in srgb, var(--accent) 6%, transparent); border-radius: 0 8px 8px 0; }
 .ch-award { margin-top: 6px; font-size: 12px; padding: 4px 10px; }
 .ch-avg { color: var(--muted); font-size: 12px; }
+.ch-deadline.over { color: #e5534b; border-color: #e5534b55; }
 .ch-review { margin: 4px 0 0; font-size: 12.5px; color: var(--muted); }
 .ch-review strong { color: inherit; }
 .ch-review-form { display: flex; gap: 6px; align-items: center; margin-top: 6px; flex-wrap: wrap; }

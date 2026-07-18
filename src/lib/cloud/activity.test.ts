@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildActivity, unseenCount, type RawEngagement, type RawVote } from "./activity";
+import { buildActivity, unseenCount, type RawEngagement, type RawEvent, type RawVote } from "./activity";
 
 const r = (id: string, user_id: string, folder_id: string, created_at: string): RawEngagement => ({
   id,
@@ -31,6 +31,17 @@ describe("buildActivity", () => {
     expect(items[0]).toMatchObject({ type: "mention", actorName: "Ada", folderTitle: "AI" });
     const vote = items.find((i) => i.type === "vote")!;
     expect(vote).toMatchObject({ actorName: "Cy", folderId: "f3", folderTitle: "Web" });
+  });
+
+  it("merges work events (board/challenge/meeting) with their own titles", () => {
+    const events: RawEvent[] = [
+      { id: "t1", type: "task_done", user_id: "a", title: "요약 요청", created_at: "2026-01-02T01:00:00Z" },
+      { id: "c1", type: "win", user_id: "b", title: "CSV 챌린지 (+30pt)", created_at: "2026-01-02T02:00:00Z" },
+      { id: "me1", type: "turn", user_id: "me", title: "회의", created_at: "2026-01-02T03:00:00Z" }, // mine → dropped
+    ];
+    const items = buildActivity({ replies: [], opinions: [], votes: [], mentions: [], events }, ctx());
+    expect(items.map((i) => i.type)).toEqual(["win", "task_done"]);
+    expect(items[0]).toMatchObject({ actorName: "Bo", folderId: "", folderTitle: "CSV 챌린지 (+30pt)" });
   });
 
   it("drops my own engagements and falls back for unknown name/title", () => {

@@ -14,6 +14,12 @@ export interface AgentTask {
   title: string;
   body: string;
   category: TaskCategory | "";
+  /** Optional ISO cutoff; past it the server refuses new claims. */
+  deadline: string;
+  /** Optional OKR link + valuation (value density = impact ÷ effort_mm). */
+  objective_id: string;
+  effort_mm: number;
+  impact: number;
   status: "open" | "claimed" | "done";
   claimed_by: string;
   worker_label: string;
@@ -32,14 +38,24 @@ export function taskCategory(task: Pick<AgentTask, "category">): TaskCategory {
   return task.category || "general";
 }
 
+/** Whether an ISO deadline has passed ('' = no deadline). Pure. */
+export function isExpired(deadline: string, now: Date = new Date()): boolean {
+  return Boolean(deadline) && new Date(deadline).getTime() <= now.getTime();
+}
+
 /**
  * The oldest open task someone else posted, or null. Pure. When `categories`
  * is given, only tasks in those categories qualify — this is how an agent
- * participates per topic.
+ * participates per topic. Expired tasks never qualify.
  */
-export function pickOpenTask(tasks: AgentTask[], myId: string, categories?: TaskCategory[]): AgentTask | null {
+export function pickOpenTask(
+  tasks: AgentTask[],
+  myId: string,
+  categories?: TaskCategory[],
+  now: Date = new Date(),
+): AgentTask | null {
   const open = tasks
-    .filter((t) => t.status === "open" && t.requester_id !== myId)
+    .filter((t) => t.status === "open" && t.requester_id !== myId && !isExpired(t.deadline, now))
     .filter((t) => !categories?.length || categories.includes(taskCategory(t)))
     .sort((a, b) => (a.created_at < b.created_at ? -1 : 1));
   return open[0] ?? null;
@@ -96,11 +112,29 @@ export async function listTasks(pb: PocketBase, limit = 50, category?: TaskCateg
 }
 
 /** Post a request to the board; returns the new task id. */
+/** Optional OKR link + valuation carried by a work item at post time. */
+export interface WorkValue {
+  objectiveId?: string;
+  effortMm?: number;
+  impact?: number;
+}
+
+/** The create-payload fields for a WorkValue (only what's actually set). */
+export function workValueFields(value?: WorkValue): Record<string, unknown> {
+  return {
+    ...(value?.objectiveId ? { objective_id: value.objectiveId } : {}),
+    ...(value?.effortMm ? { effort_mm: value.effortMm } : {}),
+    ...(value?.impact ? { impact: value.impact } : {}),
+  };
+}
+
 export async function postTask(
   pb: PocketBase,
   title: string,
   body: string,
   category: TaskCategory = "general",
+  deadline = "",
+  value?: WorkValue,
 ): Promise<string> {
   const cleanTitle = title.trim();
   const cleanBody = body.trim();
@@ -112,7 +146,9 @@ export async function postTask(
     title: cleanTitle,
     body: cleanBody,
     category,
+    deadline,
     status: "open",
+    ...workValueFields(value),
   });
   return created.id;
 }
