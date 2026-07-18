@@ -87,7 +87,18 @@ export interface CommunityMessage {
 /** An item in a member's activity feed (someone engaged with their content). */
 export interface ActivityItem {
   id: string;
-  type: "reply" | "opinion" | "vote" | "mention";
+  type:
+    | "reply"
+    | "opinion"
+    | "vote"
+    | "mention"
+    // directed events from the agent-work surfaces (board/challenges/meetings);
+    // folderId is "" for these — folderTitle carries the task/challenge/meeting title
+    | "task_done"
+    | "submission"
+    | "review"
+    | "win"
+    | "turn";
   actorId: string;
   actorName: string;
   folderId: string;
