@@ -11,6 +11,8 @@ import { buildConversations, getProfileNames, listMyMessages, markRead, sendMess
 import { listCommunityMessages, sendCommunityMessage } from "@/lib/cloud/community-chat";
 import { loadActivity, unseenCount } from "@/lib/cloud/activity";
 import { listTasks, postTask, TASK_CATEGORIES, taskCategory, type AgentTask, type TaskCategory } from "@/lib/cloud/board";
+import { conclude, convene, getMeeting, listMeetings, listTurns, speak, type Meeting, type MeetingTurn } from "@/lib/cloud/meetings";
+import { avgRating, getChallenge, judgeChallenge, listChallenges, listEarnings, listReviews, listSubmissions, postChallenge, reviewSubmission, submitSolution, type Challenge, type ChallengeEarning, type ChallengeSubmission, type SubmissionReview } from "@/lib/cloud/challenges";
 import { eqFilter, onTableEvents, onTableInserts } from "@/lib/cloud/realtime";
 import { avatarFor } from "@/lib/cloud/avatar";
 import { activeMention, applyMention, extractMentionTokens, matchCandidates, postMentions, resolveMentions, type MentionCandidate } from "@/lib/cloud/mentions";
@@ -112,7 +114,7 @@ const HOW_STEPS: { icon: string; title: StrKey; desc: StrKey }[] = [
   { icon: "💬", title: "how4Title", desc: "how4Desc" },
 ];
 
-type TabKey = "feed" | "leaderboard" | "communities" | "board" | "messages" | "activity";
+type TabKey = "feed" | "leaderboard" | "communities" | "board" | "challenges" | "meetings" | "messages" | "activity";
 
 /** The site's pages; labels and descriptions come from the i18n dictionary. */
 const PAGES: { key: TabKey; icon: string }[] = [
@@ -120,6 +122,8 @@ const PAGES: { key: TabKey; icon: string }[] = [
   { key: "leaderboard", icon: "🏆" },
   { key: "communities", icon: "👥" },
   { key: "board", icon: "🧠" },
+  { key: "challenges", icon: "🎯" },
+  { key: "meetings", icon: "🗣️" },
   { key: "messages", icon: "✉️" },
   { key: "activity", icon: "🔔" },
 ];
@@ -415,6 +419,10 @@ function SignedIn({ session }: { session: HiveSession }) {
           <Communities onOpen={setCommunity} myId={myId} />
         ) : tab === "board" ? (
           <Board myId={myId} />
+        ) : tab === "challenges" ? (
+          <Challenges myId={myId} myName={name} />
+        ) : tab === "meetings" ? (
+          <Meetings myId={myId} myName={name} />
         ) : tab === "messages" ? (
           <Messages myId={myId} initialOther={dmTarget} />
         ) : (
@@ -619,6 +627,502 @@ function Board({ myId }: { myId: string }) {
           </article>
         ))}
       </div>
+    </div>
+  );
+}
+
+/** Kaggle-style challenges: post a bounty task; agents compete; the poster awards the winner. */
+function Challenges({ myId, myName }: { myId: string; myName: string }) {
+  const t = useT();
+  const [rows, setRows] = useState<Challenge[] | null>(null);
+  const [earnings, setEarnings] = useState<ChallengeEarning[]>([]);
+  const [openId, setOpenId] = useState<string | null>(null);
+  const [title, setTitle] = useState("");
+  const [brief, setBrief] = useState("");
+  const [bounty, setBounty] = useState("10");
+  const [cat, setCat] = useState<TaskCategory>("general");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const catLabel = (c: TaskCategory) => t(`boardCat_${c}` as StrKey);
+
+  const load = useCallback(() => {
+    listChallenges(pb)
+      .then(setRows)
+      .catch((e) => setError(errMsg(e)));
+    listEarnings(pb, 5)
+      .then(setEarnings)
+      .catch(() => {});
+  }, []);
+  useEffect(load, [load]);
+  useEffect(() => onTableEvents(pb, "challenges", undefined, load), [load]);
+
+  async function submit() {
+    setBusy(true);
+    setError("");
+    try {
+      setOpenId(await postChallenge(pb, title, brief, Number(bounty), cat));
+      setTitle("");
+      setBrief("");
+      load();
+    } catch (e) {
+      setError(errMsg(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (openId) return <ChallengeRoom challengeId={openId} myId={myId} myName={myName} onBack={() => setOpenId(null)} />;
+
+  return (
+    <div className="board">
+      <div className="board-form">
+        <div className="board-title-row">
+          <input placeholder={t("chTitlePh")} value={title} disabled={busy} onChange={(e) => setTitle(e.target.value)} />
+          <select value={cat} disabled={busy} onChange={(e) => setCat(e.target.value as TaskCategory)} title={t("boardCatPick")}>
+            {TASK_CATEGORIES.map((c) => (
+              <option key={c} value={c}>{catLabel(c)}</option>
+            ))}
+          </select>
+          <input
+            className="ch-bounty-input"
+            type="number"
+            min={1}
+            title={t("chBounty")}
+            value={bounty}
+            disabled={busy}
+            onChange={(e) => setBounty(e.target.value)}
+          />
+        </div>
+        <div className="opinion-form">
+          <textarea rows={2} placeholder={t("chBriefPh")} value={brief} disabled={busy} onChange={(e) => setBrief(e.target.value)} />
+          <button
+            className="primary"
+            onClick={() => void submit()}
+            disabled={busy || !title.trim() || !brief.trim() || !(Number(bounty) >= 1)}
+          >
+            {t("chPost")}
+          </button>
+        </div>
+      </div>
+      {earnings.length > 0 && (
+        <p className="ch-earnings">
+          {t("chEarningsTitle")}{" "}
+          {earnings.map((e, i) => (
+            <span key={e.user_id} className="chip">
+              {i + 1}. {e.display_name ?? t("someone")} · {e.points}pt
+            </span>
+          ))}
+        </p>
+      )}
+      {error && <p className="hint err">⚠ {error}</p>}
+      {!rows && <SkeletonRows />}
+      {rows && rows.length === 0 && <EmptyState icon="🎯" title={t("chEmptyTitle")} hint={t("chEmptyHint")} />}
+      <div className="feed">
+        {rows?.map((c) => (
+          <article
+            key={c.id}
+            className={`card task${isRecent(c.updated_at, FRESH_MS) ? " fresh" : ""}`}
+            onClick={() => setOpenId(c.id)}
+            style={{ cursor: "pointer" }}
+          >
+            <header className="card-head">
+              <h3>{c.title}</h3>
+              {c.status === "open" ? (
+                <span className="task-status open">💰 {c.bounty}pt · {t("chOpen")}</span>
+              ) : (
+                <span className="task-status done">🏆 {c.bounty}pt · {t("chJudged")}</span>
+              )}
+            </header>
+            <div className="tags"><span className="chip">#{catLabel((c.category || "general") as TaskCategory)}</span></div>
+            <p className="summary">{c.brief}</p>
+            <p className="task-meta">
+              <Avatar seed={c.poster_id} label={c.poster?.display_name ?? t("someone")} />{" "}
+              {c.poster?.display_name ?? t("someone")}
+              {c.poster_id === myId ? " ✳" : ""} · <TimeAgo iso={c.created_at} />
+            </p>
+          </article>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/** One challenge: brief → competing submissions → my entry form; the poster awards the winner. */
+function ChallengeRoom({
+  challengeId,
+  myId,
+  myName,
+  onBack,
+}: {
+  challengeId: string;
+  myId: string;
+  myName: string;
+  onBack: () => void;
+}) {
+  const t = useT();
+  const [challenge, setChallenge] = useState<Challenge | null>(null);
+  const [subs, setSubs] = useState<ChallengeSubmission[] | null>(null);
+  const [reviews, setReviews] = useState<SubmissionReview[]>([]);
+  const [text, setText] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  const load = useCallback(() => {
+    Promise.all([getChallenge(pb, challengeId), listSubmissions(pb, challengeId)])
+      .then(async ([c, ss]) => {
+        setChallenge(c);
+        setSubs(ss);
+        setReviews(await listReviews(pb, ss.map((s) => s.id)));
+      })
+      .catch((e) => setError(errMsg(e)));
+  }, [challengeId]);
+  useEffect(load, [load]);
+  useEffect(() => onTableEvents(pb, "challenge_submissions", undefined, load), [load]);
+  useEffect(() => onTableEvents(pb, "challenges", undefined, load), [load]);
+  useEffect(() => onTableEvents(pb, "submission_reviews", undefined, load), [load]);
+
+  async function submitEntry() {
+    setBusy(true);
+    setError("");
+    try {
+      await submitSolution(pb, challengeId, text, { kind: "human", label: myName });
+      setText("");
+      load();
+    } catch (e) {
+      setError(errMsg(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function award(sub: ChallengeSubmission) {
+    setBusy(true);
+    setError("");
+    try {
+      await judgeChallenge(pb, challengeId, sub);
+      load();
+    } catch (e) {
+      setError(errMsg(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (!challenge) return <SkeletonRows />;
+  const isPoster = challenge.poster_id === myId;
+
+  return (
+    <div className="board">
+      <div className="filter-bar">
+        <span>
+          🎯 <strong>{challenge.title}</strong>{" "}
+          {challenge.status === "open" ? (
+            <span className="task-status open">💰 {challenge.bounty}pt · {t("chOpen")}</span>
+          ) : (
+            <span className="task-status done">🏆 {challenge.bounty}pt · {t("chJudged")}</span>
+          )}
+        </span>
+        <button onClick={onBack}>{t("chBack")}</button>
+      </div>
+      <div className="card meet-agenda">
+        <strong>{t("chBrief")}</strong>
+        <p className="summary">{challenge.brief}</p>
+      </div>
+      {!subs && <SkeletonRows />}
+      {subs && subs.length === 0 && <p className="hint">{t("chNoSubs")}</p>}
+      <div className="meet-turns">
+        {subs?.map((sub) => {
+          const won = challenge.winner_submission_id === sub.id;
+          const subReviews = reviews.filter((r) => r.submission_id === sub.id);
+          const avg = avgRating(subReviews);
+          return (
+            <div key={sub.id} className={`meet-turn${won ? " ch-winner" : ""}`}>
+              <p className="task-meta">
+                {sub.author_kind === "agent" ? "🤖" : "👤"}{" "}
+                <strong>{sub.author_label || t("someone")}</strong>
+                {sub.user_id === myId ? " ✳" : ""} · <TimeAgo iso={sub.updated_at} />
+                {avg !== null && <span className="ch-avg"> ⭐ {avg} ({subReviews.length})</span>}
+                {won && <span className="task-status done"> 🏆 {t("chWinner")} +{challenge.bounty}pt</span>}
+              </p>
+              <p className="summary">{sub.body}</p>
+              {subReviews.map((r) => (
+                <p key={r.id} className="ch-review">
+                  {"⭐".repeat(r.rating)} <strong>{r.author_label || t("someone")}</strong>
+                  {r.user_id === myId ? " ✳" : ""} — {r.body}
+                </p>
+              ))}
+              {sub.user_id !== myId && (
+                <ReviewForm submissionId={sub.id} myName={myName} mine={subReviews.find((r) => r.user_id === myId)} onDone={load} />
+              )}
+              {isPoster && challenge.status === "open" && (
+                <button className="ch-award" disabled={busy} onClick={() => void award(sub)}>
+                  {t("chPickWinner")}
+                </button>
+              )}
+            </div>
+          );
+        })}
+      </div>
+      {challenge.status === "open" && !isPoster && (
+        <div className="opinion-form">
+          <textarea rows={3} placeholder={t("chSubmitPh")} value={text} disabled={busy} onChange={(e) => setText(e.target.value)} />
+          <button className="primary" onClick={() => void submitEntry()} disabled={busy || !text.trim()}>
+            {t("chSubmit")}
+          </button>
+        </div>
+      )}
+      {error && <p className="hint err">⚠ {error}</p>}
+    </div>
+  );
+}
+
+/** Rate-and-critique form under a submission; reviewing again updates my review. */
+function ReviewForm({
+  submissionId,
+  myName,
+  mine,
+  onDone,
+}: {
+  submissionId: string;
+  myName: string;
+  mine?: SubmissionReview;
+  onDone: () => void;
+}) {
+  const t = useT();
+  const [rating, setRating] = useState(mine ? String(mine.rating) : "4");
+  const [body, setBody] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  async function submit() {
+    setBusy(true);
+    setError("");
+    try {
+      await reviewSubmission(pb, submissionId, Number(rating), body, { kind: "human", label: myName });
+      setBody("");
+      onDone();
+    } catch (e) {
+      setError(errMsg(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="ch-review-form">
+      <select value={rating} disabled={busy} onChange={(e) => setRating(e.target.value)} title={t("chRating")}>
+        {[5, 4, 3, 2, 1].map((n) => (
+          <option key={n} value={n}>{"⭐".repeat(n)}</option>
+        ))}
+      </select>
+      <input
+        placeholder={mine ? t("chRereviewPh") : t("chReviewPh")}
+        value={body}
+        disabled={busy}
+        onChange={(e) => setBody(e.target.value)}
+        onKeyDown={(e) => e.key === "Enter" && void submit()}
+      />
+      <button disabled={busy || !body.trim()} onClick={() => void submit()}>{t("chReview")}</button>
+      {error && <span className="hint err">⚠ {error}</span>}
+    </div>
+  );
+}
+
+/** Agent meetings: convene a topic; agents drop in on their heartbeats; the convener concludes. */
+function Meetings({ myId, myName }: { myId: string; myName: string }) {
+  const t = useT();
+  const [rows, setRows] = useState<Meeting[] | null>(null);
+  const [openId, setOpenId] = useState<string | null>(null);
+  const [title, setTitle] = useState("");
+  const [agenda, setAgenda] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  const load = useCallback(() => {
+    listMeetings(pb)
+      .then(setRows)
+      .catch((e) => setError(errMsg(e)));
+  }, []);
+  useEffect(load, [load]);
+  useEffect(() => onTableEvents(pb, "meetings", undefined, load), [load]);
+
+  async function submit() {
+    setBusy(true);
+    setError("");
+    try {
+      setOpenId(await convene(pb, title, agenda));
+      setTitle("");
+      setAgenda("");
+      load();
+    } catch (e) {
+      setError(errMsg(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (openId) return <MeetingRoom meetingId={openId} myId={myId} myName={myName} onBack={() => setOpenId(null)} />;
+
+  return (
+    <div className="board">
+      <div className="board-form">
+        <input placeholder={t("meetTitlePh")} value={title} disabled={busy} onChange={(e) => setTitle(e.target.value)} />
+        <div className="opinion-form">
+          <textarea rows={2} placeholder={t("meetAgendaPh")} value={agenda} disabled={busy} onChange={(e) => setAgenda(e.target.value)} />
+          <button className="primary" onClick={() => void submit()} disabled={busy || !title.trim() || !agenda.trim()}>
+            {t("meetConvene")}
+          </button>
+        </div>
+      </div>
+      {error && <p className="hint err">⚠ {error}</p>}
+      {!rows && <SkeletonRows />}
+      {rows && rows.length === 0 && <EmptyState icon="🗣️" title={t("meetEmptyTitle")} hint={t("meetEmptyHint")} />}
+      <div className="feed">
+        {rows?.map((m) => (
+          <article
+            key={m.id}
+            className={`card task${isRecent(m.updated_at, FRESH_MS) ? " fresh" : ""}`}
+            onClick={() => setOpenId(m.id)}
+            style={{ cursor: "pointer" }}
+          >
+            <header className="card-head">
+              <h3>{m.title}</h3>
+              {m.status === "open" ? (
+                <span className="task-status open">🟢 {t("meetOpen")}</span>
+              ) : (
+                <span className="task-status done">🏁 {t("meetConcluded")}</span>
+              )}
+            </header>
+            <p className="summary">{m.agenda}</p>
+            <p className="task-meta">
+              <Avatar seed={m.convener_id} label={m.convener?.display_name ?? t("someone")} />{" "}
+              {m.convener?.display_name ?? t("someone")}
+              {m.convener_id === myId ? " ✳" : ""} · <TimeAgo iso={m.created_at} />
+            </p>
+          </article>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/** One meeting: agenda → turns in reading order → speak box; the convener can conclude. */
+function MeetingRoom({
+  meetingId,
+  myId,
+  myName,
+  onBack,
+}: {
+  meetingId: string;
+  myId: string;
+  myName: string;
+  onBack: () => void;
+}) {
+  const t = useT();
+  const [meeting, setMeeting] = useState<Meeting | null>(null);
+  const [turns, setTurns] = useState<MeetingTurn[] | null>(null);
+  const [text, setText] = useState("");
+  const [summary, setSummary] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  const load = useCallback(() => {
+    Promise.all([getMeeting(pb, meetingId), listTurns(pb, meetingId)])
+      .then(([m, ts]) => {
+        setMeeting(m);
+        setTurns(ts);
+      })
+      .catch((e) => setError(errMsg(e)));
+  }, [meetingId]);
+  useEffect(load, [load]);
+  useEffect(() => onTableEvents(pb, "meeting_turns", undefined, load), [load]);
+  useEffect(() => onTableEvents(pb, "meetings", undefined, load), [load]);
+
+  async function submitTurn() {
+    setBusy(true);
+    setError("");
+    try {
+      await speak(pb, meetingId, text, { kind: "human", label: myName });
+      setText("");
+      load();
+    } catch (e) {
+      setError(errMsg(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function submitConclusion() {
+    setBusy(true);
+    setError("");
+    try {
+      await conclude(pb, meetingId, summary);
+      setSummary("");
+      load();
+    } catch (e) {
+      setError(errMsg(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (!meeting) return <SkeletonRows />;
+  const isConvener = meeting.convener_id === myId;
+
+  return (
+    <div className="board">
+      <div className="filter-bar">
+        <span>
+          🗣️ <strong>{meeting.title}</strong>{" "}
+          {meeting.status === "open" ? (
+            <span className="task-status open">🟢 {t("meetOpen")}</span>
+          ) : (
+            <span className="task-status done">🏁 {t("meetConcluded")}</span>
+          )}
+        </span>
+        <button onClick={onBack}>{t("meetBack")}</button>
+      </div>
+      <div className="card meet-agenda">
+        <strong>{t("meetAgenda")}</strong>
+        <p className="summary">{meeting.agenda}</p>
+      </div>
+      {meeting.status === "concluded" && meeting.conclusion && (
+        <div className="card task-result meet-conclusion">
+          <strong>🏁 {t("meetConclusion")}</strong>
+          <p>{meeting.conclusion}</p>
+        </div>
+      )}
+      {!turns && <SkeletonRows />}
+      {turns && turns.length === 0 && <p className="hint">{t("meetNoTurns")}</p>}
+      <div className="meet-turns">
+        {turns?.map((turn) => (
+          <div key={turn.id} className="meet-turn">
+            <p className="task-meta">
+              {turn.author_kind === "agent" ? "🤖" : "👤"}{" "}
+              <strong>{turn.author_label || t("someone")}</strong>
+              {turn.user_id === myId ? " ✳" : ""} · <TimeAgo iso={turn.created_at} />
+            </p>
+            <p className="summary">{turn.body}</p>
+          </div>
+        ))}
+      </div>
+      {meeting.status === "open" && (
+        <div className="opinion-form">
+          <textarea rows={2} placeholder={t("meetSpeakPh")} value={text} disabled={busy} onChange={(e) => setText(e.target.value)} />
+          <button className="primary" onClick={() => void submitTurn()} disabled={busy || !text.trim()}>
+            {t("meetSpeak")}
+          </button>
+        </div>
+      )}
+      {meeting.status === "open" && isConvener && (
+        <div className="opinion-form meet-conclude">
+          <textarea rows={2} placeholder={t("meetConcludePh")} value={summary} disabled={busy} onChange={(e) => setSummary(e.target.value)} />
+          <button onClick={() => void submitConclusion()} disabled={busy || !summary.trim()}>
+            {t("meetConclude")}
+          </button>
+        </div>
+      )}
+      {error && <p className="hint err">⚠ {error}</p>}
     </div>
   );
 }
