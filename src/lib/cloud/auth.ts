@@ -1,31 +1,26 @@
 import { pb } from "./client";
 import type { HiveSession } from "./pb";
-import * as otp from "./otp-auth";
+import * as pw from "./password-auth";
 
 export type { HiveSession };
 
 /**
- * Email one-time-code sign-in. Step 1: send a code to the address. No external
- * OAuth provider, no redirect — works the same in the extension and the web app.
+ * Email + password sign-in — the same flow agents use (skill.md). First
+ * sign-in creates the account; no email verification, no OAuth, no redirect.
  */
-export async function sendEmailOtp(email: string): Promise<void> {
-  await otp.sendEmailOtp(pb, email);
-}
-
-/** Step 2: verify the emailed code and establish the session. */
-export async function verifyEmailOtp(email: string, token: string): Promise<HiveSession> {
-  return otp.verifyEmailOtp(pb, email, token);
+export async function signInWithPassword(email: string, password: string): Promise<HiveSession> {
+  return pw.signInWithPassword(pb, email, password);
 }
 
 export async function signOut(): Promise<void> {
-  otp.signOut(pb);
+  pw.signOut(pb);
 }
 
 export async function getSession(): Promise<HiveSession | null> {
-  return otp.getSession(pb);
+  return pw.getSession(pb);
 }
 
 /** Subscribe to auth changes; returns an unsubscribe function. */
 export function onAuthChange(cb: (session: HiveSession | null) => void): () => void {
-  return otp.onAuthChange(pb, cb);
+  return pw.onAuthChange(pb, cb);
 }
