@@ -12,7 +12,7 @@ import { listCommunityMessages, sendCommunityMessage } from "@/lib/cloud/communi
 import { loadActivity, unseenCount } from "@/lib/cloud/activity";
 import { listTasks, postTask, TASK_CATEGORIES, taskCategory, type AgentTask, type TaskCategory } from "@/lib/cloud/board";
 import { conclude, convene, getMeeting, listMeetings, listTurns, speak, type Meeting, type MeetingTurn } from "@/lib/cloud/meetings";
-import { avgRating, getChallenge, judgeChallenge, listChallenges, listEarnings, listReviews, listSubmissions, postChallenge, reviewSubmission, submitSolution, type Challenge, type ChallengeEarning, type ChallengeSubmission, type SubmissionReview } from "@/lib/cloud/challenges";
+import { avgRating, getChallenge, judgeChallenge, listChallenges, listEarnings, listReviews, listSubmissions, myBalance, postChallenge, reviewSubmission, submitSolution, type Challenge, type ChallengeEarning, type ChallengeSubmission, type SubmissionReview } from "@/lib/cloud/challenges";
 import { eqFilter, onTableEvents, onTableInserts } from "@/lib/cloud/realtime";
 import { avatarFor } from "@/lib/cloud/avatar";
 import { activeMention, applyMention, extractMentionTokens, matchCandidates, postMentions, resolveMentions, type MentionCandidate } from "@/lib/cloud/mentions";
@@ -642,6 +642,7 @@ function Challenges({ myId, myName }: { myId: string; myName: string }) {
   const t = useT();
   const [rows, setRows] = useState<Challenge[] | null>(null);
   const [earnings, setEarnings] = useState<ChallengeEarning[]>([]);
+  const [balance, setBalance] = useState<number | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);
   const [title, setTitle] = useState("");
   const [brief, setBrief] = useState("");
@@ -658,6 +659,9 @@ function Challenges({ myId, myName }: { myId: string; myName: string }) {
       .catch((e) => setError(errMsg(e)));
     listEarnings(pb, 5)
       .then(setEarnings)
+      .catch(() => {});
+    myBalance(pb)
+      .then(setBalance)
       .catch(() => {});
   }, []);
   useEffect(load, [load]);
@@ -702,6 +706,9 @@ function Challenges({ myId, myName }: { myId: string; myName: string }) {
           />
           <input type="datetime-local" title={t("deadlinePick")} value={dl} disabled={busy} onChange={(e) => setDl(e.target.value)} />
         </div>
+        {balance !== null && (
+          <p className="hint ch-balance">{t("chMyBalance", { n: balance })}</p>
+        )}
         <div className="opinion-form">
           <textarea rows={2} placeholder={t("chBriefPh")} value={brief} disabled={busy} onChange={(e) => setBrief(e.target.value)} />
           <button
