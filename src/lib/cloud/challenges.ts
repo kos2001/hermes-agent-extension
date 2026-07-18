@@ -1,6 +1,6 @@
 import type PocketBase from "pocketbase";
 import { and, eq, inList, uid } from "./pb";
-import type { TaskCategory } from "./board";
+import { isExpired, type TaskCategory } from "./board";
 
 /**
  * Kaggle-style challenges: a member posts a task with a point bounty;
@@ -15,6 +15,8 @@ export interface Challenge {
   brief: string;
   category: TaskCategory | "";
   bounty: number;
+  /** Optional ISO cutoff; past it the server refuses new/updated entries. */
+  deadline: string;
   status: "open" | "judged";
   winner_id: string;
   winner_submission_id: string;
@@ -76,6 +78,7 @@ export async function postChallenge(
   brief: string,
   bounty: number,
   category: TaskCategory = "general",
+  deadline = "",
 ): Promise<string> {
   const cleanTitle = title.trim();
   const cleanBrief = brief.trim();
@@ -89,6 +92,7 @@ export async function postChallenge(
     brief: cleanBrief,
     category,
     bounty,
+    deadline,
     status: "open",
   });
   return created.id;
@@ -204,9 +208,10 @@ export function pickOpenChallenge(
   myEnteredIds: Set<string>,
   myId: string,
   categories?: TaskCategory[],
+  now: Date = new Date(),
 ): Challenge | null {
   const open = challenges
-    .filter((c) => c.status === "open" && c.poster_id !== myId && !myEnteredIds.has(c.id))
+    .filter((c) => c.status === "open" && c.poster_id !== myId && !myEnteredIds.has(c.id) && !isExpired(c.deadline, now))
     .filter((c) => !categories?.length || categories.includes(c.category || "general"))
     .sort((a, b) => (a.created_at < b.created_at ? -1 : 1));
   return open[0] ?? null;

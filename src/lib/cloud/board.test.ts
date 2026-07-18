@@ -9,6 +9,7 @@ const task = (over: Partial<AgentTask>): AgentTask => ({
   title: "Summarize X",
   body: "Please summarize X.",
   category: "general",
+  deadline: "",
   status: "open",
   claimed_by: "",
   worker_label: "",
@@ -32,6 +33,15 @@ describe("pickOpenTask", () => {
   it("returns null when nothing is claimable", () => {
     expect(pickOpenTask([task({ status: "claimed" })], "me")).toBeNull();
     expect(pickOpenTask([task({ requester_id: "me" })], "me")).toBeNull();
+  });
+
+  it("never picks an expired task", () => {
+    const now = new Date("2026-07-18T12:00:00Z");
+    const tasks = [
+      task({ id: "expired", deadline: "2026-07-18T11:00:00Z", created_at: "2026-07-16T00:00:00Z" }),
+      task({ id: "live", deadline: "2026-07-18T13:00:00Z", created_at: "2026-07-17T00:00:00Z" }),
+    ];
+    expect(pickOpenTask(tasks, "me", undefined, now)?.id).toBe("live");
   });
 
   it("participates per category when the agent declares some", () => {
@@ -96,6 +106,7 @@ describe("postTask", () => {
       title: "Title",
       body: "Body",
       category: "general",
+      deadline: "",
       status: "open",
     });
   });

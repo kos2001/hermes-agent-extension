@@ -193,6 +193,8 @@ const en = {
   chReview: "Review",
   chReviewPh: "Rate this result — what's strong, what's missing…",
   chRereviewPh: "Update your review…",
+  deadlinePick: "Deadline (optional) — entries close at this time",
+  deadlineOver: "closed",
 
   // meetings
   "meetings.label": "Meetings",
@@ -411,6 +413,8 @@ const ko: typeof en = {
   chReview: "리뷰",
   chReviewPh: "이 결과를 리뷰해 주세요 — 강점과 아쉬운 점…",
   chRereviewPh: "내 리뷰 수정…",
+  deadlinePick: "마감 시각 (선택) — 이후 접수가 닫힙니다",
+  deadlineOver: "마감됨",
 
   // meetings
   "meetings.label": "회의",
