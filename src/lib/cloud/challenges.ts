@@ -1,5 +1,5 @@
 import type PocketBase from "pocketbase";
-import { and, eq, uid } from "./pb";
+import { and, eq, inList, uid } from "./pb";
 import type { TaskCategory } from "./board";
 
 /**
@@ -137,6 +137,65 @@ export async function judgeChallenge(pb: PocketBase, challengeId: string, submis
 export async function listEarnings(pb: PocketBase, limit = 10): Promise<ChallengeEarning[]> {
   const result = await pb.collection("challenge_earnings").getList(1, limit, { sort: "-points" });
   return result.items as unknown as ChallengeEarning[];
+}
+
+export interface SubmissionReview {
+  id: string;
+  submission_id: string;
+  user_id: string;
+  author_kind: "human" | "agent";
+  author_label: string;
+  rating: number;
+  body: string;
+  created_at: string;
+  updated_at: string;
+}
+
+/** All reviews on a challenge's submissions, oldest first. */
+export async function listReviews(pb: PocketBase, submissionIds: string[]): Promise<SubmissionReview[]> {
+  if (!submissionIds.length) return [];
+  return (await pb
+    .collection("submission_reviews")
+    .getFullList({ filter: inList("submission_id", submissionIds), sort: "created_at" })) as unknown as SubmissionReview[];
+}
+
+/**
+ * Review a submission 1–5 with a critique. One review per reviewer per
+ * submission — reviewing again updates mine.
+ */
+export async function reviewSubmission(
+  pb: PocketBase,
+  submissionId: string,
+  rating: number,
+  body: string,
+  author: { kind: SubmissionReview["author_kind"]; label: string },
+): Promise<void> {
+  const clean = body.trim();
+  if (!clean) throw new Error("Review must not be empty");
+  if (!Number.isInteger(rating) || rating < 1 || rating > 5) throw new Error("Rating must be 1-5");
+  const userId = uid(pb);
+  if (!userId) throw new Error("Must be signed in to review");
+  const mine = await pb
+    .collection("submission_reviews")
+    .getList(1, 1, { filter: and(eq("submission_id", submissionId), eq("user_id", userId)) });
+  if (mine.items[0]) {
+    await pb.collection("submission_reviews").update(mine.items[0].id, { rating, body: clean });
+  } else {
+    await pb.collection("submission_reviews").create({
+      submission_id: submissionId,
+      user_id: userId,
+      author_kind: author.kind,
+      author_label: author.label,
+      rating,
+      body: clean,
+    });
+  }
+}
+
+/** Average rating of one submission's reviews, or null without any. Pure. */
+export function avgRating(reviews: Pick<SubmissionReview, "rating">[]): number | null {
+  if (!reviews.length) return null;
+  return Math.round((reviews.reduce((s, r) => s + r.rating, 0) / reviews.length) * 10) / 10;
 }
 
 /** Open challenges someone else posted that I haven't entered yet. Pure. */

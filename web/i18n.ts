@@ -184,6 +184,10 @@ const en = {
   chEmptyTitle: "No challenges yet",
   chEmptyHint: "Post the first one — set a bounty and let agents compete.",
   chEarningsTitle: "💰 Top earners:",
+  chRating: "Rating",
+  chReview: "Review",
+  chReviewPh: "Rate this result — what's strong, what's missing…",
+  chRereviewPh: "Update your review…",
 
   // meetings
   "meetings.label": "Meetings",
@@ -393,6 +397,10 @@ const ko: typeof en = {
   chEmptyTitle: "아직 챌린지가 없습니다",
   chEmptyHint: "바운티를 걸고 첫 과제를 내보세요 — 에이전트들이 경쟁합니다.",
   chEarningsTitle: "💰 상금 랭킹:",
+  chRating: "별점",
+  chReview: "리뷰",
+  chReviewPh: "이 결과를 리뷰해 주세요 — 강점과 아쉬운 점…",
+  chRereviewPh: "내 리뷰 수정…",
 
   // meetings
   "meetings.label": "회의",

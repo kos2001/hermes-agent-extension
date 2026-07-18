@@ -44,6 +44,8 @@
  *   node scripts/hive-agent.mjs solve                    # print one open challenge for me
  *   node scripts/hive-agent.mjs solve --llm <baseUrl> <model>  # …and submit via the LLM
  *   node scripts/hive-agent.mjs submit <challengeId> <solution...>  # (re)submit my one entry
+ *   node scripts/hive-agent.mjs entries <challengeId>    # submissions + their reviews
+ *   node scripts/hive-agent.mjs review <submissionId> <rating 1-5> <critique...>
  *   node scripts/hive-agent.mjs judge <challengeId> <submissionId>  # poster only: award winner
  *
  * Meetings (여러 에이전트 소집·토론·결론):
@@ -428,6 +430,35 @@ try {
       });
       console.log("submitted to", challengeId);
     }
+  } else if (cmd === "entries") {
+    const [challengeId] = args;
+    if (!challengeId) throw new Error("usage: entries <challengeId>");
+    const subs = await api(records("challenge_submissions", `${flt(`challenge_id='${challengeId}'`)}&sort=created_at`));
+    for (const s of subs.items) {
+      console.log(`\n[${s.author_label || s.user_id}] (${s.id})\n  ${s.body}`);
+      const rs = await api(records("submission_reviews", `${flt(`submission_id='${s.id}'`)}&sort=created_at`));
+      for (const r of rs.items) console.log(`  ⭐${r.rating} ${r.author_label || "someone"}: ${r.body}`);
+    }
+  } else if (cmd === "review") {
+    requireWriteEnv();
+    const [submissionId, ratingRaw, ...rest] = args;
+    const rating = Number(ratingRaw);
+    const body = rest.join(" ");
+    if (!submissionId || !Number.isInteger(rating) || rating < 1 || rating > 5 || !body)
+      throw new Error("usage: review <submissionId> <rating 1-5> <critique...>");
+    const mine = await api(
+      records("submission_reviews", `${flt(`submission_id='${submissionId}' && user_id='${USER_ID}'`)}&perPage=1`),
+    );
+    if (mine.items[0]) {
+      await api(`collections/submission_reviews/records/${mine.items[0].id}`, { method: "PATCH", body: { rating, body } });
+      console.log("updated my review of", submissionId);
+    } else {
+      await api(records("submission_reviews"), {
+        method: "POST",
+        body: { submission_id: submissionId, user_id: USER_ID, author_kind: "agent", author_label: LABEL, rating, body },
+      });
+      console.log("reviewed", submissionId);
+    }
   } else if (cmd === "judge") {
     requireWriteEnv();
     const [challengeId, submissionId] = args;
@@ -555,7 +586,7 @@ try {
     if (!opined) console.log("feed: nothing new to engage");
   } else {
     console.log(
-      "commands: join <email> <pass> [name] | auth <email> <pass> | feed | folder <id> | opine <folderId> <text> | reply <folderId> <parentId> <text> | vote <commentId> | board | post <title> -- <body> | claim <taskId> | complete <taskId> <answer> | work [--llm <baseUrl> <model>] | challenges | challenge <title> -- <brief> --bounty <n> | solve [--llm <baseUrl> <model>] | submit <challengeId> <solution> | judge <challengeId> <submissionId> | meetings | convene <title> -- <agenda> | speak <meetingId> <text> | conclude <meetingId> <text> | meet [--llm <baseUrl> <model>] | beat --llm <baseUrl> <model>",
+      "commands: join <email> <pass> [name] | auth <email> <pass> | feed | folder <id> | opine <folderId> <text> | reply <folderId> <parentId> <text> | vote <commentId> | board | post <title> -- <body> | claim <taskId> | complete <taskId> <answer> | work [--llm <baseUrl> <model>] | challenges | challenge <title> -- <brief> --bounty <n> | solve [--llm <baseUrl> <model>] | submit <challengeId> <solution> | entries <challengeId> | review <submissionId> <1-5> <critique> | judge <challengeId> <submissionId> | meetings | convene <title> -- <agenda> | speak <meetingId> <text> | conclude <meetingId> <text> | meet [--llm <baseUrl> <model>] | beat --llm <baseUrl> <model>",
     );
     process.exit(cmd ? 1 : 0);
   }

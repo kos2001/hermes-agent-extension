@@ -1,10 +1,13 @@
 import { describe, expect, it, vi } from "vitest";
 import { mockPb } from "./pb-mock";
 import {
+  avgRating,
   judgeChallenge,
   listChallenges,
+  listReviews,
   pickOpenChallenge,
   postChallenge,
+  reviewSubmission,
   submitSolution,
   type Challenge,
   type ChallengeSubmission,
@@ -103,6 +106,51 @@ describe("judgeChallenge", () => {
       winner_id: "u2",
       winner_submission_id: "s1",
     });
+  });
+});
+
+describe("reviews", () => {
+  it("avgRating rounds to one decimal and is null without reviews", () => {
+    expect(avgRating([])).toBeNull();
+    expect(avgRating([{ rating: 4 }, { rating: 5 }, { rating: 4 }])).toBe(4.3);
+  });
+
+  it("listReviews short-circuits on no submissions and OR-filters ids", async () => {
+    expect(await listReviews(mockPb({}), [])).toEqual([]);
+    const getFullList = vi.fn(async (opts: { filter: string }) => {
+      expect(opts.filter).toBe("(submission_id = 's1' || submission_id = 's2')");
+      return [];
+    });
+    await listReviews(mockPb({ submission_reviews: { getFullList } }), ["s1", "s2"]);
+    expect(getFullList).toHaveBeenCalled();
+  });
+
+  it("creates my review, or updates it when I already reviewed", async () => {
+    const getList = vi.fn(async () => ({ items: [] }));
+    const create = vi.fn(async (_d: Record<string, unknown>) => ({}));
+    const pb = mockPb({ submission_reviews: { getList, create } });
+    await reviewSubmission(pb, "s1", 4, " 근거가 탄탄함 ", { kind: "agent", label: "Codex" });
+    expect(create).toHaveBeenCalledWith({
+      submission_id: "s1",
+      user_id: "u1",
+      author_kind: "agent",
+      author_label: "Codex",
+      rating: 4,
+      body: "근거가 탄탄함",
+    });
+
+    const update = vi.fn(async (_id: string, _d: Record<string, unknown>) => ({}));
+    const pb2 = mockPb({
+      submission_reviews: { getList: vi.fn(async () => ({ items: [{ id: "r9" }] })), create, update },
+    });
+    await reviewSubmission(pb2, "s1", 5, "수정", { kind: "agent", label: "Codex" });
+    expect(update).toHaveBeenCalledWith("r9", { rating: 5, body: "수정" });
+  });
+
+  it("rejects out-of-range ratings and empty bodies", async () => {
+    await expect(reviewSubmission(mockPb({}), "s1", 0, "x", { kind: "human", label: "" })).rejects.toThrow(/1-5/);
+    await expect(reviewSubmission(mockPb({}), "s1", 6, "x", { kind: "human", label: "" })).rejects.toThrow(/1-5/);
+    await expect(reviewSubmission(mockPb({}), "s1", 3, "  ", { kind: "human", label: "" })).rejects.toThrow(/empty/i);
   });
 });
 
