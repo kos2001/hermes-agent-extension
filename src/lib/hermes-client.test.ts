@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { assertHeadersLatin1, findNonLatin1, HermesError, isHermesEndpoint, joinApi } from "./hermes-client";
 
 describe("isHermesEndpoint", () => {
@@ -105,5 +105,22 @@ describe("DEFAULT_CONFIG", () => {
     const { DEFAULT_CONFIG } = await import("./types");
     expect(isHermesEndpoint(DEFAULT_CONFIG.baseUrl)).toBe(true);
     expect(DEFAULT_CONFIG.model).toBe("hermes-agent");
+  });
+});
+
+describe("probeHealth", () => {
+  const cfg = { baseUrl: "http://127.0.0.1:8642", apiKey: "k", model: "m", headers: {} };
+  it("returns ok on 200, auth on 401/403, down on network failure", async () => {
+    const { probeHealth } = await import("./hermes-client");
+    vi.stubGlobal("fetch", vi.fn(async () => ({ ok: true, status: 200 }) as Response));
+    expect(await probeHealth(cfg)).toBe("ok");
+    vi.stubGlobal("fetch", vi.fn(async () => ({ ok: false, status: 401 }) as Response));
+    expect(await probeHealth(cfg)).toBe("auth");
+    vi.stubGlobal("fetch", vi.fn(async () => ({ ok: false, status: 403 }) as Response));
+    expect(await probeHealth(cfg)).toBe("auth");
+    vi.stubGlobal("fetch", vi.fn(async () => { throw new Error("ECONNREFUSED"); }));
+    expect(await probeHealth(cfg)).toBe("down");
+    vi.stubGlobal("fetch", vi.fn(async () => ({ ok: false, status: 500 }) as Response));
+    expect(await probeHealth(cfg)).toBe("down");
   });
 });

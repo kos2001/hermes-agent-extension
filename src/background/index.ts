@@ -10,7 +10,7 @@
  *     status even if it is closed.
  */
 
-import { checkHealth, isHermesEndpoint, normaliseBaseUrl, streamChat } from "@/lib/hermes-client";
+import { isHermesEndpoint, normaliseBaseUrl, probeHealth, streamChat } from "@/lib/hermes-client";
 import {
   buildSelectionMessages,
   getTranslateTarget,
@@ -107,11 +107,17 @@ chrome.runtime.onConnect.addListener((port) => {
             onError: (m) => {
               lastError = m;
             },
+            // (401s get the quick-connect hint appended below, like the panel.)
             onDone: () => finish({ type: "done" }),
           },
         );
-        if (!produced && lastError) finish({ type: "error", message: lastError });
-        else finish({ type: "done" });
+        if (!produced && lastError) {
+          // Rejected key (401) reads as gibberish JSON to users — append the fix.
+          if (/HTTP 401/.test(lastError) && isHermesEndpoint(cfg.baseUrl)) {
+            lastError += `\n→ ${t(await uiLang(), "err.401.hint")}`;
+          }
+          finish({ type: "error", message: lastError });
+        } else finish({ type: "done" });
       } catch (e) {
         if (controller.signal.aborted) return;
         finish({ type: "error", message: e instanceof Error ? e.message : String(e) });
@@ -139,8 +145,10 @@ chrome.runtime.onMessage.addListener((msg: BgMessage, _sender, sendResponse) => 
   if (msg?.type === "hermes/health") {
     (async () => {
       const cfg = await loadConfig();
-      const ok = await checkHealth(cfg);
-      sendResponse({ ok, baseUrl: cfg.baseUrl });
+      // Three-state: "auth" (server up, key rejected) is surfaced separately in
+      // the UI so a rotated token doesn't masquerade as "offline".
+      const state = await probeHealth(cfg);
+      sendResponse({ ok: state === "ok", state, baseUrl: cfg.baseUrl });
     })();
     return true; // async
   }

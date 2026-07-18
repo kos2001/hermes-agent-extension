@@ -106,11 +106,24 @@ function authHeaders(cfg: ConnectionConfig): Record<string, string> {
 
 /** Probe the catalog (`/models`) as a universal health/reachability check. */
 export async function checkHealth(cfg: ConnectionConfig, signal?: AbortSignal): Promise<boolean> {
+  return (await probeHealth(cfg, signal)) === "ok";
+}
+
+/**
+ * Three-state health: "ok" | "auth" | "down". "auth" (401/403) means the
+ * server is reachable but REJECTED the stored key — a state users otherwise
+ * can't distinguish from "offline" without reading server logs (it happens
+ * whenever the hermes token rotates, e.g. after `hermes config set`+restart).
+ */
+export type HealthState = "ok" | "auth" | "down";
+
+export async function probeHealth(cfg: ConnectionConfig, signal?: AbortSignal): Promise<HealthState> {
   try {
     const res = await fetch(joinApi(cfg.baseUrl, "models"), { signal, headers: authHeaders(cfg) });
-    return res.ok;
+    if (res.ok) return "ok";
+    return res.status === 401 || res.status === 403 ? "auth" : "down";
   } catch {
-    return false;
+    return "down";
   }
 }
 
