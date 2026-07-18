@@ -176,7 +176,7 @@ export default function Options() {
 
   return (
     <div className="wrap">
-      <h1>Hermes Agent — Settings</h1>
+      <h1>Hermes Agent Chrome — Settings</h1>
       <div className="subtitle">
         Configure the connection to OpenRouter or your local Hermes server.
       </div>

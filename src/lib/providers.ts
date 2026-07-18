@@ -386,5 +386,5 @@ export function getProvider(id: string): ProviderProfile | undefined {
 /** OpenRouter attribution headers (recommended when using OpenRouter). */
 export const OPENROUTER_HEADERS: Record<string, string> = {
   "HTTP-Referer": "https://github.com/local/hermes-agent-extension",
-  "X-Title": "Hermes Agent Extension",
+  "X-Title": "Hermes Agent Chrome",
 };

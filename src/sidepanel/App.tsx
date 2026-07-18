@@ -475,7 +475,7 @@ export default function App() {
   return (
     <div className="app">
       {/* Top row: online status + settings-related controls. UI language is set
-          in the options page (Hermes Agent — Settings). */}
+          in the options page (Hermes Agent Chrome — Settings). */}
       <div className="topbar">
         <span className={`status ${health}`} title={t(lang, "statusTitle")}>
           {health === "online" ? t(lang, "online") : health === "offline" ? t(lang, "offline") : "…"}
