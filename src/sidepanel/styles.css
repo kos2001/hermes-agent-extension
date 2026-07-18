@@ -706,7 +706,7 @@ html, body, #root {
 .hive-lb-item { color: var(--muted); }
 .hive-lb-rep { color: var(--accent); }
 
-/* ───────────────────────── Charts (Recharts) ───────────────────────── */
+/* ───────────────────────── Charts (inline SVG/CSS) ───────────────────────── */
 .charts {
   display: grid;
   grid-template-columns: 1fr;
@@ -763,36 +763,41 @@ html, body, #root {
 /* Collapsed card is just its header row. */
 .chart-card.collapsed { padding-bottom: 10px; }
 
-/* Donut: chart on top, centered total overlay, legend below. The `top` offset
-   is set inline (= height / 2) so the total stays centered as zoom scales it. */
-.chart-donut-wrap { position: relative; }
-.chart-donut-center {
-  position: absolute;
-  left: 0;
-  right: 0;
-  text-align: center;
-  transform: translateY(-50%);
-  pointer-events: none;
-}
-.chart-donut-center strong { font-weight: 700; color: var(--text); }
-
-.chart-legend {
-  list-style: none;
-  margin: 4px 0 2px;
-  padding: 0;
+/* Horizontal bars: label | track | value per row; row height scales with zoom. */
+.hx-bars { padding: 2px 0 6px; }
+.hx-bar-row {
   display: flex;
-  flex-wrap: wrap;
-  gap: 4px 12px;
-  font-size: 11px;
-  color: var(--muted);
+  align-items: center;
+  gap: 8px;
 }
-.chart-legend li { display: inline-flex; align-items: center; gap: 5px; }
-.chart-legend i { width: 9px; height: 9px; border-radius: 2px; display: inline-block; }
-.chart-legend b { color: var(--text); font-weight: 600; }
+.hx-bar-label {
+  flex: 0 0 92px;
+  font-size: 10px;
+  color: var(--muted);
+  text-align: right;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.hx-bar-track { flex: 1 1 auto; min-width: 0; }
+.hx-bar-fill {
+  display: block;
+  height: 16px;
+  border-radius: 0 4px 4px 0;
+  transition: width 200ms ease;
+}
+.hx-bar-value {
+  flex: 0 0 auto;
+  font-size: 11px;
+  color: var(--text);
+  min-width: 18px;
+}
 
-/* Recharts focus outline is distracting in a panel; the tooltip conveys values. */
-.recharts-wrapper:focus,
-.recharts-surface:focus { outline: none; }
+/* Area trend: SVG plotted to the measured container width. */
+.hx-area { padding-bottom: 4px; }
+.hx-area svg { display: block; }
+.hx-grid { stroke: var(--border); stroke-width: 1; }
+.hx-tick { fill: var(--muted); font-size: 10px; }
 
 @keyframes chart-rise {
   from { opacity: 0; transform: translateY(8px); }
@@ -827,4 +832,5 @@ html, body, #root {
   .bubble,
   .bm-list > *,
   .tool-progress.working { animation: none; }
+  .hx-bar-fill { transition: none; }
 }

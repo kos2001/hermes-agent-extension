@@ -303,9 +303,12 @@ export default function MarketReportView({
             {latest.skipped > 0 && (
               <div className="mr-status">{t(lang, "mr.skipped").replace("{n}", String(latest.skipped))}</div>
             )}
-            <Suspense fallback={null}>
-              <MarketCharts reports={reports} lang={lang} />
-            </Suspense>
+            {/* Gate on data so the lazy chart chunk is never fetched when nothing would render. */}
+            {reports.length >= 2 && (
+              <Suspense fallback={null}>
+                <MarketCharts reports={reports} lang={lang} />
+              </Suspense>
+            )}
             {latestHtml ? (
               <div className="md" dangerouslySetInnerHTML={{ __html: latestHtml }} />
             ) : (

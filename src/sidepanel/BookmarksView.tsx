@@ -407,9 +407,12 @@ export default function BookmarksView({
       {error && <div className="bm-status err">⚠ {error}</div>}
       {note && <div className="bm-status">{note}</div>}
 
-      <Suspense fallback={null}>
-        <BookmarkCharts nodes={nodes} lang={lang} />
-      </Suspense>
+      {/* Gate on data so the lazy chart chunk is never fetched when nothing would render. */}
+      {nodes.some((n) => n.url) && (
+        <Suspense fallback={null}>
+          <BookmarkCharts nodes={nodes} lang={lang} />
+        </Suspense>
+      )}
 
       <div className="bm-list">
         {actions.length === 0 && !disabled && !note && <div className="bm-empty">{t(lang, "bm.empty")}</div>}
