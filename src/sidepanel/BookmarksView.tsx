@@ -17,7 +17,8 @@ import {
   parseCleanupRemovals,
 } from "@/lib/bookmarks";
 import { runSemanticDedup } from "@/lib/semantic-dedup";
-import { cloudConfigured, HIVE_ENABLED, pb } from "@/lib/cloud/client";
+import { pb } from "@/lib/cloud/client";
+import { useHiveConfigured } from "./useHive";
 import { getSession } from "@/lib/cloud/auth";
 import { publishFolder } from "@/lib/cloud/folders";
 import { listCommunities } from "@/lib/cloud/communities";
@@ -264,9 +265,12 @@ export default function BookmarksView({
     }
   }, [config, nodes, lang, setResult]);
 
+  // Hive share is available only when a server URL is configured (runtime).
+  const hiveOn = useHiveConfigured() === true;
+
   // Folders the user can publish to Hive (non-empty, with at least one bookmark).
   const shareFolders: FolderChoice[] = (() => {
-    if (!cloudConfigured) return [];
+    if (!hiveOn) return [];
     const withItems = new Set(nodes.filter((n) => n.url && n.parentId).map((n) => n.parentId));
     return listFolderChoices(nodes).filter((f) => withItems.has(f.id));
   })();
@@ -276,11 +280,11 @@ export default function BookmarksView({
 
   // Load communities to offer as share targets (only when Hive is configured).
   useEffect(() => {
-    if (!cloudConfigured) return;
+    if (!hiveOn) return;
     void listCommunities(pb)
       .then(setCommunities)
       .catch(() => {});
-  }, []);
+  }, [hiveOn]);
 
   // Share a folder to Hive: summarize its bookmarks client-side, then publish.
   const runShare = useCallback(async () => {
@@ -383,7 +387,7 @@ export default function BookmarksView({
         <button className="skill" onClick={() => void runAi()} disabled={disabled || !config}>{t(lang, "bm.ai")}</button>
       </div>
 
-      {HIVE_ENABLED && cloudConfigured && (
+      {hiveOn && (
         <div className="bm-share" title={t(lang, "bm.shareTitle")}>
           <select
             className="tx-lang"

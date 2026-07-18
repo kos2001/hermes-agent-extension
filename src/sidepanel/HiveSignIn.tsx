@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
 import type { HiveSession } from "@/lib/cloud/auth";
 import { t, type Lang } from "@/lib/i18n";
-import { cloudConfigured } from "@/lib/cloud/client";
 import { getSession, onAuthChange, signInWithPassword, signOut } from "@/lib/cloud/auth";
+import { useHiveConfigured } from "./useHive";
 import { isValidEmail } from "@/lib/cloud/email";
 
 /**
@@ -19,13 +19,15 @@ export function HiveSignIn({ lang }: { lang: Lang }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const configured = useHiveConfigured();
+
   useEffect(() => {
-    if (!cloudConfigured) return;
+    if (!configured) return;
     void getSession().then(setSession).catch(() => {});
     return onAuthChange(setSession);
-  }, []);
+  }, [configured]);
 
-  if (!cloudConfigured) return null;
+  if (!configured) return null;
 
   const name =
     session?.user?.name ?? session?.user?.email ?? "";
