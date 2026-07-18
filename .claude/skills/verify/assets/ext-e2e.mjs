@@ -49,7 +49,7 @@ await page.waitForSelector(".status.online", { timeout: 20000 })
   .catch(() => console.log("health: still offline ✗ (is hermes on 8642 up?)"));
 
 await page.fill("textarea", "ping — reply with the word pong only");
-await page.click(".input-row button:not(.stop)");
+await page.click(".input-row button.send");
 try {
   await page.waitForFunction(() => {
     const b = [...document.querySelectorAll(".bubble.assistant")].pop();
