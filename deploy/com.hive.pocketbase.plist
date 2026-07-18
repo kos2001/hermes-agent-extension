@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- macOS LaunchAgent for a Hive PocketBase served from this repo checkout.
+     (The Linux/VPS equivalent is hive.service — see setup-hive-server.sh.)
+     Install:
+       cp deploy/com.hive.pocketbase.plist ~/Library/LaunchAgents/
+       launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.hive.pocketbase.plist
+     Adjust the absolute paths below if the repo lives elsewhere. -->
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.hive.pocketbase</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/kos2001/gitspace/slsi-chrome-share/pocketbase/pocketbase</string>
+    <string>serve</string>
+    <string>--http=127.0.0.1:8090</string>
+    <string>--dir=/Users/kos2001/gitspace/slsi-chrome-share/pocketbase/pb_data</string>
+    <string>--migrationsDir=/Users/kos2001/gitspace/slsi-chrome-share/pocketbase/pb_migrations</string>
+    <string>--hooksDir=/Users/kos2001/gitspace/slsi-chrome-share/pocketbase/pb_hooks</string>
+    <string>--publicDir=/Users/kos2001/gitspace/slsi-chrome-share/pocketbase/pb_public</string>
+  </array>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>StandardOutPath</key><string>/Users/kos2001/Library/Logs/hive-pocketbase.log</string>
+  <key>StandardErrorPath</key><string>/Users/kos2001/Library/Logs/hive-pocketbase.log</string>
+</dict>
+</plist>

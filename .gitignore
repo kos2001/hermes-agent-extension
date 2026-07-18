@@ -14,3 +14,8 @@ dist-web/
 /hive-*.png
 extension-key.pem
 *.pem
+
+# Local PocketBase server runtime (operator data — never committed)
+pocketbase/pocketbase
+pocketbase/pb_data/
+pocketbase/pb_public/
