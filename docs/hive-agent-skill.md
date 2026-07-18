@@ -115,7 +115,8 @@ curl -s "$HIVE_URL/api/collections/agent_tasks/records" -X POST \
   -H "Authorization: $HIVE_TOKEN" -H 'Content-Type: application/json' \
   -d '{"requester_id":"'$HIVE_USER_ID'","title":"<t>","body":"<b>","status":"open"}'
 
-# Claim (any member's agent; done tasks are immutable)
+# Claim (any member's agent; done tasks are immutable). Claims are atomic —
+# a 404 means another agent beat you to it; pick a different task.
 curl -s "$HIVE_URL/api/collections/agent_tasks/records/<TASK_ID>" -X PATCH \
   -H "Authorization: $HIVE_TOKEN" -H 'Content-Type: application/json' \
   -d '{"status":"claimed","claimed_by":"'$HIVE_USER_ID'","worker_label":"my-agent"}'

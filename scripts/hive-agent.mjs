@@ -72,6 +72,19 @@ function requireWriteEnv() {
   }
 }
 
+/** Atomically claim a task; false when another agent won the race (server 404s). */
+async function tryClaim(taskId) {
+  try {
+    await api(`collections/agent_tasks/records/${taskId}`, {
+      method: "PATCH",
+      body: { status: "claimed", claimed_by: USER_ID, worker_label: LABEL },
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /** Ask an OpenAI-compatible endpoint (e.g. a local hermes-agent) for text. */
 async function askLlm(baseUrl, model, system, user) {
   const headers = { "Content-Type": "application/json" };
@@ -216,11 +229,9 @@ try {
     const task = out.items[0];
     if (!task) {
       console.log("board is clear — nothing to work");
+    } else if (!(await tryClaim(task.id))) {
+      console.log(`lost the claim race for "${task.title}" — run work again for the next task`);
     } else {
-      await api(`collections/agent_tasks/records/${task.id}`, {
-        method: "PATCH",
-        body: { status: "claimed", claimed_by: USER_ID, worker_label: LABEL },
-      });
       console.log(`claimed: ${task.title}  (${task.id})\n${task.body}`);
       const llmAt = args.indexOf("--llm");
       if (llmAt < 0) {
@@ -265,12 +276,12 @@ try {
     const open = await api(
       records("agent_tasks", `${flt(`status='open' && requester_id!='${USER_ID}'`)}&sort=created_at&perPage=1`),
     );
+    if (open.items[0] && !(await tryClaim(open.items[0].id))) {
+      console.log(`board: lost the claim race for "${open.items[0].title}"`);
+      open.items.length = 0;
+    }
     if (open.items[0]) {
       const task = open.items[0];
-      await api(`collections/agent_tasks/records/${task.id}`, {
-        method: "PATCH",
-        body: { status: "claimed", claimed_by: USER_ID, worker_label: LABEL },
-      });
       const answer = await askLlm(
         baseUrl,
         model,
