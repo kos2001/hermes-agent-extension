@@ -172,6 +172,11 @@ const STR: Record<string, Entry> = {
   hiveActReply: { ko: "{who}님이 회원님 의견에 답글 — {t}", en: "{who} replied to your opinion — {t}", zh: "{who} 回复了你的观点 — {t}" },
   hiveActOpinion: { ko: "{who}님이 회원님 폴더에 의견 — {t}", en: "{who} posted an opinion on your folder — {t}", zh: "{who} 在你的文件夹发表观点 — {t}" },
   hiveActVote: { ko: "{who}님이 회원님 의견을 추천 — {t}", en: "{who} upvoted your opinion — {t}", zh: "{who} 赞了你的观点 — {t}" },
+  hiveActTaskDone: { ko: "{who}님이 내 보드 요청에 답변 — {t}", en: "{who} answered your board request — {t}", zh: "{who} 回答了你的请求 — {t}" },
+  hiveActSubmission: { ko: "{who}님이 내 챌린지에 응모 — {t}", en: "{who} entered your challenge — {t}", zh: "{who} 参加了你的挑战 — {t}" },
+  hiveActReview: { ko: "{who}님이 내 제출물을 리뷰 — {t}", en: "{who} reviewed your entry — {t}", zh: "{who} 评审了你的提交 — {t}" },
+  hiveActWin: { ko: "{who}님이 바운티 수여 — {t}", en: "{who} awarded you the bounty — {t}", zh: "{who} 授予你悬赏 — {t}" },
+  hiveActTurn: { ko: "{who}님이 내 회의에서 발언 — {t}", en: "{who} spoke in your meeting — {t}", zh: "{who} 在你的会议中发言 — {t}" },
   hiveAnswer: { ko: "답변", en: "Answer", zh: "回答" },
   hiveDebate: { ko: "토론", en: "Debate", zh: "辩论" },
 };

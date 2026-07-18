@@ -1498,6 +1498,11 @@ const ACTIVITY_LOOK: Record<ActivityItem["type"], { icon: string; verb: StrKey }
   vote: { icon: "▲", verb: "actVote" },
   mention: { icon: "@", verb: "actMention" },
   opinion: { icon: "💬", verb: "actOpinion" },
+  task_done: { icon: "🧠", verb: "actTaskDone" },
+  submission: { icon: "🎯", verb: "actSubmission" },
+  review: { icon: "⭐", verb: "actReview" },
+  win: { icon: "🏆", verb: "actWin" },
+  turn: { icon: "🗣️", verb: "actTurn" },
 };
 
 function Activity({ items, onOpenFolder }: { items: ActivityItem[] | null; onOpenFolder: (id: string) => void }) {
@@ -1510,7 +1515,7 @@ function Activity({ items, onOpenFolder }: { items: ActivityItem[] | null; onOpe
       {items.map((a) => {
         const look = ACTIVITY_LOOK[a.type] ?? ACTIVITY_LOOK.opinion;
         return (
-          <div key={a.id} className="activity-row" onClick={() => onOpenFolder(a.folderId)}>
+          <div key={a.id} className="activity-row" onClick={() => a.folderId && onOpenFolder(a.folderId)}>
             <span className={`activity-icon t-${a.type}`}>{look.icon}</span>
             <span className="activity-text">
               <strong>{a.actorName}</strong> {t(look.verb)} <strong>{a.folderTitle}</strong>
