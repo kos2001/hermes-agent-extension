@@ -25,7 +25,7 @@ import {
 
 const HOURS = Array.from({ length: 24 }, (_, h) => h);
 
-// Recharts is heavy — split it into its own chunk, loaded only when a report exists.
+// Charts stay code-split, loaded only when a report exists.
 const MarketCharts = lazy(() => import("./Charts").then((m) => ({ default: m.MarketCharts })));
 
 export default function MarketReportView({

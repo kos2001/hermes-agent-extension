@@ -1,92 +1,70 @@
 import { describe, expect, it, vi } from "vitest";
+import { mockPb } from "./pb-mock";
 import { myOpinionVotes, opinionVoteCounts, unvoteOpinion, voteOpinion } from "./opinion-votes";
 
 describe("voteOpinion", () => {
-  it("upserts a vote for the current user keyed on (comment,user)", async () => {
-    let upserted: unknown = null;
-    let onConflict: unknown = null;
-    const client = {
-      auth: { getUser: vi.fn(async () => ({ data: { user: { id: "u1" } } })) },
-      from: vi.fn(() => ({
-        upsert: vi.fn(async (row: unknown, opts: { onConflict: string }) => {
-          upserted = row;
-          onConflict = opts.onConflict;
-          return { error: null };
-        }),
-      })),
-    };
-    await voteOpinion(client as never, "c1");
-    expect(upserted).toEqual({ comment_id: "c1", user_id: "u1" });
-    expect(onConflict).toBe("comment_id,user_id");
+  it("creates a vote for the current user", async () => {
+    const create = vi.fn(async (r: unknown) => r);
+    const pb = mockPb({ opinion_votes: { create } });
+    await voteOpinion(pb, "c1");
+    expect(create).toHaveBeenCalledWith({ comment_id: "c1", user_id: "u1" });
+  });
+
+  it("treats a duplicate vote as success", async () => {
+    const create = vi.fn(async () => {
+      throw { status: 400 };
+    });
+    const pb = mockPb({ opinion_votes: { create } });
+    await expect(voteOpinion(pb, "c1")).resolves.toBeUndefined();
   });
 
   it("requires sign-in", async () => {
-    const client = { auth: { getUser: vi.fn(async () => ({ data: { user: null } })) }, from: vi.fn() };
-    await expect(voteOpinion(client as never, "c1")).rejects.toThrow(/signed in/i);
+    const pb = mockPb({}, null);
+    await expect(voteOpinion(pb, "c1")).rejects.toThrow(/signed in/i);
   });
 });
 
 describe("unvoteOpinion", () => {
   it("deletes the user's vote on the comment", async () => {
-    const eqs: [string, string][] = [];
-    const chain: Record<string, unknown> = {
-      eq: vi.fn((k: string, v: string) => {
-        eqs.push([k, v]);
-        return chain;
-      }),
-      then: (resolve: (v: { error: null }) => void) => resolve({ error: null }),
-    };
-    const client = {
-      auth: { getUser: vi.fn(async () => ({ data: { user: { id: "u1" } } })) },
-      from: vi.fn(() => ({ delete: vi.fn(() => chain) })),
-    };
-    await unvoteOpinion(client as never, "c1");
-    expect(eqs).toEqual([
-      ["comment_id", "c1"],
-      ["user_id", "u1"],
-    ]);
+    const getFullList = vi.fn(async (opts: { filter: string }) => {
+      expect(opts.filter).toBe("comment_id = 'c1' && user_id = 'u1'");
+      return [{ id: "v1" }];
+    });
+    const del = vi.fn(async () => true);
+    const pb = mockPb({ opinion_votes: { getFullList, delete: del } });
+    await unvoteOpinion(pb, "c1");
+    expect(del).toHaveBeenCalledWith("v1");
   });
 });
 
 describe("opinionVoteCounts", () => {
   it("tallies votes per comment", async () => {
-    const client = {
-      from: vi.fn(() => ({
-        select: vi.fn(() => ({
-          in: vi.fn(async () => ({
-            data: [{ comment_id: "a" }, { comment_id: "a" }, { comment_id: "b" }],
-            error: null,
-          })),
-        })),
-      })),
-    };
-    expect(await opinionVoteCounts(client as never, ["a", "b"])).toEqual({ a: 2, b: 1 });
+    const getFullList = vi.fn(async (_opts: { filter: string }) => [{ comment_id: "a" }, { comment_id: "a" }, { comment_id: "b" }]);
+    const pb = mockPb({ opinion_votes: { getFullList } });
+    expect(await opinionVoteCounts(pb, ["a", "b"])).toEqual({ a: 2, b: 1 });
+    expect(getFullList.mock.calls[0][0]).toMatchObject({ filter: "(comment_id = 'a' || comment_id = 'b')" });
   });
 
   it("short-circuits with no ids", async () => {
-    const client = { from: vi.fn() };
-    expect(await opinionVoteCounts(client as never, [])).toEqual({});
-    expect(client.from).not.toHaveBeenCalled();
+    const pb = mockPb({});
+    expect(await opinionVoteCounts(pb, [])).toEqual({});
   });
 });
 
 describe("myOpinionVotes", () => {
   it("returns the set of comment ids the user voted", async () => {
-    const client = {
-      auth: { getUser: vi.fn(async () => ({ data: { user: { id: "u1" } } })) },
-      from: vi.fn(() => ({
-        select: vi.fn(() => ({
-          eq: vi.fn(() => ({ in: vi.fn(async () => ({ data: [{ comment_id: "a" }], error: null })) })),
-        })),
-      })),
-    };
-    const set = await myOpinionVotes(client as never, ["a", "b"]);
+    const getFullList = vi.fn(async (opts: { filter: string }) => {
+      expect(opts.filter).toContain("user_id = 'u1'");
+      return [{ comment_id: "a" }];
+    });
+    const pb = mockPb({ opinion_votes: { getFullList } });
+    const set = await myOpinionVotes(pb, ["a", "b"]);
     expect(set.has("a")).toBe(true);
     expect(set.has("b")).toBe(false);
   });
 
   it("returns empty when signed out", async () => {
-    const client = { auth: { getUser: vi.fn(async () => ({ data: { user: null } })) }, from: vi.fn() };
-    expect((await myOpinionVotes(client as never, ["a"])).size).toBe(0);
+    const pb = mockPb({}, null);
+    expect((await myOpinionVotes(pb, ["a"])).size).toBe(0);
   });
 });

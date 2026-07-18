@@ -17,12 +17,14 @@ import {
   parseCleanupRemovals,
 } from "@/lib/bookmarks";
 import { runSemanticDedup } from "@/lib/semantic-dedup";
-import { cloudConfigured, HIVE_ENABLED, supabase } from "@/lib/cloud/client";
+import { cloudConfigured, HIVE_ENABLED, pb } from "@/lib/cloud/client";
 import { getSession } from "@/lib/cloud/auth";
 import { publishFolder } from "@/lib/cloud/folders";
+import { listCommunities } from "@/lib/cloud/communities";
+import type { Community } from "@/lib/cloud/types";
 import { summarizeFolder } from "@/lib/cloud/summarize-folder";
 
-// Recharts is heavy — split it into its own chunk, loaded with the view's charts.
+// Charts stay code-split so the view renders before the chart module loads.
 const BookmarkCharts = lazy(() => import("./Charts").then((m) => ({ default: m.BookmarkCharts })));
 
 /** null = idle. Long ops: "dead"/"ai"/"clean"/"sdup"/"share". "apply" = applying. */
@@ -269,6 +271,16 @@ export default function BookmarksView({
     return listFolderChoices(nodes).filter((f) => withItems.has(f.id));
   })();
   const [shareFolderId, setShareFolderId] = useState("");
+  const [shareCommunityId, setShareCommunityId] = useState("");
+  const [communities, setCommunities] = useState<Community[]>([]);
+
+  // Load communities to offer as share targets (only when Hive is configured).
+  useEffect(() => {
+    if (!cloudConfigured) return;
+    void listCommunities(pb)
+      .then(setCommunities)
+      .catch(() => {});
+  }, []);
 
   // Share a folder to Hive: summarize its bookmarks client-side, then publish.
   const runShare = useCallback(async () => {
@@ -301,12 +313,13 @@ export default function BookmarksView({
         onProgress: (done, total) => setProgress({ done, total }),
       });
       setProgress(null);
-      await publishFolder(supabase, {
+      await publishFolder(pb, {
         title: folder.path,
         sourceFolderName: folder.path,
         summary: summary.summary,
         topics: summary.topics,
         items: summary.items,
+        communityId: shareCommunityId || null,
       });
       setNote(t(lang, "bm.shareDone").replace("{n}", String(summary.items.length)));
     } catch (e) {
@@ -316,7 +329,7 @@ export default function BookmarksView({
       setBusy(null);
       setProgress(null);
     }
-  }, [config, nodes, shareFolderId, lang, setResult]);
+  }, [config, nodes, shareFolderId, shareCommunityId, lang, setResult]);
 
   const toggle = useCallback((id: string) => {
     setChecked((prev) => {
@@ -383,6 +396,20 @@ export default function BookmarksView({
               <option key={f.id} value={f.id}>{f.path}</option>
             ))}
           </select>
+          {communities.length > 0 && (
+            <select
+              className="tx-lang"
+              value={shareCommunityId}
+              onChange={(e) => setShareCommunityId(e.target.value)}
+              disabled={disabled}
+              title={t(lang, "bm.shareCommunity")}
+            >
+              <option value="">{t(lang, "bm.shareNoCommunity")}</option>
+              {communities.map((c) => (
+                <option key={c.id} value={c.id}>{c.name}</option>
+              ))}
+            </select>
+          )}
           <button
             className="tx-go"
             onClick={() => void runShare()}
