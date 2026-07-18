@@ -24,3 +24,9 @@ jobs:
         run: npm run build
       - name: Build web app
         run: npm run build:web
+      - name: Download PocketBase
+        run: |
+          curl -sL -o /tmp/pb.zip https://github.com/pocketbase/pocketbase/releases/download/v0.30.4/pocketbase_0.30.4_linux_amd64.zip
+          unzip -o /tmp/pb.zip -d /tmp/pb
+      - name: Server-rule e2e (throwaway PocketBase)
+        run: PB_BIN=/tmp/pb/pocketbase npm run test:e2e
