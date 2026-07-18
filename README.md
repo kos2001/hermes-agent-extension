@@ -132,8 +132,15 @@ email. The steps below are done **once by the operator** who runs the backend.
    `community_overview` views. On first start, open the printed dashboard URL
    once to create the superuser.
 2. **Email codes:** members sign in with an emailed one-time code, so configure
-   SMTP in the dashboard (Settings → Mail settings). Without SMTP, codes can't
-   be delivered (fine to skip for local password-based testing).
+   SMTP in the dashboard (Settings → Mail settings) — e.g. Gmail:
+   `smtp.gmail.com:587` with an app password. Without SMTP, codes can't be
+   delivered. For local development there's a zero-dep mail catcher:
+   ```sh
+   node scripts/mail-catcher.mjs   # SMTP on 127.0.0.1:1025, saves mail-*.eml
+   ```
+   Point the dashboard SMTP at `127.0.0.1:1025` (TLS off) and read the codes
+   from the captured `.eml` files. Set Settings → Application name to "Hive"
+   so email subjects read "OTP for Hive".
 3. **Add the server URL:** put `VITE_POCKETBASE_URL=https://<your-server>` in
    `.env`. No API key exists at all — access control is entirely the
    collection rules.
