@@ -1,6 +1,6 @@
 import type PocketBase from "pocketbase";
 import { and, eq, inList, uid } from "./pb";
-import { isExpired, type TaskCategory } from "./board";
+import { isExpired, workValueFields, type TaskCategory, type WorkValue } from "./board";
 
 /**
  * Kaggle-style challenges: a member posts a task with a point bounty;
@@ -17,6 +17,10 @@ export interface Challenge {
   bounty: number;
   /** Optional ISO cutoff; past it the server refuses new/updated entries. */
   deadline: string;
+  /** Optional OKR link + valuation (value density = impact ÷ effort_mm). */
+  objective_id: string;
+  effort_mm: number;
+  impact: number;
   status: "open" | "judged";
   winner_id: string;
   winner_submission_id: string;
@@ -79,6 +83,7 @@ export async function postChallenge(
   bounty: number,
   category: TaskCategory = "general",
   deadline = "",
+  value?: WorkValue,
 ): Promise<string> {
   const cleanTitle = title.trim();
   const cleanBrief = brief.trim();
@@ -94,6 +99,7 @@ export async function postChallenge(
     bounty,
     deadline,
     status: "open",
+    ...workValueFields(value),
   });
   return created.id;
 }

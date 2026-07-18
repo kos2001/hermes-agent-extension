@@ -14,7 +14,9 @@ import { listTasks, postTask, TASK_CATEGORIES, taskCategory, type AgentTask, typ
 import { conclude, convene, getMeeting, listMeetings, listTurns, speak, type Meeting, type MeetingTurn } from "@/lib/cloud/meetings";
 import { avgRating, getChallenge, judgeChallenge, listChallenges, listEarnings, listReviews, listSubmissions, myBalance, postChallenge, reviewSubmission, submitSolution, type Challenge, type ChallengeEarning, type ChallengeSubmission, type SubmissionReview } from "@/lib/cloud/challenges";
 import { activeWithin, listRecentAgents, type RecentAgent } from "@/lib/cloud/presence";
+import { addKeyResult, createObjective, krProgress, listKeyResults, listObjectives, objectiveProgress, setObjectiveStatus, updateKeyResult, valueScore, type KeyResult, type Objective } from "@/lib/cloud/okr";
 import { eqFilter, onTableEvents, onTableInserts } from "@/lib/cloud/realtime";
+import { eq } from "@/lib/cloud/pb";
 import { avatarFor } from "@/lib/cloud/avatar";
 import { activeMention, applyMention, extractMentionTokens, matchCandidates, postMentions, resolveMentions, type MentionCandidate } from "@/lib/cloud/mentions";
 import {
@@ -115,7 +117,7 @@ const HOW_STEPS: { icon: string; title: StrKey; desc: StrKey }[] = [
   { icon: "💬", title: "how4Title", desc: "how4Desc" },
 ];
 
-type TabKey = "feed" | "leaderboard" | "communities" | "board" | "challenges" | "meetings" | "messages" | "activity";
+type TabKey = "feed" | "leaderboard" | "communities" | "board" | "challenges" | "okr" | "meetings" | "messages" | "activity";
 
 /** The site's pages; labels and descriptions come from the i18n dictionary. */
 const PAGES: { key: TabKey; icon: string }[] = [
@@ -124,6 +126,7 @@ const PAGES: { key: TabKey; icon: string }[] = [
   { key: "communities", icon: "👥" },
   { key: "board", icon: "🧠" },
   { key: "challenges", icon: "🎯" },
+  { key: "okr", icon: "🧭" },
   { key: "meetings", icon: "🗣️" },
   { key: "messages", icon: "✉️" },
   { key: "activity", icon: "🔔" },
@@ -444,6 +447,8 @@ function SignedIn({ session }: { session: HiveSession }) {
           <Board myId={myId} />
         ) : tab === "challenges" ? (
           <Challenges myId={myId} myName={name} />
+        ) : tab === "okr" ? (
+          <Objectives myId={myId} />
         ) : tab === "meetings" ? (
           <Meetings myId={myId} myName={name} />
         ) : tab === "messages" ? (
@@ -562,6 +567,8 @@ function Board({ myId }: { myId: string }) {
   const [body, setBody] = useState("");
   const [cat, setCat] = useState<TaskCategory>("general");
   const [dl, setDl] = useState("");
+  const [val, setVal] = useState({ objectiveId: "", mm: "", impact: "" });
+  const [objectives, setObjectives] = useState<Objective[]>([]);
   const [filterCat, setFilterCat] = useState<TaskCategory | "">("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -573,6 +580,9 @@ function Board({ myId }: { myId: string }) {
       .catch((e) => setError(errMsg(e)));
   }, [filterCat]);
   useEffect(load, [load]);
+  useEffect(() => {
+    listObjectives(pb, "active").then(setObjectives).catch(() => {});
+  }, []);
   // Live: new requests appear and claims/answers update without a refresh.
   useEffect(() => onTableEvents(pb, "agent_tasks", undefined, load), [load]);
 
@@ -580,10 +590,15 @@ function Board({ myId }: { myId: string }) {
     setBusy(true);
     setError("");
     try {
-      await postTask(pb, title, body, cat, dl ? new Date(dl).toISOString() : "");
+      await postTask(pb, title, body, cat, dl ? new Date(dl).toISOString() : "", {
+        objectiveId: val.objectiveId || undefined,
+        effortMm: Number(val.mm) || undefined,
+        impact: Number(val.impact) || undefined,
+      });
       setTitle("");
       setBody("");
       setDl("");
+      setVal({ objectiveId: "", mm: "", impact: "" });
       load();
     } catch (e) {
       setError(errMsg(e));
@@ -613,6 +628,16 @@ function Board({ myId }: { myId: string }) {
           </select>
           <input type="datetime-local" title={t("deadlinePick")} value={dl} disabled={busy} onChange={(e) => setDl(e.target.value)} />
         </div>
+        <div className="board-title-row val-row">
+          <select value={val.objectiveId} disabled={busy} title={t("valObjective")} onChange={(e) => setVal({ ...val, objectiveId: e.target.value })}>
+            <option value="">{t("valObjectiveNone")}</option>
+            {objectives.map((o) => (
+              <option key={o.id} value={o.id}>🧭 {o.title}</option>
+            ))}
+          </select>
+          <input className="val-num" type="number" min={0} step={0.1} placeholder="MM" title={t("valMmTitle")} value={val.mm} disabled={busy} onChange={(e) => setVal({ ...val, mm: e.target.value })} />
+          <input className="val-num" type="number" min={1} max={10} placeholder={t("valImpact")} title={t("valImpactTitle")} value={val.impact} disabled={busy} onChange={(e) => setVal({ ...val, impact: e.target.value })} />
+        </div>
         <div className="opinion-form">
           <textarea rows={2} placeholder={t("boardBodyPh")} value={body} disabled={busy} onChange={(e) => setBody(e.target.value)} />
           <button className="primary" onClick={() => void submit()} disabled={busy || !title.trim() || !body.trim()}>
@@ -641,6 +666,7 @@ function Board({ myId }: { myId: string }) {
             <div className="tags">
               <span className="chip">#{catLabel(taskCategory(task))}</span>
               <DeadlineChip deadline={task.deadline} />
+              <ValueChip mm={task.effort_mm} impact={task.impact} />
             </div>
             <p className="summary">{task.body}</p>
             <p className="task-meta">
@@ -673,6 +699,8 @@ function Challenges({ myId, myName }: { myId: string; myName: string }) {
   const [bounty, setBounty] = useState("10");
   const [cat, setCat] = useState<TaskCategory>("general");
   const [dl, setDl] = useState("");
+  const [val, setVal] = useState({ objectiveId: "", mm: "", impact: "" });
+  const [objectives, setObjectives] = useState<Objective[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const catLabel = (c: TaskCategory) => t(`boardCat_${c}` as StrKey);
@@ -687,6 +715,7 @@ function Challenges({ myId, myName }: { myId: string; myName: string }) {
     myBalance(pb)
       .then(setBalance)
       .catch(() => {});
+    listObjectives(pb, "active").then(setObjectives).catch(() => {});
   }, []);
   useEffect(load, [load]);
   useEffect(() => onTableEvents(pb, "challenges", undefined, load), [load]);
@@ -695,10 +724,17 @@ function Challenges({ myId, myName }: { myId: string; myName: string }) {
     setBusy(true);
     setError("");
     try {
-      setOpenId(await postChallenge(pb, title, brief, Number(bounty), cat, dl ? new Date(dl).toISOString() : ""));
+      setOpenId(
+        await postChallenge(pb, title, brief, Number(bounty), cat, dl ? new Date(dl).toISOString() : "", {
+          objectiveId: val.objectiveId || undefined,
+          effortMm: Number(val.mm) || undefined,
+          impact: Number(val.impact) || undefined,
+        }),
+      );
       setTitle("");
       setBrief("");
       setDl("");
+      setVal({ objectiveId: "", mm: "", impact: "" });
       load();
     } catch (e) {
       setError(errMsg(e));
@@ -729,6 +765,16 @@ function Challenges({ myId, myName }: { myId: string; myName: string }) {
             onChange={(e) => setBounty(e.target.value)}
           />
           <input type="datetime-local" title={t("deadlinePick")} value={dl} disabled={busy} onChange={(e) => setDl(e.target.value)} />
+        </div>
+        <div className="board-title-row val-row">
+          <select value={val.objectiveId} disabled={busy} title={t("valObjective")} onChange={(e) => setVal({ ...val, objectiveId: e.target.value })}>
+            <option value="">{t("valObjectiveNone")}</option>
+            {objectives.map((o) => (
+              <option key={o.id} value={o.id}>🧭 {o.title}</option>
+            ))}
+          </select>
+          <input className="val-num" type="number" min={0} step={0.1} placeholder="MM" title={t("valMmTitle")} value={val.mm} disabled={busy} onChange={(e) => setVal({ ...val, mm: e.target.value })} />
+          <input className="val-num" type="number" min={1} max={10} placeholder={t("valImpact")} title={t("valImpactTitle")} value={val.impact} disabled={busy} onChange={(e) => setVal({ ...val, impact: e.target.value })} />
         </div>
         {balance !== null && (
           <p className="hint ch-balance">{t("chMyBalance", { n: balance })}</p>
@@ -776,6 +822,7 @@ function Challenges({ myId, myName }: { myId: string; myName: string }) {
             <div className="tags">
               <span className="chip">#{catLabel((c.category || "general") as TaskCategory)}</span>
               <DeadlineChip deadline={c.deadline} />
+              <ValueChip mm={c.effort_mm} impact={c.impact} />
             </div>
             <p className="summary">{c.brief}</p>
             <p className="task-meta">
@@ -1534,6 +1581,206 @@ function Feed({
         ))}
       </div>
     </>
+  );
+}
+
+/** Valuation chip: effort (MM) · impact → value density (impact ÷ MM). */
+function ValueChip({ mm, impact }: { mm: number; impact: number }) {
+  const t = useT();
+  if (!mm && !impact) return null;
+  const score = valueScore(impact, mm);
+  return (
+    <span className="chip ch-value">
+      {mm ? `${mm}MM` : ""}
+      {mm && impact ? " · " : ""}
+      {impact ? `${t("valImpact")} ${impact}` : ""}
+      {score !== null ? ` → ${score}/MM` : ""}
+    </span>
+  );
+}
+
+/**
+ * One long-term objective: KR progress, inline KR updates for the owner,
+ * and the work items (board + challenges) linked to it with their value.
+ */
+function ObjectiveCard({ o, myId, onChanged }: { o: Objective; myId: string; onChanged: () => void }) {
+  const t = useT();
+  const [krs, setKrs] = useState<KeyResult[] | null>(null);
+  const [linked, setLinked] = useState<{ kind: "🧠" | "🎯"; id: string; title: string; status: string; effort_mm: number; impact: number }[]>([]);
+  const [krTitle, setKrTitle] = useState("");
+  const [krTarget, setKrTarget] = useState("");
+  const [krUnit, setKrUnit] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const isOwner = o.owner_id === myId;
+
+  const load = useCallback(() => {
+    listKeyResults(pb, o.id)
+      .then(setKrs)
+      .catch((e) => setError(errMsg(e)));
+    Promise.all([
+      pb.collection("agent_tasks").getFullList({ filter: eq("objective_id", o.id), fields: "id,title,status,effort_mm,impact" }),
+      pb.collection("challenges").getFullList({ filter: eq("objective_id", o.id), fields: "id,title,status,effort_mm,impact" }),
+    ])
+      .then(([tasks, challenges]) =>
+        setLinked([
+          ...(tasks as unknown as { id: string; title: string; status: string; effort_mm: number; impact: number }[]).map((r) => ({ kind: "🧠" as const, ...r })),
+          ...(challenges as unknown as { id: string; title: string; status: string; effort_mm: number; impact: number }[]).map((r) => ({ kind: "🎯" as const, ...r })),
+        ]),
+      )
+      .catch(() => {});
+  }, [o.id]);
+  useEffect(load, [load]);
+  useEffect(() => onTableEvents(pb, "key_results", undefined, load), [load]);
+
+  async function addKr() {
+    setBusy(true);
+    setError("");
+    try {
+      await addKeyResult(pb, o.id, krTitle, Number(krTarget), krUnit);
+      setKrTitle("");
+      setKrTarget("");
+      setKrUnit("");
+      load();
+    } catch (e) {
+      setError(errMsg(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const progress = krs ? objectiveProgress(krs) : 0;
+
+  return (
+    <article className={`card okr-card${o.status !== "active" ? " okr-closed" : ""}`}>
+      <header className="card-head">
+        <h3>{o.title}</h3>
+        <span className={`task-status ${o.status === "active" ? "open" : "done"}`}>
+          {o.period ? `${o.period} · ` : ""}
+          {t(o.status === "active" ? "okrActive" : o.status === "done" ? "okrDone" : "okrDropped")}
+        </span>
+      </header>
+      {o.description && <p className="summary">{o.description}</p>}
+      <div className="okr-bar" title={`${Math.round(progress * 100)}%`}>
+        <div className="okr-bar-fill" style={{ width: `${Math.round(progress * 100)}%` }} />
+      </div>
+      <p className="task-meta">
+        <Avatar seed={o.owner_id} label={o.owner?.display_name ?? t("someone")} /> {o.owner?.display_name ?? t("someone")}
+        {isOwner ? " ✳" : ""} · {Math.round(progress * 100)}%
+        {isOwner && o.status === "active" && (
+          <>
+            {" "}
+            <button className="okr-mini" disabled={busy} onClick={() => void setObjectiveStatus(pb, o.id, "done").then(onChanged)}>{t("okrMarkDone")}</button>{" "}
+            <button className="okr-mini" disabled={busy} onClick={() => void setObjectiveStatus(pb, o.id, "dropped").then(onChanged)}>{t("okrMarkDrop")}</button>
+          </>
+        )}
+      </p>
+      <div className="okr-krs">
+        {krs?.map((kr) => (
+          <div key={kr.id} className="okr-kr">
+            <span className="okr-kr-title">{kr.title}</span>
+            <span className="okr-kr-nums">
+              {isOwner && o.status === "active" ? (
+                <input
+                  className="okr-kr-current"
+                  type="number"
+                  min={0}
+                  defaultValue={kr.current || 0}
+                  onBlur={(e) => {
+                    const v = Number(e.target.value);
+                    if (v !== kr.current) void updateKeyResult(pb, kr.id, v).then(load).catch((err) => setError(errMsg(err)));
+                  }}
+                />
+              ) : (
+                kr.current || 0
+              )}
+              {" / "}
+              {kr.target}
+              {kr.unit ? ` ${kr.unit}` : ""} · {Math.round(krProgress(kr) * 100)}%
+            </span>
+          </div>
+        ))}
+      </div>
+      {isOwner && o.status === "active" && (
+        <div className="okr-add-kr">
+          <input placeholder={t("okrKrTitlePh")} value={krTitle} disabled={busy} onChange={(e) => setKrTitle(e.target.value)} />
+          <input type="number" min={0} placeholder={t("okrKrTargetPh")} value={krTarget} disabled={busy} onChange={(e) => setKrTarget(e.target.value)} />
+          <input className="okr-kr-unit" placeholder={t("okrKrUnitPh")} value={krUnit} disabled={busy} onChange={(e) => setKrUnit(e.target.value)} />
+          <button disabled={busy || !krTitle.trim() || !(Number(krTarget) > 0)} onClick={() => void addKr()}>{t("okrAddKr")}</button>
+        </div>
+      )}
+      {linked.length > 0 && (
+        <div className="okr-linked">
+          <strong>{t("okrLinked")}</strong>
+          {linked.map((w) => (
+            <p key={w.id} className="okr-linked-row">
+              {w.kind} {w.title} <span className="task-status">{w.status}</span> <ValueChip mm={w.effort_mm} impact={w.impact} />
+            </p>
+          ))}
+        </div>
+      )}
+      {error && <p className="hint err">⚠ {error}</p>}
+    </article>
+  );
+}
+
+/** 🧭 Objectives: OKR-style long-term goals; work items link to them with a valuation. */
+function Objectives({ myId }: { myId: string }) {
+  const t = useT();
+  const [rows, setRows] = useState<Objective[] | null>(null);
+  const [title, setTitle] = useState("");
+  const [period, setPeriod] = useState("");
+  const [desc, setDesc] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  const load = useCallback(() => {
+    listObjectives(pb)
+      .then(setRows)
+      .catch((e) => setError(errMsg(e)));
+  }, []);
+  useEffect(load, [load]);
+  useEffect(() => onTableEvents(pb, "objectives", undefined, load), [load]);
+
+  async function submit() {
+    setBusy(true);
+    setError("");
+    try {
+      await createObjective(pb, title, desc, period);
+      setTitle("");
+      setPeriod("");
+      setDesc("");
+      load();
+    } catch (e) {
+      setError(errMsg(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="board">
+      <div className="board-form">
+        <div className="board-title-row">
+          <input placeholder={t("okrTitlePh")} value={title} disabled={busy} onChange={(e) => setTitle(e.target.value)} />
+          <input className="okr-period" placeholder={t("okrPeriodPh")} value={period} disabled={busy} onChange={(e) => setPeriod(e.target.value)} />
+        </div>
+        <div className="opinion-form">
+          <textarea rows={2} placeholder={t("okrDescPh")} value={desc} disabled={busy} onChange={(e) => setDesc(e.target.value)} />
+          <button className="primary" onClick={() => void submit()} disabled={busy || !title.trim()}>
+            {t("okrCreate")}
+          </button>
+        </div>
+      </div>
+      {error && <p className="hint err">⚠ {error}</p>}
+      {!rows && <SkeletonRows />}
+      {rows && rows.length === 0 && <EmptyState icon="🧭" title={t("okrEmptyTitle")} hint={t("okrEmptyHint")} />}
+      <div className="feed">
+        {rows?.map((o) => (
+          <ObjectiveCard key={o.id} o={o} myId={myId} onChanged={load} />
+        ))}
+      </div>
+    </div>
   );
 }
 
