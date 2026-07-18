@@ -320,13 +320,21 @@ try {
     requireWriteEnv();
     const category = flagValue(args, "--category") || "general";
     const deadline = flagValue(args, "--deadline") || "";
+    const objective = flagValue(args, "--objective");
+    const mm = Number(flagValue(args, "--mm")) || 0;
+    const impact = Number(flagValue(args, "--impact")) || 0;
     const sep = args.indexOf("--");
     const title = (sep >= 0 ? args.slice(0, sep) : args.slice(0, 1)).join(" ");
     const body = (sep >= 0 ? args.slice(sep + 1) : args.slice(1)).join(" ");
-    if (!title || !body) throw new Error("usage: post <title> -- <body> [--category <c>] [--deadline <ISO>]");
+    if (!title || !body) throw new Error("usage: post <title> -- <body> [--category <c>] [--deadline <ISO>] [--objective <id>] [--mm <n>] [--impact <1-10>]");
     const row = await api(records("agent_tasks"), {
       method: "POST",
-      body: { requester_id: USER_ID, title, body, category, deadline, status: "open" },
+      body: {
+        requester_id: USER_ID, title, body, category, deadline, status: "open",
+        ...(objective ? { objective_id: objective } : {}),
+        ...(mm ? { effort_mm: mm } : {}),
+        ...(impact ? { impact } : {}),
+      },
     });
     console.log(`posted request (${category}):`, row.id);
   } else if (cmd === "claim") {
@@ -396,6 +404,14 @@ try {
         console.log(`\nanswered and completed ${task.id}:\n${answer}`);
       }
     }
+  } else if (cmd === "objectives") {
+    const out = await api(records("objectives", "sort=-created_at&perPage=30"));
+    for (const o of out.items) {
+      const krs = await api(records("key_results", `${flt(`objective_id='${o.id}'`)}&sort=created_at`));
+      console.log(`\n[${o.status}] ${o.period ? `(${o.period}) ` : ""}${o.title}  (${o.id})`);
+      if (o.description) console.log(`  ${o.description}`);
+      for (const kr of krs.items) console.log(`  KR: ${kr.title} — ${kr.current || 0}/${kr.target}${kr.unit ? ` ${kr.unit}` : ""}`);
+    }
   } else if (cmd === "challenges") {
     const out = await api(records("challenges", "sort=-created_at&perPage=30"));
     for (const c of out.items) {
@@ -411,10 +427,18 @@ try {
     const sep = args.indexOf("--");
     const title = (sep >= 0 ? args.slice(0, sep) : args.slice(0, 1)).join(" ");
     const brief = (sep >= 0 ? args.slice(sep + 1) : args.slice(1)).join(" ");
-    if (!title || !brief) throw new Error("usage: challenge <title> -- <brief> --bounty <n> [--category <c>] [--deadline <ISO>]");
+    const objective = flagValue(args, "--objective");
+    const mm = Number(flagValue(args, "--mm")) || 0;
+    const impact = Number(flagValue(args, "--impact")) || 0;
+    if (!title || !brief) throw new Error("usage: challenge <title> -- <brief> --bounty <n> [--category <c>] [--deadline <ISO>] [--objective <id>] [--mm <n>] [--impact <1-10>]");
     const row = await api(records("challenges"), {
       method: "POST",
-      body: { poster_id: USER_ID, title, brief, category, bounty, deadline, status: "open" },
+      body: {
+        poster_id: USER_ID, title, brief, category, bounty, deadline, status: "open",
+        ...(objective ? { objective_id: objective } : {}),
+        ...(mm ? { effort_mm: mm } : {}),
+        ...(impact ? { impact } : {}),
+      },
     });
     console.log(`posted challenge (💰${bounty}pt, ${category}):`, row.id);
   } else if (cmd === "submit") {

@@ -10,6 +10,9 @@ const task = (over: Partial<AgentTask>): AgentTask => ({
   body: "Please summarize X.",
   category: "general",
   deadline: "",
+  objective_id: "",
+  effort_mm: 0,
+  impact: 0,
   status: "open",
   claimed_by: "",
   worker_label: "",
@@ -116,6 +119,15 @@ describe("postTask", () => {
     const pb = mockPb({ agent_tasks: { create } });
     await postTask(pb, "T", "B", "coding");
     expect(create).toHaveBeenCalledWith(expect.objectContaining({ category: "coding" }));
+  });
+
+  it("carries OKR valuation only when actually set", async () => {
+    const create = vi.fn(async (_d: Record<string, unknown>) => ({ id: "t-new" }));
+    const pb = mockPb({ agent_tasks: { create } });
+    await postTask(pb, "T", "B", "coding", "", { objectiveId: "o1", effortMm: 0.5, impact: 7 });
+    expect(create).toHaveBeenCalledWith(expect.objectContaining({ objective_id: "o1", effort_mm: 0.5, impact: 7 }));
+    await postTask(pb, "T", "B");
+    expect(create.mock.calls[1][0]).not.toHaveProperty("objective_id");
   });
 
   it("rejects empty fields and signed-out", async () => {

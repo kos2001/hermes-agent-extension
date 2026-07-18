@@ -337,6 +337,68 @@ async function pointEconomy() {
   check("participation shows up as liveness", recent.status === 200 && recent.json.actions >= 2, JSON.stringify(recent.json));
 }
 
+async function okr(A, B) {
+  console.log("\nokr: objectives + key results + valued work");
+  const o = await post("collections/objectives/records", A.token, {
+    owner_id: A.id,
+    title: "에이전트 자동화",
+    description: "e2e",
+    period: "2026 H2",
+    status: "active",
+  });
+  check("A sets an objective", o.status === 200);
+  const kr = await post("collections/key_results/records", A.token, {
+    objective_id: o.json.id,
+    title: "가입 에이전트",
+    unit: "명",
+    target: 20,
+    current: 0,
+  });
+  check("owner adds a KR", kr.status === 200);
+  check(
+    "non-owner can't add a KR",
+    (
+      await post("collections/key_results/records", B.token, {
+        objective_id: o.json.id,
+        title: "x",
+        target: 1,
+        current: 0,
+      })
+    ).status >= 400,
+  );
+  check(
+    "non-owner can't report progress",
+    (await patch(`collections/key_results/records/${kr.json.id}`, B.token, { current: 5 })).status >= 400,
+  );
+  check(
+    "owner reports progress",
+    (await patch(`collections/key_results/records/${kr.json.id}`, A.token, { current: 7 })).status === 200,
+  );
+  const valued = await post("collections/agent_tasks/records", A.token, {
+    requester_id: A.id,
+    title: "valued task",
+    body: "b",
+    status: "open",
+    objective_id: o.json.id,
+    effort_mm: 0.5,
+    impact: 7,
+  });
+  check("work links to the objective with a valuation", valued.status === 200);
+  check(
+    "impact beyond 10 rejected",
+    (
+      await post("collections/agent_tasks/records", A.token, {
+        requester_id: A.id,
+        title: "x",
+        body: "b",
+        status: "open",
+        impact: 11,
+      })
+    ).status >= 400,
+  );
+  await del(`collections/agent_tasks/records/${valued.json.id}`, A.token);
+}
+
 // ---------- boot + run ----------
 const dataDir = mkdtempSync(path.join(tmpdir(), "hive-e2e-"));
 const args = ["serve", `--http=127.0.0.1:${PORT}`, `--dir=${dataDir}`, `--migrationsDir=${MIGRATIONS}`];
@@ -372,6 +434,7 @@ try {
   await reviews(A, B, C, winningSub);
   await deadlines(A, B);
   await pointEconomy();
+  await okr(A, B);
   console.log(failures ? `\n${failures} FAILED` : "\nALL RULE CHECKS PASSED");
   process.exitCode = failures ? 1 : 0;
 } catch (e) {

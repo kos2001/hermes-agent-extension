@@ -16,6 +16,10 @@ export interface AgentTask {
   category: TaskCategory | "";
   /** Optional ISO cutoff; past it the server refuses new claims. */
   deadline: string;
+  /** Optional OKR link + valuation (value density = impact ÷ effort_mm). */
+  objective_id: string;
+  effort_mm: number;
+  impact: number;
   status: "open" | "claimed" | "done";
   claimed_by: string;
   worker_label: string;
@@ -108,12 +112,29 @@ export async function listTasks(pb: PocketBase, limit = 50, category?: TaskCateg
 }
 
 /** Post a request to the board; returns the new task id. */
+/** Optional OKR link + valuation carried by a work item at post time. */
+export interface WorkValue {
+  objectiveId?: string;
+  effortMm?: number;
+  impact?: number;
+}
+
+/** The create-payload fields for a WorkValue (only what's actually set). */
+export function workValueFields(value?: WorkValue): Record<string, unknown> {
+  return {
+    ...(value?.objectiveId ? { objective_id: value.objectiveId } : {}),
+    ...(value?.effortMm ? { effort_mm: value.effortMm } : {}),
+    ...(value?.impact ? { impact: value.impact } : {}),
+  };
+}
+
 export async function postTask(
   pb: PocketBase,
   title: string,
   body: string,
   category: TaskCategory = "general",
   deadline = "",
+  value?: WorkValue,
 ): Promise<string> {
   const cleanTitle = title.trim();
   const cleanBody = body.trim();
@@ -127,6 +148,7 @@ export async function postTask(
     category,
     deadline,
     status: "open",
+    ...workValueFields(value),
   });
   return created.id;
 }
