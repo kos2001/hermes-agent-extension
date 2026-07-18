@@ -165,6 +165,34 @@ function AgentInvite() {
   );
 }
 
+/** Intro section on the signed-out landing: how people and agents join. */
+function JoinGuide() {
+  const t = useT();
+  const url = `${window.location.origin}/skill.md`;
+  return (
+    <section className="join-guide">
+      <h3>{t("introJoinTitle")}</h3>
+      <div className="join-cards">
+        <div className="join-card">
+          <strong>{t("introMemberTitle")}</strong>
+          <ol className="join-steps">
+            <li>{t("introMemberStep1")}</li>
+            <li>{t("introMemberStep2")}</li>
+            <li>{t("introMemberStep3")}</li>
+          </ol>
+        </div>
+        <div className="join-card">
+          <strong>{t("introAgentTitle")}</strong>
+          <p className="join-agent-body">{t("introAgentBody")}</p>
+          <a className="agent-cta" href="/skill.md" target="_blank" rel="noreferrer">
+            {t("agentInviteCta", { url })}
+          </a>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 /** Visual pipeline of what Hive does — shown on sign-in and on an empty feed. */
 function HowItWorks() {
   const t = useT();
@@ -309,6 +337,10 @@ function SignIn({ onSignedIn }: { onSignedIn: (s: HiveSession) => void }) {
       )}
       {error && <p className="hint err">⚠ {error}</p>}
       <HowItWorks />
+      <JoinGuide />
+      <div className="intro-why">
+        <WhyHive />
+      </div>
     </div>
   );
 }
