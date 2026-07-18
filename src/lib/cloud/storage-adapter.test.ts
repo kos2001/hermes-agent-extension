@@ -1,9 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { chromeStorageAdapter } from "./storage-adapter";
+import { chromeAuthStore } from "./storage-adapter";
 
 function fakeChromeStorage() {
   const data: Record<string, unknown> = {};
   return {
+    data,
     storage: {
       local: {
         get: vi.fn(async (k: string) => ({ [k]: data[k] })),
@@ -18,23 +19,38 @@ function fakeChromeStorage() {
   };
 }
 
-describe("chromeStorageAdapter", () => {
+const flush = () => new Promise((r) => setTimeout(r, 0));
+
+describe("chromeAuthStore", () => {
+  let fake: ReturnType<typeof fakeChromeStorage>;
   beforeEach(() => {
-    (globalThis as unknown as { chrome: unknown }).chrome = fakeChromeStorage();
+    fake = fakeChromeStorage();
+    (globalThis as unknown as { chrome: unknown }).chrome = fake;
   });
 
-  it("round-trips a value through get/set", async () => {
-    await chromeStorageAdapter.setItem("k", "v");
-    expect(await chromeStorageAdapter.getItem("k")).toBe("v");
+  it("persists a saved token to chrome.storage", async () => {
+    const store = chromeAuthStore();
+    store.save("tok-123", { id: "u1" } as never);
+    await flush();
+    const stored = Object.values(fake.data)[0] as string;
+    expect(stored).toContain("tok-123");
   });
 
-  it("returns null for a missing key", async () => {
-    expect(await chromeStorageAdapter.getItem("nope")).toBeNull();
+  it("clears the persisted value on clear()", async () => {
+    const store = chromeAuthStore();
+    store.save("tok-123", { id: "u1" } as never);
+    await flush();
+    store.clear();
+    await flush();
+    expect(Object.keys(fake.data)).toHaveLength(0);
   });
 
-  it("removes a key", async () => {
-    await chromeStorageAdapter.setItem("k", "v");
-    await chromeStorageAdapter.removeItem("k");
-    expect(await chromeStorageAdapter.getItem("k")).toBeNull();
+  it("loads the initial state from chrome.storage", async () => {
+    const store = chromeAuthStore();
+    store.save("tok-abc", { id: "u1" } as never);
+    await flush();
+    const revived = chromeAuthStore();
+    await flush();
+    expect(revived.token).toBe("tok-abc");
   });
 });

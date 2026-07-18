@@ -1,33 +1,57 @@
-import type { SupabaseClient } from "@supabase/supabase-js";
+import type PocketBase from "pocketbase";
 
-/** PostgREST/realtime equality filter string, e.g. `folder_id=eq.<id>`. */
-export function eqFilter(column: string, value: string): string {
-  return `${column}=eq.${value}`;
+/** A column-equals-value predicate applied client-side to realtime events. */
+export interface RealtimeFilter {
+  column: string;
+  value: string;
 }
 
-let channelSeq = 0;
+export function eqFilter(column: string, value: string): RealtimeFilter {
+  return { column, value };
+}
 
 /**
- * Subscribe to INSERTs on a table (optionally filtered) and invoke `cb` on each.
- * Returns an unsubscribe function. RLS applies, so only readable rows arrive.
- * Requires the table to be in the `supabase_realtime` publication (migration
- * 0009) and Realtime enabled on the project.
+ * Subscribe to record creations in a collection (optionally filtered) and
+ * invoke `cb` on each. Returns an unsubscribe function. API rules apply, so
+ * only readable records arrive.
  */
 export function onTableInserts(
-  sb: SupabaseClient,
-  table: string,
-  filter: string | undefined,
+  pb: PocketBase,
+  collection: string,
+  filter: RealtimeFilter | undefined,
   cb: () => void,
 ): () => void {
-  const channel = sb
-    .channel(`rt-${table}-${channelSeq++}`)
-    .on(
-      "postgres_changes",
-      { event: "INSERT", schema: "public", table, ...(filter ? { filter } : {}) },
-      () => cb(),
-    )
-    .subscribe();
+  return onTableEvents(pb, collection, filter, cb, ["create"]);
+}
+
+/**
+ * Like onTableInserts but also fires on updates — for records whose state
+ * changes matter (e.g. board tasks moving open → claimed → done).
+ */
+export function onTableEvents(
+  pb: PocketBase,
+  collection: string,
+  filter: RealtimeFilter | undefined,
+  cb: () => void,
+  actions: string[] = ["create", "update"],
+): () => void {
+  let unsub: (() => void) | null = null;
+  let cancelled = false;
+  pb.collection(collection)
+    .subscribe("*", (e) => {
+      if (!actions.includes(e.action)) return;
+      if (filter && String((e.record as Record<string, unknown>)[filter.column]) !== filter.value) return;
+      cb();
+    })
+    .then((u) => {
+      if (cancelled) u();
+      else unsub = u;
+    })
+    .catch(() => {
+      // realtime unavailable — the app still works, just without live refresh
+    });
   return () => {
-    void sb.removeChannel(channel);
+    cancelled = true;
+    if (unsub) void unsub();
   };
 }
