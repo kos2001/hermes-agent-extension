@@ -911,6 +911,40 @@ html, body, #root {
 
 .hive-mention { color: var(--accent); font-weight: 600; }
 
+/* Hive connection status strip: server + health dot + account, top of 🐝 tab */
+.hive-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  margin-bottom: 8px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 11px;
+  color: var(--muted);
+}
+.hive-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--border);
+  flex: 0 0 auto;
+}
+.hive-dot.ok { background: #62d488; }
+.hive-dot.err { background: var(--error); }
+.hive-status-host {
+  color: var(--text);
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.hive-status-me { margin-left: auto; white-space: nowrap; }
+
+/* "View in feed" CTA appended to the share-success note */
+.bm-view-feed { margin-left: 8px; }
+
 /* Hive onboarding card (🐝 tab before a server URL is configured) */
 .hive-setup {
   margin: 14px 12px;

@@ -91,9 +91,12 @@ const BookmarkRow = memo(function BookmarkRow({
 export default function BookmarksView({
   config,
   lang,
+  onOpenHive,
 }: {
   config: ConnectionConfig | null;
   lang: Lang;
+  /** Switch the side panel to the 🐝 feed (used after a successful share). */
+  onOpenHive?: () => void;
 }) {
   const [nodes, setNodes] = useState<BookmarkNode[]>([]);
   const [actions, setActions] = useState<Action[]>([]);
@@ -102,6 +105,8 @@ export default function BookmarksView({
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
   const [note, setNote] = useState("");
   const [error, setError] = useState("");
+  // True right after a successful Hive share — surfaces the "view in feed" CTA.
+  const [sharedOk, setSharedOk] = useState(false);
   const deadAbort = useRef<AbortController | null>(null);
 
   const reload = useCallback(async () => {
@@ -121,6 +126,7 @@ export default function BookmarksView({
     setChecked(new Set());
     setNote(noteMsg);
     setError("");
+    setSharedOk(false);
   }, []);
 
   const allChecked = actions.length > 0 && checked.size === actions.length;
@@ -326,6 +332,7 @@ export default function BookmarksView({
         communityId: shareCommunityId || null,
       });
       setNote(t(lang, "bm.shareDone").replace("{n}", String(summary.items.length)));
+      setSharedOk(true);
     } catch (e) {
       setError(e instanceof Error ? e.message : t(lang, "bm.shareFailed"));
     } finally {
@@ -436,7 +443,16 @@ export default function BookmarksView({
       {busy === "sdup" && !progress && <div className="bm-status">{t(lang, "bm.dupAnalyzing")}</div>}
       {(busy === "ai" || busy === "apply") && <div className="bm-status">{t(lang, "working")}</div>}
       {error && <div className="bm-status err">⚠ {error}</div>}
-      {note && <div className="bm-status">{note}</div>}
+      {note && (
+        <div className="bm-status">
+          {note}
+          {sharedOk && onOpenHive && (
+            <button className="tx-restore bm-view-feed" onClick={onOpenHive}>
+              {t(lang, "bm.viewInFeed")}
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Gate on data so the lazy chart chunk is never fetched when nothing would render. */}
       {nodes.some((n) => n.url) && (

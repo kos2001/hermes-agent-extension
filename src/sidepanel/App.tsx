@@ -588,7 +588,7 @@ export default function App() {
         </Suspense>
       ) : view === "bookmarks" ? (
         <Suspense fallback={<div className="bm-status">…</div>}>
-          <BookmarksView config={config} lang={lang} />
+          <BookmarksView config={config} lang={lang} onOpenHive={() => setView("hive")} />
         </Suspense>
       ) : view === "market" ? (
         <Suspense fallback={<div className="mr-status">…</div>}>
