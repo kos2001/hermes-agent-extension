@@ -198,6 +198,12 @@ const STR: Record<string, Entry> = {
   "skill.explain.user": { ko: "이 페이지를 쉽게 설명해줘", en: "Explain this page simply", zh: "请通俗解释此页面" },
   "skill.links.user": { ko: "🔗 링크 추출", en: "🔗 Extract links", zh: "🔗 提取链接" },
 
+  // Options page subtitle — reflects the local-hermes default
+  "opt.subtitle": {
+    ko: "기본 연결은 로컬 Hermes 서버(127.0.0.1:8642)입니다 — 게이트웨이 탭의 '빠른 연결'로 키만 넣으면 바로 동작합니다. 다른 프로바이더(OpenRouter 등)로도 전환할 수 있습니다.",
+    en: "The default connection is your local Hermes server (127.0.0.1:8642) — paste the quick-connect line in the Gateway tab and you're done. You can also switch to other providers (OpenRouter, …).",
+    zh: "默认连接是本地 Hermes 服务器（127.0.0.1:8642）— 在网关标签页粘贴快速连接一行即可使用，也可切换到其他提供商（OpenRouter 等）。",
+  },
   // Selection toolbar: no-API-key guidance (thrown by the SW before any fetch)
   "sel.noKeyLocal": {
     ko: "로컬 Hermes 서버는 실행 중인데 API 키가 없습니다 — 설정(⚙) → 게이트웨이 탭의 '빠른 연결' 한 줄만 실행하면 됩니다.",
