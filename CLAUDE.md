@@ -47,9 +47,9 @@ This is where the logic lives; the UI is a thin shell over it. Several files are
 - **Latin-1 header rule:** `fetch` throws if any HTTP header value contains a code point > 0xFF. `findNonLatin1()` validates API keys / custom headers on save — keep this guard on any new header path (Korean text, em-dashes, smart quotes from copy-paste all trip it).
 - `providers.ts` — ported from the Hermes CLI provider profiles. `markdown.ts` — dependency-free XSS-safe renderer (escape-first, re-introduce known tags only). `skills.ts` — client-side prompt/local skills that work against any provider (vs. Hermes server-side skills).
 
-### `src/lib/cloud/` — Hive (Supabase) layer, shared extension ↔ web
-- `client.ts` exports the singleton `supabase` client and two flags: `cloudConfigured` (true when `.env` creds were present at build) and **`HIVE_ENABLED`** — a master kill-switch currently **`false`**, hiding every Hive entry point (feed, sign-in, share-to-Hive) without deleting code. Flip to `true` to re-enable.
-- `storage-adapter.ts` is the `chrome.storage.local`-backed Supabase auth storage — it shares the session across SW + side panel and survives SW restarts. This is the only file in `cloud/` that touches `chrome.*`; the web app supplies its own storage.
+### `src/lib/cloud/` — Hive (PocketBase) layer
+- `client.ts` exports the singleton `pb` PocketBase client plus `initHive()`, which applies the **runtime server URL** and reports whether Hive is configured. The URL lives in `chrome.storage.local` (`hive.serverUrl`, managed by `config.ts`); a build-time `VITE_POCKETBASE_URL` is only the default. There is no compile-time kill switch — Hive is "on" exactly when a URL is configured, and `useHiveConfigured()` (sidepanel) gates every entry point live (spec: `docs/superpowers/specs/2026-07-18-hive-easy-setup.md`).
+- `storage-adapter.ts` is the `chrome.storage.local`-backed PocketBase auth store — it shares the session across SW + side panel and survives SW restarts. `cloud/` files touch `chrome.*` only inside function bodies; the web app (`web/cloud.ts`) is a separate env-configured client.
 
 ### State / config
 All persisted state lives in `chrome.storage.local`: `hermes.config` (connection — merged over `DEFAULT_CONFIG`), `hermes.sessions` + `hermes.activeSessionId`, `hermes.theme`, plus i18n and market-report settings. There is no background DB; the SW reloads config per-operation.

@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
 import type { ConnectionConfig } from "@/lib/types";
 import { t, type Lang } from "@/lib/i18n";
-import { cloudConfigured, pb } from "@/lib/cloud/client";
+import { pb } from "@/lib/cloud/client";
+import { useHiveConfigured } from "./useHive";
+import { HiveOnboarding } from "./HiveOnboarding";
 import { getSession } from "@/lib/cloud/auth";
 import { listFeed } from "@/lib/cloud/feed";
 import { getFolder } from "@/lib/cloud/folders";
@@ -52,15 +54,17 @@ export default function HiveFeedView({ config, lang }: { config: ConnectionConfi
   const [activity, setActivity] = useState<ActivityItem[] | null>(null);
   const [seen, setSeen] = useState<string | null>(null);
 
+  const configured = useHiveConfigured();
+
   useEffect(() => {
-    if (!cloudConfigured) return;
+    if (!configured) return;
     void getSession().then((s) => {
       setSignedIn(!!s);
       setMyId(s?.user?.id ?? "");
     });
     void loadHeartbeatSettings().then((s) => setHbFreq(s.freq));
     void chrome.storage.local.get(ACTIVITY_SEEN_KEY).then((r) => setSeen(r[ACTIVITY_SEEN_KEY] ?? null));
-  }, []);
+  }, [configured]);
 
   const changeHeartbeat = async (freq: HeartbeatFreq) => {
     setHbFreq(freq);
@@ -92,7 +96,8 @@ export default function HiveFeedView({ config, lang }: { config: ConnectionConfi
     setTab("messages");
   };
 
-  if (!cloudConfigured) return <div className="bm-status">{t(lang, "hiveNotConfigured")}</div>;
+  if (configured === null) return <div className="bm-status">…</div>;
+  if (!configured) return <HiveOnboarding lang={lang} />;
   if (signedIn === null) return <div className="bm-status">…</div>;
   if (!signedIn) return <div className="bm-status">{t(lang, "hiveSignInPrompt")}</div>;
   if (error) return <div className="bm-status err">⚠ {error}</div>;

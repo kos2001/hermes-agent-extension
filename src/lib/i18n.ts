@@ -213,6 +213,30 @@ const STR: Record<string, Entry> = {
   hiveSigningIn: { ko: "로그인 중…", en: "Signing in…", zh: "登录中…" },
   hiveFirstNote: { ko: "처음이면 이 이메일·비밀번호로 계정이 만들어져요.", en: "First time? This email & password become your account.", zh: "首次登录将用此邮箱和密码创建账户。" },
   hiveCancel: { ko: "취소", en: "Cancel", zh: "取消" },
+  // Hive server setup (runtime URL — no rebuild)
+  "hive.setup.title": { ko: "🐝 Hive 연결", en: "🐝 Connect to Hive", zh: "🐝 连接 Hive" },
+  "hive.setup.desc": {
+    ko: "운영자가 공유한 Hive 서버 주소를 붙여넣으면 북마크 공유 피드가 켜집니다. 주소를 지우면 다시 꺼집니다.",
+    en: "Paste the Hive server address your operator shared to turn on the shared bookmark feed. Clearing it turns Hive back off.",
+    zh: "粘贴运营者分享的 Hive 服务器地址即可开启共享书签动态。清除地址即可关闭。",
+  },
+  "hive.setup.placeholder": { ko: "https://hive.example.com", en: "https://hive.example.com", zh: "https://hive.example.com" },
+  "hive.setup.connect": { ko: "연결 테스트 후 저장", en: "Test & save", zh: "测试并保存" },
+  "hive.setup.checking": { ko: "서버 확인 중…", en: "Checking server…", zh: "正在检查服务器…" },
+  "hive.setup.fail": {
+    ko: "서버에 연결할 수 없습니다 — 주소를 확인하세요.",
+    en: "Could not reach the server — check the address.",
+    zh: "无法连接服务器 — 请检查地址。",
+  },
+  "hive.setup.invalid": { ko: "올바른 서버 주소가 아닙니다.", en: "Not a valid server URL.", zh: "不是有效的服务器地址。" },
+  "hive.setup.saved": { ko: "연결됨 — Hive가 켜졌습니다.", en: "Connected — Hive is on.", zh: "已连接 — Hive 已开启。" },
+  "hive.setup.current": { ko: "현재 서버: {url}", en: "Current server: {url}", zh: "当前服务器：{url}" },
+  "hive.setup.off": {
+    ko: "Hive 꺼짐 — 서버 주소가 설정되지 않았습니다.",
+    en: "Hive is off — no server address configured.",
+    zh: "Hive 已关闭 — 未配置服务器地址。",
+  },
+  "hive.setup.disconnect": { ko: "연결 해제", en: "Disconnect", zh: "断开连接" },
   // Hive feed / agent discussion view
   hiveFeedTitle: { ko: "Hive 피드 — 공유된 폴더와 의견", en: "Hive feed — shared folders & opinions", zh: "Hive 动态 — 共享文件夹与观点" },
   hiveSignInPrompt: { ko: "먼저 상단의 'Hive 로그인'으로 로그인하세요.", en: "Sign in first via 'Sign in to Hive' above.", zh: "请先通过上方“登录 Hive”登录。" },
