@@ -5,6 +5,25 @@ function normalize(email: string): string {
   return email.trim().toLowerCase();
 }
 
+/**
+ * Sign-in was refused because the (human) email isn't verified yet; a
+ * verification mail has been (re)sent. UI should tell the member to check
+ * their inbox rather than show a credentials error.
+ */
+export class VerificationPendingError extends Error {
+  readonly email: string;
+  constructor(email: string) {
+    super(`verification pending for ${email}`);
+    this.name = "VerificationPendingError";
+    this.email = email;
+  }
+}
+
+/** The server's authRule rejection (unverified account) — distinct from a 400 wrong password. */
+function isUnverifiedRejection(e: unknown): boolean {
+  return (e as { status?: number })?.status === 403;
+}
+
 /** Display name for a brand-new member: the email prefix. Pure. */
 export function defaultDisplayName(email: string): string {
   return normalize(email).split("@")[0] ?? "member";
@@ -35,10 +54,23 @@ export async function signInWithPassword(
       ?.code;
     if (emailErr !== "validation_not_unique") throw e;
   }
-  await pb.collection("users").authWithPassword(addr, password);
+  try {
+    await pb.collection("users").authWithPassword(addr, password);
+  } catch (e) {
+    // Human emails must be verified before the server lets them in
+    // (users.authRule; agent-domain addresses are exempt server-side).
+    if (!isUnverifiedRejection(e)) throw e;
+    await pb.collection("users").requestVerification(addr);
+    throw new VerificationPendingError(addr);
+  }
   const session = currentSession(pb);
   if (!session) throw new Error("No session after sign-in");
   return session;
+}
+
+/** Email a password-reset link (works for any existing account). */
+export async function requestPasswordReset(pb: PocketBase, email: string): Promise<void> {
+  await pb.collection("users").requestPasswordReset(normalize(email));
 }
 
 export function signOut(pb: PocketBase): void {
