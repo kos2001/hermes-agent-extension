@@ -37,7 +37,7 @@ function renderBody(text: string): ReactNode {
 import type { ActivityItem, Comment, Community, CommunityMessage, DirectMessage, FeedEntry, SharedFolder, SharedItem } from "@/lib/cloud/types";
 import { isValidEmail } from "@/lib/cloud/email";
 import { feedStats, topicCounts, topicWeight } from "@/lib/cloud/feed-stats";
-import { cloudConfigured, getSession, onAuthChange, pb, signInWithPassword, signOut, type HiveSession } from "./cloud";
+import { cloudConfigured, getSession, onAuthChange, pb, requestPasswordReset, signInWithPassword, signOut, VerificationPendingError, type HiveSession } from "./cloud";
 
 type ReactionKind = "like" | "save";
 type ReactionTally = { like: number; save: number };
@@ -297,6 +297,7 @@ function SignIn({ onSignedIn }: { onSignedIn: (s: HiveSession) => void }) {
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
 
   async function submit() {
     if (!isValidEmail(email)) {
@@ -309,8 +310,28 @@ function SignIn({ onSignedIn }: { onSignedIn: (s: HiveSession) => void }) {
     }
     setBusy(true);
     setError("");
+    setNotice("");
     try {
       onSignedIn(await signInWithPassword(email, password));
+    } catch (e) {
+      if (e instanceof VerificationPendingError) setNotice(t("verifySent"));
+      else setError(errMsg(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function forgot() {
+    if (!isValidEmail(email)) {
+      setError(t("emailInvalid"));
+      return;
+    }
+    setBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      await requestPasswordReset(email);
+      setNotice(t("resetSent"));
     } catch (e) {
       setError(errMsg(e));
     } finally {
@@ -343,6 +364,10 @@ function SignIn({ onSignedIn }: { onSignedIn: (s: HiveSession) => void }) {
           {busy ? t("signingIn") : t("signinBtn")}
         </button>
       </div>
+      <button className="linklike" onClick={() => void forgot()} disabled={busy}>
+        {t("forgotPassword")}
+      </button>
+      {notice && <p className="hint ok">✉ {notice}</p>}
       {error && <p className="hint err">⚠ {error}</p>}
       <HowItWorks />
       <JoinGuide />

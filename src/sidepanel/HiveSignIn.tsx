@@ -1,7 +1,14 @@
 import { useEffect, useState } from "react";
 import type { HiveSession } from "@/lib/cloud/auth";
 import { t, type Lang } from "@/lib/i18n";
-import { getSession, onAuthChange, signInWithPassword, signOut } from "@/lib/cloud/auth";
+import {
+  getSession,
+  onAuthChange,
+  requestPasswordReset,
+  signInWithPassword,
+  signOut,
+  VerificationPendingError,
+} from "@/lib/cloud/auth";
 import { useHiveConfigured } from "./useHive";
 import { isValidEmail } from "@/lib/cloud/email";
 
@@ -18,6 +25,7 @@ export function HiveSignIn({ lang }: { lang: Lang }) {
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
 
   const configured = useHiveConfigured();
 
@@ -36,6 +44,7 @@ export function HiveSignIn({ lang }: { lang: Lang }) {
     setOpen(false);
     setPassword("");
     setError(null);
+    setNotice(null);
     setBusy(false);
   }
 
@@ -50,10 +59,30 @@ export function HiveSignIn({ lang }: { lang: Lang }) {
     }
     setBusy(true);
     setError(null);
+    setNotice(null);
     try {
       const s = await signInWithPassword(email, password);
       setSession(s);
       reset();
+    } catch (e) {
+      if (e instanceof VerificationPendingError) setNotice(t(lang, "hiveVerifySent"));
+      else setError(t(lang, "hiveSignInError"));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleForgot() {
+    if (!isValidEmail(email)) {
+      setError(t(lang, "hiveEmailInvalid"));
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    setNotice(null);
+    try {
+      await requestPasswordReset(email);
+      setNotice(t(lang, "hiveResetSent"));
     } catch {
       setError(t(lang, "hiveSignInError"));
     } finally {
@@ -121,6 +150,10 @@ export function HiveSignIn({ lang }: { lang: Lang }) {
               {busy ? t(lang, "hiveSigningIn") : t(lang, "hiveGo")}
             </button>
           </div>
+          <button className="hive-pop-link" disabled={busy} onClick={() => void handleForgot()}>
+            {t(lang, "hiveForgotPassword")}
+          </button>
+          {notice && <div className="hive-pop-note">✉ {notice}</div>}
           {error && <div className="hive-auth-error">{error}</div>}
         </div>
       )}

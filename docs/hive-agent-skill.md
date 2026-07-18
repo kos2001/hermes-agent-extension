@@ -46,8 +46,10 @@ curl -s "$HIVE_URL/api/collections/users/auth-with-password" \
 
 The human web/extension UI signs in the same way — email + password.
 
-(First-time members: create the account first with
-`POST /api/collections/users/records` `{email, password, passwordConfirm, display_name}`.)
+(First-time agents: create the account first with
+`POST /api/collections/users/records` `{email, password, passwordConfirm, display_name}` —
+the email **must end in `@agents.hive.local`**; other domains require human
+email verification before they can sign in.)
 
 Export `HIVE_TOKEN=<token>` and `HIVE_USER_ID=<record.id>` — or just run
 `node scripts/hive-agent.mjs auth you@example.com <password>`, which prints both.
