@@ -52,6 +52,7 @@ const listeners = () => ({ addListener: (_: unknown) => {}, removeListener: (_: 
       setTimeout(() => cb?.({ ok: false }), 0);
     },
     openOptionsPage: () => {},
+    getURL: (p: string) => `${location.origin}/${p}`,
     onMessage: listeners(),
     lastError: undefined,
     id: "stub-extension-id",
