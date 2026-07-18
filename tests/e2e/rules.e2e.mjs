@@ -9,7 +9,7 @@
  * (PB_BIN defaults to `pocketbase` on PATH. Never points at a live server —
  * the suite writes junk data.)
  */
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -54,9 +54,13 @@ const del = (p, token) => call("DELETE", p, { token });
 const get = (p, token) => call("GET", p, { token });
 const q = (expr) => encodeURIComponent(expr);
 
-/** Register + sign in a fresh user; returns {token, id}. */
+/**
+ * Register + sign in a fresh user; returns {token, id}. Uses the reserved
+ * agent domain — human domains can't authenticate unverified
+ * (1752700012_email_verification.js), which emailVerification() covers.
+ */
 async function newUser(name) {
-  const email = `${name}-${Date.now()}@e2e.local`;
+  const email = `${name}-${Date.now()}@agents.hive.local`;
   const pw = "e2epw1";
   const reg = await post("collections/users/records", null, {
     email,
@@ -399,8 +403,36 @@ async function okr(A, B) {
   await del(`collections/agent_tasks/records/${valued.json.id}`, A.token);
 }
 
+async function emailVerification() {
+  console.log("\nauth: human emails must verify; agent domain is exempt");
+  const email = `human-${Date.now()}@e2e-humans.test`;
+  const pw = "humanpw123";
+  const reg = await post("collections/users/records", null, {
+    email,
+    password: pw,
+    passwordConfirm: pw,
+    display_name: "human",
+  });
+  check("human-domain account registers", reg.status === 200);
+  const denied = await post("collections/users/auth-with-password", null, { identity: email, password: pw });
+  check("unverified human can't sign in", denied.status === 403, `got ${denied.status}`);
+  const admin = await post("collections/_superusers/auth-with-password", null, {
+    identity: SUPERUSER_EMAIL,
+    password: SUPERUSER_PW,
+  });
+  check("superuser signs in", admin.status === 200, `got ${admin.status}`);
+  const verify = await patch(`collections/users/records/${reg.json.id}`, admin.json.token, { verified: true });
+  check("superuser marks the email verified", verify.status === 200, `got ${verify.status}`);
+  const ok = await post("collections/users/auth-with-password", null, { identity: email, password: pw });
+  check("verified human signs in", ok.status === 200, `got ${ok.status}`);
+}
+
 // ---------- boot + run ----------
+const SUPERUSER_EMAIL = "admin@e2e.local";
+const SUPERUSER_PW = "e2e-superuser-pw";
 const dataDir = mkdtempSync(path.join(tmpdir(), "hive-e2e-"));
+// seed the throwaway superuser before serving (runs migrations too)
+spawnSync(PB_BIN, ["superuser", "upsert", SUPERUSER_EMAIL, SUPERUSER_PW, `--dir=${dataDir}`, `--migrationsDir=${MIGRATIONS}`]);
 const args = ["serve", `--http=127.0.0.1:${PORT}`, `--dir=${dataDir}`, `--migrationsDir=${MIGRATIONS}`];
 if (existsSync(HOOKS)) args.push(`--hooksDir=${HOOKS}`);
 const pb = spawn(PB_BIN, args, { stdio: ["ignore", "pipe", "pipe"] });
@@ -435,6 +467,7 @@ try {
   await deadlines(A, B);
   await pointEconomy();
   await okr(A, B);
+  await emailVerification();
   console.log(failures ? `\n${failures} FAILED` : "\nALL RULE CHECKS PASSED");
   process.exitCode = failures ? 1 : 0;
 } catch (e) {

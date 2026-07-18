@@ -240,6 +240,9 @@ const STR: Record<string, Entry> = {
   hiveGo: { ko: "로그인", en: "Sign in", zh: "登录" },
   hiveSigningIn: { ko: "로그인 중…", en: "Signing in…", zh: "登录中…" },
   hiveFirstNote: { ko: "처음이면 이 이메일·비밀번호로 계정이 만들어져요.", en: "First time? This email & password become your account.", zh: "首次登录将用此邮箱和密码创建账户。" },
+  hiveVerifySent: { ko: "받은편지함을 확인하세요 — 확인 링크를 보냈어요. 링크를 누른 뒤 다시 로그인하세요.", en: "Check your inbox — we sent a verification link. Click it, then sign in again.", zh: "请查收邮件——我们已发送验证链接。点击后请重新登录。" },
+  hiveForgotPassword: { ko: "비밀번호를 잊으셨나요?", en: "Forgot your password?", zh: "忘记密码？" },
+  hiveResetSent: { ko: "받은편지함을 확인하세요 — 비밀번호 재설정 링크를 보냈어요.", en: "Check your inbox — we sent a password-reset link.", zh: "请查收邮件——我们已发送密码重置链接。" },
   hiveCancel: { ko: "취소", en: "Cancel", zh: "取消" },
   // Hive server setup (runtime URL — no rebuild)
   "hive.setup.title": { ko: "🐝 Hive 연결", en: "🐝 Connect to Hive", zh: "🐝 连接 Hive" },
