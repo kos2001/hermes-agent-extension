@@ -1,54 +1,21 @@
 /**
- * Recharts-based visualizations for the side panel (Market Report + Bookmarks).
+ * Dependency-free SVG/CSS visualizations for the side panel (Market Report +
+ * Bookmarks). These replaced Recharts — at ≤8 data points per chart the
+ * library was ~44% of the shipped extension JS for two tiny charts.
  *
- * Loaded lazily (see the views) so Recharts + its d3 deps stay out of the main
- * bundle. Colors are a fixed vivid palette that reads well on both the dark and
- * light themes; axis/tooltip chrome uses the theme CSS variables so it tracks
- * the active theme. Each chart card carries a +/− zoom control that scales the
- * chart's primary dimension. Charts animate on mount via Recharts' built-in
- * animation, which we disable under `prefers-reduced-motion`.
+ * Still code-split (see the lazy imports in the views), colors are a fixed
+ * vivid palette that reads well on both themes, and axis/label chrome uses the
+ * theme CSS variables. Each chart card carries a +/− zoom control that scales
+ * the chart's primary dimension. Values surface via native tooltips (`title`),
+ * which need no positioning code and can't overflow the narrow panel.
  */
-import { useMemo, useState } from "react";
-import {
-  Area,
-  AreaChart,
-  Bar,
-  BarChart,
-  Cell,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from "recharts";
+import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import { t, type Lang } from "@/lib/i18n";
 import type { MarketReport } from "@/lib/market-report";
 import type { BookmarkNode } from "@/lib/bookmarks";
 
-// Vivid, theme-agnostic series colors (mirrors the status/accent palette).
-const C = {
-  ok: "#62d488",
-  fail: "#ff6b6b",
-  neutral: "#8a90a4",
-  accent: "#7c9cff",
-};
-
-const animate = !(typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches);
-
-const tickStyle = { fill: "var(--muted)", fontSize: 10 } as const;
-// All tooltip text uses --text so it stays legible against the --panel-2 box on
-// either theme (Recharts' default label/item gray washes out on the dark panel).
-const tooltipProps = {
-  contentStyle: {
-    background: "var(--panel-2)",
-    border: "1px solid var(--border)",
-    borderRadius: 8,
-    fontSize: 11,
-    padding: "4px 8px",
-    color: "var(--text)",
-  },
-  labelStyle: { color: "var(--text)", fontWeight: 600 },
-  itemStyle: { color: "var(--text)" },
-} as const;
+/** Series accent — mirrors the status/accent palette used across the panel. */
+const ACCENT = "#7c9cff";
 
 const ZOOM_MIN = 0.6;
 const ZOOM_MAX = 2;
@@ -116,29 +83,95 @@ function ChartCard({
   );
 }
 
+/** Track a container's width so SVG charts re-plot when the panel resizes. */
+function useMeasuredWidth(): [React.RefObject<HTMLDivElement>, number] {
+  const ref = useRef<HTMLDivElement>(null);
+  const [width, setWidth] = useState(0);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const update = () => setWidth(el.clientWidth);
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  return [ref, width];
+}
+
 /** Horizontal bars — readable for long category labels in a narrow panel. */
 function HBars({ data, zoom }: { data: { name: string; value: number; color: string }[]; zoom: number }) {
-  const rowH = 28 * zoom;
-  const height = Math.max(80, Math.round(data.length * rowH + 20));
+  const max = Math.max(1, ...data.map((d) => d.value));
   return (
-    <ResponsiveContainer width="100%" height={height}>
-      <BarChart data={data} layout="vertical" margin={{ top: 4, right: 30, bottom: 4, left: 4 }}>
-        <XAxis type="number" hide />
-        <YAxis type="category" dataKey="name" width={92} tick={tickStyle} axisLine={false} tickLine={false} />
-        {/* Subtle accent wash on hover so the row highlight never hides the labels. */}
-        <Tooltip {...tooltipProps} cursor={{ fill: "var(--accent)", fillOpacity: 0.12 }} />
-        <Bar
-          dataKey="value"
-          radius={[0, 4, 4, 0]}
-          isAnimationActive={animate}
-          label={{ position: "right", fill: "var(--text)", fontSize: 11 }}
-        >
-          {data.map((d) => (
-            <Cell key={d.name} fill={d.color} />
+    <div className="hx-bars">
+      {data.map((d) => (
+        <div key={d.name} className="hx-bar-row" style={{ height: 28 * zoom }} title={`${d.name}: ${d.value}`}>
+          <span className="hx-bar-label">{d.name}</span>
+          <span className="hx-bar-track">
+            <span className="hx-bar-fill" style={{ width: `${(d.value / max) * 100}%`, background: d.color }} />
+          </span>
+          <span className="hx-bar-value">{d.value}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** Line-with-area trend: straight segments, gradient fill, per-point tooltip. */
+function AreaTrend({
+  data,
+  height,
+  name,
+}: {
+  data: { label: string; value: number }[];
+  height: number;
+  name: string;
+}) {
+  const [wrapRef, width] = useMeasuredWidth();
+  const m = { top: 6, right: 10, bottom: 16, left: 30 };
+  const iw = Math.max(0, width - m.left - m.right);
+  const ih = Math.max(0, height - m.top - m.bottom);
+  const max = Math.max(1, ...data.map((d) => d.value));
+  const x = (i: number) => m.left + (data.length === 1 ? iw / 2 : (i / (data.length - 1)) * iw);
+  const y = (v: number) => m.top + ih - (v / max) * ih;
+  const line = data.map((d, i) => `${i ? "L" : "M"}${x(i)},${y(d.value)}`).join(" ");
+  const area = `${line} L${x(data.length - 1)},${m.top + ih} L${x(0)},${m.top + ih} Z`;
+  const yTicks = [...new Set([0, Math.round(max / 2), max])];
+  return (
+    <div ref={wrapRef} className="hx-area">
+      {width > 0 && (
+        <svg width={width} height={height} role="img">
+          <defs>
+            <linearGradient id="hxCovGrad" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor={ACCENT} stopOpacity={0.5} />
+              <stop offset="100%" stopColor={ACCENT} stopOpacity={0.04} />
+            </linearGradient>
+          </defs>
+          {yTicks.map((v) => (
+            <g key={v}>
+              <line className="hx-grid" x1={m.left} x2={width - m.right} y1={y(v)} y2={y(v)} />
+              <text className="hx-tick" x={m.left - 5} y={y(v)} textAnchor="end" dominantBaseline="middle">
+                {v}
+              </text>
+            </g>
           ))}
-        </Bar>
-      </BarChart>
-    </ResponsiveContainer>
+          <path d={area} fill="url(#hxCovGrad)" />
+          <path d={line} fill="none" stroke={ACCENT} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />
+          {data.map((d, i) => (
+            <g key={d.label}>
+              <circle cx={x(i)} cy={y(d.value)} r={3} fill={ACCENT} />
+              {/* Oversized transparent hit area so the native tooltip is easy to reach. */}
+              <circle cx={x(i)} cy={y(d.value)} r={9} fill="transparent">
+                <title>{`${d.label} — ${name}: ${d.value}`}</title>
+              </circle>
+              <text className="hx-tick" x={x(i)} y={height - 3} textAnchor="middle">
+                {d.label}
+              </text>
+            </g>
+          ))}
+        </svg>
+      )}
+    </div>
   );
 }
 
@@ -151,8 +184,8 @@ export function MarketCharts({ reports, lang }: { reports: MarketReport[]; lang:
         .slice(0, 8)
         .reverse()
         .map((r, i) => ({
-          i: i + 1,
-          covered: r.sites.filter((s) => !s.error && s.summary).length,
+          label: String(i + 1),
+          value: r.sites.filter((s) => !s.error && s.summary).length,
         })),
     [reports],
   );
@@ -161,37 +194,12 @@ export function MarketCharts({ reports, lang }: { reports: MarketReport[]; lang:
 
   return (
     <div className="charts">
-      {trend.length >= 2 && (
-        <ChartCard
-          title={t(lang, "chart.trend")}
-          hint={`${trend.length} · ${t(lang, "chart.sites")}`}
-          lang={lang}
-          render={(z) => (
-            <ResponsiveContainer width="100%" height={Math.round(120 * z)}>
-              <AreaChart data={trend} margin={{ top: 6, right: 8, bottom: 0, left: -24 }}>
-                <defs>
-                  <linearGradient id="covGrad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor={C.accent} stopOpacity={0.5} />
-                    <stop offset="100%" stopColor={C.accent} stopOpacity={0.04} />
-                  </linearGradient>
-                </defs>
-                <XAxis dataKey="i" tick={tickStyle} axisLine={false} tickLine={false} />
-                <YAxis tick={tickStyle} axisLine={false} tickLine={false} allowDecimals={false} width={28} />
-                <Tooltip {...tooltipProps} />
-                <Area
-                  type="monotone"
-                  dataKey="covered"
-                  name={t(lang, "chart.covered")}
-                  stroke={C.accent}
-                  strokeWidth={2}
-                  fill="url(#covGrad)"
-                  isAnimationActive={animate}
-                />
-              </AreaChart>
-            </ResponsiveContainer>
-          )}
-        />
-      )}
+      <ChartCard
+        title={t(lang, "chart.trend")}
+        hint={`${trend.length} · ${t(lang, "chart.sites")}`}
+        lang={lang}
+        render={(z) => <AreaTrend data={trend} height={Math.round(120 * z)} name={t(lang, "chart.covered")} />}
+      />
     </div>
   );
 }
@@ -210,7 +218,7 @@ export function BookmarkCharts({ nodes, lang }: { nodes: BookmarkNode[]; lang: L
       .map(([name, value]) => ({
         name: name.length > 14 ? name.slice(0, 13) + "…" : name,
         value,
-        color: C.accent,
+        color: ACCENT,
       }));
   }, [nodes]);
 
