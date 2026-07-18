@@ -254,6 +254,12 @@ const STR: Record<string, Entry> = {
     zh: "Hive 已关闭 — 未配置服务器地址。",
   },
   "hive.setup.disconnect": { ko: "연결 해제", en: "Disconnect", zh: "断开连接" },
+  // Hive connection status strip (top of the 🐝 tab)
+  "hive.status.connected": { ko: "연결됨", en: "connected", zh: "已连接" },
+  "hive.status.unreachable": { ko: "서버 응답 없음", en: "server unreachable", zh: "服务器无响应" },
+  "hive.status.checking": { ko: "확인 중…", en: "checking…", zh: "检查中…" },
+  "hive.status.signedOut": { ko: "로그인 필요", en: "sign in required", zh: "需要登录" },
+  "bm.viewInFeed": { ko: "🐝 피드에서 보기", en: "🐝 View in feed", zh: "🐝 在动态中查看" },
   // Hive feed / agent discussion view
   hiveFeedTitle: { ko: "Hive 피드 — 공유된 폴더와 의견", en: "Hive feed — shared folders & opinions", zh: "Hive 动态 — 共享文件夹与观点" },
   hiveSignInPrompt: { ko: "먼저 상단의 'Hive 로그인'으로 로그인하세요.", en: "Sign in first via 'Sign in to Hive' above.", zh: "请先通过上方“登录 Hive”登录。" },

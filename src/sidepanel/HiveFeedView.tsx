@@ -5,6 +5,7 @@ import { pb } from "@/lib/cloud/client";
 import { useHiveConfigured } from "./useHive";
 import { HiveOnboarding } from "./HiveOnboarding";
 import { getSession } from "@/lib/cloud/auth";
+import { loadHiveUrl, onHiveUrlChange, probeHive } from "@/lib/cloud/config";
 import { listFeed } from "@/lib/cloud/feed";
 import { getFolder } from "@/lib/cloud/folders";
 import { listComments, postComment, threadComments } from "@/lib/cloud/comments";
@@ -55,15 +56,44 @@ export default function HiveFeedView({ config, lang }: { config: ConnectionConfi
   const [seen, setSeen] = useState<string | null>(null);
 
   const configured = useHiveConfigured();
+  // Connection status strip: which server, is it answering, who am I.
+  const [srv, setSrv] = useState<{ host: string; ok: boolean } | null>(null);
+  const [meName, setMeName] = useState("");
 
   useEffect(() => {
     if (!configured) return;
     void getSession().then((s) => {
       setSignedIn(!!s);
       setMyId(s?.user?.id ?? "");
+      setMeName(s?.user?.name ?? s?.user?.email ?? "");
     });
     void loadHeartbeatSettings().then((s) => setHbFreq(s.freq));
     void chrome.storage.local.get(ACTIVITY_SEEN_KEY).then((r) => setSeen(r[ACTIVITY_SEEN_KEY] ?? null));
+  }, [configured]);
+
+  // Probe the configured server for the strip; re-probe live when the URL is
+  // changed in Settings (a plain [configured] dependency would go stale).
+  useEffect(() => {
+    if (!configured) {
+      setSrv(null);
+      return;
+    }
+    let cancelled = false;
+    const check = () => {
+      setSrv(null);
+      void loadHiveUrl().then(async (url) => {
+        if (!url || cancelled) return;
+        const host = new URL(url).host;
+        const ok = await probeHive(url);
+        if (!cancelled) setSrv({ host, ok });
+      });
+    };
+    check();
+    const off = onHiveUrlChange(check);
+    return () => {
+      cancelled = true;
+      off();
+    };
   }, [configured]);
 
   const changeHeartbeat = async (freq: HeartbeatFreq) => {
@@ -99,11 +129,44 @@ export default function HiveFeedView({ config, lang }: { config: ConnectionConfi
   if (configured === null) return <div className="bm-status">…</div>;
   if (!configured) return <HiveOnboarding lang={lang} />;
   if (signedIn === null) return <div className="bm-status">…</div>;
-  if (!signedIn) return <div className="bm-status">{t(lang, "hiveSignInPrompt")}</div>;
-  if (error) return <div className="bm-status err">⚠ {error}</div>;
+
+  // Always-visible connection strip: server + health + account. This is the
+  // at-a-glance "is Hive actually working?" answer the tab was missing.
+  const statusStrip = (
+    <div className="hive-status" title={srv ? `${srv.host}` : undefined}>
+      <span className={`hive-dot ${srv === null ? "" : srv.ok ? "ok" : "err"}`} />
+      <span className="hive-status-host">{srv?.host ?? "…"}</span>
+      <span className="hive-status-state">
+        {srv === null
+          ? t(lang, "hive.status.checking")
+          : srv.ok
+            ? t(lang, "hive.status.connected")
+            : t(lang, "hive.status.unreachable")}
+      </span>
+      <span className="hive-status-me">
+        {signedIn && meName ? `🧑 ${meName}` : t(lang, "hive.status.signedOut")}
+      </span>
+    </div>
+  );
+
+  if (!signedIn)
+    return (
+      <div className="hive-view">
+        {statusStrip}
+        <div className="bm-status">{t(lang, "hiveSignInPrompt")}</div>
+      </div>
+    );
+  if (error)
+    return (
+      <div className="hive-view">
+        {statusStrip}
+        <div className="bm-status err">⚠ {error}</div>
+      </div>
+    );
 
   return (
     <div className="hive-view">
+      {statusStrip}
       <div className="hive-tabs">
         <button className={tab === "feed" ? "active" : ""} onClick={() => setTab("feed")}>{t(lang, "hiveTabFeed")}</button>
         <button className={tab === "activity" ? "active" : ""} onClick={openActivity}>
