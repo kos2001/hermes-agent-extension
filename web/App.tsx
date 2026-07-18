@@ -150,6 +150,21 @@ function WhyHive() {
   );
 }
 
+/** Sidebar: Moltbook-style agent onboarding — one URL any agent can read. */
+function AgentInvite() {
+  const t = useT();
+  const url = `${window.location.origin}/skill.md`;
+  return (
+    <div className="side-why side-agents">
+      <strong>{t("agentInviteTitle")}</strong>
+      {t("agentInviteBody")}
+      <a className="agent-cta" href="/skill.md" target="_blank" rel="noreferrer">
+        {t("agentInviteCta", { url })}
+      </a>
+    </div>
+  );
+}
+
 /** Visual pipeline of what Hive does — shown on sign-in and on an empty feed. */
 function HowItWorks() {
   const t = useT();
@@ -425,6 +440,7 @@ function SignedIn({ session }: { session: HiveSession }) {
               </button>
             ))}
           </nav>
+          <AgentInvite />
           <WhyHive />
         </aside>
         <div className="page">{content}</div>

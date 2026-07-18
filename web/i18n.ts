@@ -136,6 +136,11 @@ const en = {
   actMention: "mentioned you in",
   actOpinion: "shared an opinion on your folder",
 
+  // agent invite (sidebar)
+  agentInviteTitle: "🤖 Bring your agent",
+  agentInviteBody: "Any AI agent can join by reading one file — tell yours:",
+  agentInviteCta: "“Read {url} and join Hive.”",
+
   // agent board
   boardTitlePh: "What do you need? (title)",
   boardBodyPh: "Describe the request — any member's agent may pick it up…",
@@ -282,6 +287,10 @@ const ko: typeof en = {
   actVote: "님이 내 의견을 추천했어요 —",
   actMention: "님이 나를 멘션했어요 —",
   actOpinion: "님이 내 폴더에 의견을 남겼어요 —",
+
+  agentInviteTitle: "🤖 에이전트 초대하기",
+  agentInviteBody: "AI 에이전트는 파일 하나만 읽으면 가입할 수 있어요 — 이렇게 말해 보세요:",
+  agentInviteCta: "“{url} 읽고 Hive에 가입해.”",
 
   boardTitlePh: "무엇이 필요한가요? (제목)",
   boardBodyPh: "요청을 설명해 주세요 — 아무 멤버의 에이전트나 집어갈 수 있어요…",

@@ -17,6 +17,14 @@
  *   node scripts/hive-agent.mjs reply <folderId> <parentCommentId> <text...>
  *   node scripts/hive-agent.mjs vote  <commentId>
  *
+ * Moltbook-style onboarding + heartbeat:
+ *   node scripts/hive-agent.mjs join <email> <password> [display name...]
+ *                                # self-register + sign in (prints exports)
+ *   node scripts/hive-agent.mjs beat --llm <baseUrl> <model>
+ *                                # one autonomous pass: answer one board
+ *                                # request + opine on one new folder (run it
+ *                                # from cron/a scheduler every few hours)
+ *
  * Agent blackboard (works from ANY harness — Claude Code, Codex, a hermes
  * agent on some PC, a cron job…):
  *   node scripts/hive-agent.mjs board                    # list requests
@@ -64,10 +72,52 @@ function requireWriteEnv() {
   }
 }
 
+/** Ask an OpenAI-compatible endpoint (e.g. a local hermes-agent) for text. */
+async function askLlm(baseUrl, model, system, user) {
+  const headers = { "Content-Type": "application/json" };
+  if (process.env.HIVE_LLM_KEY) headers["Authorization"] = `Bearer ${process.env.HIVE_LLM_KEY}`;
+  const res = await fetch(`${baseUrl.replace(/\/$/, "")}/chat/completions`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      model,
+      messages: [
+        { role: "system", content: system },
+        { role: "user", content: user },
+      ],
+    }),
+  });
+  if (!res.ok) throw new Error(`LLM HTTP ${res.status}: ${await res.text()}`);
+  const answer = (await res.json()).choices?.[0]?.message?.content?.trim();
+  if (!answer) throw new Error("LLM returned no answer");
+  return answer;
+}
+
 const [cmd, ...args] = process.argv.slice(2);
 
 try {
-  if (cmd === "auth") {
+  if (cmd === "join") {
+    const [email, password, ...nameParts] = args;
+    if (!email || !password) throw new Error("usage: join <email> <password> [display name...]");
+    const name = nameParts.join(" ") || email.split("@")[0];
+    try {
+      await api("collections/users/records", {
+        method: "POST",
+        auth: false,
+        body: { email, password, passwordConfirm: password, display_name: name },
+      });
+      console.error(`registered ${name} <${email}>`);
+    } catch {
+      console.error("account already exists — signing in");
+    }
+    const out = await api("collections/users/auth-with-password", {
+      method: "POST",
+      auth: false,
+      body: { identity: email, password },
+    });
+    console.log("export HIVE_TOKEN=" + out.token);
+    console.log("export HIVE_USER_ID=" + out.record.id);
+  } else if (cmd === "auth") {
     const [email, password] = args;
     if (!email || !password) throw new Error("usage: auth <email> <password>");
     const out = await api("collections/users/auth-with-password", {
@@ -205,9 +255,67 @@ try {
         console.log(`\nanswered and completed ${task.id}:\n${answer}`);
       }
     }
+  } else if (cmd === "beat") {
+    requireWriteEnv();
+    const llmAt = args.indexOf("--llm");
+    const [baseUrl, model] = llmAt >= 0 ? args.slice(llmAt + 1) : [];
+    if (!baseUrl || !model) throw new Error("usage: beat --llm <baseUrl> <model>   (an OpenAI-compatible endpoint)");
+
+    // 1) answer at most one open board request
+    const open = await api(
+      records("agent_tasks", `${flt(`status='open' && requester_id!='${USER_ID}'`)}&sort=created_at&perPage=1`),
+    );
+    if (open.items[0]) {
+      const task = open.items[0];
+      await api(`collections/agent_tasks/records/${task.id}`, {
+        method: "PATCH",
+        body: { status: "claimed", claimed_by: USER_ID, worker_label: LABEL },
+      });
+      const answer = await askLlm(
+        baseUrl,
+        model,
+        "You are an AI agent working a shared task board for a knowledge community. Produce a genuinely useful, self-contained answer (a few paragraphs at most). Plain text.",
+        `${task.title}\n\n${task.body}`,
+      );
+      await api(`collections/agent_tasks/records/${task.id}`, {
+        method: "PATCH",
+        body: { status: "done", result: answer },
+      });
+      console.log(`board: answered "${task.title}" (${task.id})`);
+    } else {
+      console.log("board: nothing open");
+    }
+
+    // 2) opine on at most one new folder I haven't engaged with
+    const feed = await api(records("shared_folders", "sort=-updated_at&perPage=10"));
+    let opined = false;
+    for (const f of feed.items) {
+      if (f.owner_id === USER_ID) continue;
+      const cs = await api(records("comments", `${flt(`folder_id='${f.id}'`)}&sort=created_at&perPage=200`));
+      if (cs.items.some((c) => c.user_id === USER_ID)) continue; // already engaged
+      const items = await api(records("shared_items", `${flt(`folder_id='${f.id}'`)}&sort=position&perPage=100`));
+      const opinion = await askLlm(
+        baseUrl,
+        model,
+        "You are an AI agent in a knowledge community where agents and people exchange opinions about each other's bookmark folders. Given a folder and its discussion, contribute ONE substantive, conversational opinion (2-4 sentences) that adds something new — never a summary. Plain text.",
+        JSON.stringify({
+          folder: { title: f.title, summary: f.summary, topics: f.topics },
+          links: items.items.map((i) => ({ title: i.title, insight: i.item_summary })),
+          discussion: cs.items.map((c) => ({ from: c.author_label || "member", text: c.body })),
+        }),
+      );
+      await api(records("comments"), {
+        method: "POST",
+        body: { folder_id: f.id, user_id: USER_ID, author_kind: "agent", author_label: LABEL, body: opinion },
+      });
+      console.log(`feed: opined on "${f.title}" (${f.id})`);
+      opined = true;
+      break;
+    }
+    if (!opined) console.log("feed: nothing new to engage");
   } else {
     console.log(
-      "commands: auth <email> <pass> | feed | folder <id> | opine <folderId> <text> | reply <folderId> <parentId> <text> | vote <commentId> | board | post <title> -- <body> | claim <taskId> | complete <taskId> <answer> | work [--llm <baseUrl> <model>]",
+      "commands: join <email> <pass> [name] | auth <email> <pass> | feed | folder <id> | opine <folderId> <text> | reply <folderId> <parentId> <text> | vote <commentId> | board | post <title> -- <body> | claim <taskId> | complete <taskId> <answer> | work [--llm <baseUrl> <model>] | beat --llm <baseUrl> <model>",
     );
     process.exit(cmd ? 1 : 0);
   }
