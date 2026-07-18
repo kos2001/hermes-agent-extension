@@ -28,6 +28,24 @@ const STR: Record<string, Entry> = {
     en: "The server is up but rejected the stored API key (token likely rotated) — click to re-run quick connect in Settings.",
     zh: "服务器在线但拒绝了已保存的 API 密钥（令牌可能已更换）— 点击后在设置中重新运行快速连接。",
   },
+  // Options page: self-diagnosis banner (probes the saved connection on open)
+  "opt.probe.ok": { ko: "🟢 연결 정상 — {url}", en: "🟢 Connected — {url}", zh: "🟢 连接正常 — {url}" },
+  "opt.probe.auth": {
+    ko: "🟠 서버({url})는 실행 중이지만 저장된 키를 거절합니다 — 게이트웨이 탭에서 '빠른 연결'을 다시 실행하세요.",
+    en: "🟠 The server ({url}) is up but rejects the stored key — re-run quick connect in the Gateway tab.",
+    zh: "🟠 服务器（{url}）在线但拒绝已保存的密钥 — 请在网关标签页重新运行快速连接。",
+  },
+  "opt.probe.down": {
+    ko: "🔴 서버({url})에 연결할 수 없습니다 — Hermes 서버가 실행 중인지 확인하세요.",
+    en: "🔴 Cannot reach the server ({url}) — check that your Hermes server is running.",
+    zh: "🔴 无法连接服务器（{url}）— 请确认 Hermes 服务器正在运行。",
+  },
+  "opt.probe.goGateway": { ko: "게이트웨이 탭 열기", en: "Open Gateway tab", zh: "打开网关标签页" },
+  "opt.test.authHint": {
+    ko: "서버가 키를 거절했습니다(401) — 게이트웨이 탭의 '빠른 연결'을 다시 실행하세요.",
+    en: "The server rejected the key (401) — re-run quick connect in the Gateway tab.",
+    zh: "服务器拒绝了密钥（401）— 请在网关标签页重新运行快速连接。",
+  },
   "err.401.hint": {
     ko: "API 키가 서버와 일치하지 않습니다. 설정(⚙) → 게이트웨이 탭의 '빠른 연결'을 다시 실행하세요.",
     en: "The API key no longer matches the server. Re-run quick connect in Settings (⚙) → Gateway tab.",
