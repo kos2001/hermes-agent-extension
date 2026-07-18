@@ -3,6 +3,7 @@ import { assertHeadersLatin1, listModels, normaliseBaseUrl } from "@/lib/hermes-
 import { DEFAULT_CONFIG, type ConnectionConfig } from "@/lib/types";
 import { getProvider, OPENROUTER_HEADERS, PROVIDERS, type ProviderProfile } from "@/lib/providers";
 import { loadConfig, saveConfig } from "@/lib/storage";
+import { isLang, LANG_KEY, LANGS, t, type Lang } from "@/lib/i18n";
 
 type ProbeState =
   | { kind: "idle" }
@@ -16,6 +17,8 @@ export default function Options() {
   const [saved, setSaved] = useState(false);
   const [probe, setProbe] = useState<ProbeState>({ kind: "idle" });
   const [providerId, setProviderId] = useState<string>("");
+  const [lang, setLang] = useState<Lang>("ko");
+  const [tab, setTab] = useState<"connection" | "gateway" | "language">("connection");
 
   useEffect(() => {
     loadConfig().then((loaded) => {
@@ -27,7 +30,17 @@ export default function Options() {
       );
       if (match) setProviderId(match.id);
     });
+    chrome.storage.local.get(LANG_KEY).then((r) => {
+      if (isLang(r[LANG_KEY])) setLang(r[LANG_KEY]);
+    });
   }, []);
+
+  // Persist the UI language immediately; the side panel picks it up live via its
+  // storage onChanged listener.
+  const changeLang = (next: Lang) => {
+    setLang(next);
+    void chrome.storage.local.set({ [LANG_KEY]: next });
+  };
 
   const setField = <K extends keyof ConnectionConfig>(key: K, value: ConnectionConfig[K]) => {
     setSaved(false);
@@ -48,6 +61,66 @@ export default function Options() {
       model: p.models?.[0] ?? prev.model,
       headers,
     }));
+  };
+
+  // One-tap: point the connection at the local Hermes gateway. This is how
+  // OAuth-only providers (Codex, Qwen, etc.) are used — the CLI holds the auth
+  // and the extension just talks to the gateway.
+  const useGateway = () => {
+    setProviderId("");
+    setSaved(false);
+    setHeadersText("{}");
+    setCfg((prev) => ({ ...prev, baseUrl: "http://127.0.0.1:8642", model: "hermes-agent", headers: {} }));
+  };
+
+  // Gateway setup helpers: the extension can't read ~/.hermes (sandbox), so we
+  // give the user the exact line / command to copy. Works on any machine.
+  const [copiedKey, setCopiedKey] = useState("");
+  // Default the OS toggle from the browser; the user can flip it.
+  const [osKind, setOsKind] = useState<"unix" | "win">(() =>
+    /win/i.test(navigator.userAgent) ? "win" : "unix",
+  );
+  const extId = chrome.runtime?.id ?? "";
+  // One-line setup: register this extension's origin in the gateway CORS allow
+  // list and restart — via the official `hermes config set` (idempotent). `&&`
+  // on POSIX shells, `;` for PowerShell.
+  const corsCmd =
+    `hermes config set platforms.api_server.extra.cors_origins "chrome-extension://${extId}"` +
+    (osKind === "win" ? "; hermes gateway restart" : " && hermes gateway restart");
+  // One-liner that prints the full connection string ("baseUrl model token")
+  // from the local Hermes config — the user runs it and pastes the output below.
+  const connectCmd =
+    osKind === "win"
+      ? "$f=$false;$t='';foreach($l in Get-Content \"$env:USERPROFILE\\.hermes\\config.yaml\"){if($l -match '^api_server:'){$f=$true};if($f -and $l -match 'token:'){$t=($l -replace '.*token:\\s*','').Trim();break}};\"http://127.0.0.1:8642 hermes-agent $t\""
+      : "echo \"http://127.0.0.1:8642 hermes-agent $(awk '/^api_server:/{f=1} f&&/token:/{print $2; exit}' ~/.hermes/config.yaml)\"";
+  const [connectStr, setConnectStr] = useState("");
+  const [connectMsg, setConnectMsg] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
+  const applyConnect = () => {
+    const parts = connectStr.trim().split(/\s+/);
+    if (parts.length < 3 || !/^https?:\/\//.test(parts[0])) {
+      setConnectMsg({ kind: "err", text: t(lang, "opt.connect.err") });
+      return;
+    }
+    const [baseUrl, model, token] = parts;
+    const next: ConnectionConfig = { ...cfg, baseUrl, model, apiKey: token, headers: {} };
+    setCfg(next);
+    setHeadersText("{}");
+    setProviderId("");
+    void saveConfig(next);
+    setSaved(true);
+    setConnectStr("");
+    setConnectMsg({ kind: "ok", text: t(lang, "opt.connect.ok") });
+  };
+  const copy = (text: string, key: string) => {
+    navigator.clipboard
+      .writeText(text)
+      .then(() => {
+        setCopiedKey(key);
+        setTimeout(() => setCopiedKey(""), 1500);
+      })
+      .catch(() => {
+        /* clipboard blocked — the text is still visible to copy manually */
+      });
   };
 
   const provider: ProviderProfile | undefined = getProvider(providerId);
@@ -103,10 +176,43 @@ export default function Options() {
 
   return (
     <div className="wrap">
-      <h1>Hermes Agent — Settings</h1>
+      <h1>Hermes Agent Chrome — Settings</h1>
       <div className="subtitle">
         Configure the connection to OpenRouter or your local Hermes server.
       </div>
+
+      <div className="tabs">
+        <button type="button" className={`tab${tab === "connection" ? " active" : ""}`} onClick={() => setTab("connection")}>
+          {t(lang, "opt.sec.connection")}
+        </button>
+        <button type="button" className={`tab${tab === "gateway" ? " active" : ""}`} onClick={() => setTab("gateway")}>
+          {t(lang, "opt.sec.gateway")}
+        </button>
+        <button type="button" className={`tab${tab === "language" ? " active" : ""}`} onClick={() => setTab("language")}>
+          {t(lang, "langName")}
+        </button>
+      </div>
+
+      {tab === "language" && (
+      <section className="section">
+        <div className="lang-options">
+          {LANGS.map((l) => (
+            <button
+              key={l.code}
+              type="button"
+              className={`lang-opt${lang === l.code ? " active" : ""}`}
+              onClick={() => changeLang(l.code)}
+              title={l.name}
+            >
+              {l.label} · {l.name}
+            </button>
+          ))}
+        </div>
+      </section>
+      )}
+
+      {tab === "connection" && (
+      <section className="section">
 
       <label className="field">
         <label>Provider</label>
@@ -127,9 +233,14 @@ export default function Options() {
           </optgroup>
         </select>
         {provider?.compat === "special" && (
-          <p className="note err" style={{ marginTop: 6 }}>
-            ⚠ {provider.note ?? "Not directly usable with an API key in this extension."}
-          </p>
+          <div className="note err" style={{ marginTop: 6 }}>
+            <p style={{ margin: 0 }}>
+              ⚠ {provider.note ?? "Not directly usable with an API key in this extension."}
+            </p>
+            <button className="secondary" onClick={useGateway} style={{ marginTop: 8 }}>
+              {t(lang, "opt.switchGateway")}
+            </button>
+          </div>
         )}
         {provider?.compat === "openai" && provider.note && (
           <p className="note" style={{ marginTop: 6 }}>
@@ -150,6 +261,14 @@ export default function Options() {
           </p>
         )}
       </label>
+
+      {providerId === "openai-codex" && (
+        <div className="field">
+          <label>{t(lang, "opt.codex.title")}</label>
+          <p className="note" style={{ marginBottom: 6 }}>{t(lang, "opt.codex.body")}</p>
+          <pre className="cmd">hermes auth add openai-codex</pre>
+        </div>
+      )}
 
       <label className="field">
         <label>Base URL</label>
@@ -210,9 +329,19 @@ export default function Options() {
 
       <div className="row">
         <button onClick={save}>Save</button>
-        <button className="secondary" onClick={testConnection}>Test connection</button>
+        <button
+          className="secondary"
+          onClick={testConnection}
+          disabled={provider?.compat === "special"}
+          title={provider?.compat === "special" ? t(lang, "opt.testGatewayFirst") : undefined}
+        >
+          Test connection
+        </button>
         {saved && <span className="note ok">Saved.</span>}
       </div>
+      {provider?.compat === "special" && (
+        <p className="note err" style={{ marginTop: 6 }}>{t(lang, "opt.testGatewayFirst")}</p>
+      )}
 
       {probe.kind === "probing" && <p className="note">Testing…</p>}
       {probe.kind === "err" && <p className="note err">{probe.message}</p>}
@@ -234,6 +363,66 @@ export default function Options() {
             </div>
           )}
         </div>
+      )}
+      </section>
+      )}
+
+      {tab === "gateway" && (
+      <section className="section">
+        <p className="section-note">{t(lang, "opt.sec.gateway.body")}</p>
+
+        <div className="lang-options" style={{ marginBottom: 14 }}>
+          <button
+            type="button"
+            className={`lang-opt${osKind === "unix" ? " active" : ""}`}
+            onClick={() => setOsKind("unix")}
+          >
+            macOS / Linux
+          </button>
+          <button
+            type="button"
+            className={`lang-opt${osKind === "win" ? " active" : ""}`}
+            onClick={() => setOsKind("win")}
+          >
+            Windows
+          </button>
+        </div>
+
+        <div className="field">
+          <label>1. {t(lang, "opt.cors.title")}</label>
+          <p className="note" style={{ marginBottom: 6 }}>{t(lang, "opt.cors.body")}</p>
+          <pre className="cmd">{corsCmd}</pre>
+          <div className="row" style={{ marginTop: 6 }}>
+            <button className="secondary" onClick={() => copy(corsCmd, "cors")}>
+              {copiedKey === "cors" ? t(lang, "opt.cors.copied") : t(lang, "opt.cors.copy")}
+            </button>
+          </div>
+        </div>
+
+        <div className="field">
+          <label>2. {t(lang, "opt.connect.title")}</label>
+          <p className="note" style={{ marginBottom: 6 }}>{t(lang, "opt.connect.body")}</p>
+          <pre className="cmd">{connectCmd}</pre>
+          <div className="row" style={{ marginTop: 6, marginBottom: 6 }}>
+            <button className="secondary" onClick={() => copy(connectCmd, "connect")}>
+              {copiedKey === "connect" ? t(lang, "opt.cors.copied") : t(lang, "opt.cors.copy")}
+            </button>
+          </div>
+          <input
+            type="text"
+            value={connectStr}
+            placeholder={t(lang, "opt.connect.placeholder")}
+            onChange={(e) => {
+              setConnectStr(e.target.value);
+              setConnectMsg(null);
+            }}
+          />
+          <div className="row" style={{ marginTop: 6 }}>
+            <button onClick={applyConnect} disabled={!connectStr.trim()}>{t(lang, "opt.connect.apply")}</button>
+            {connectMsg && <span className={`note ${connectMsg.kind === "ok" ? "ok" : "err"}`}>{connectMsg.text}</span>}
+          </div>
+        </div>
+      </section>
       )}
     </div>
   );

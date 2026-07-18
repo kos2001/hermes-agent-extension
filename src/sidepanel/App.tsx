@@ -1,5 +1,5 @@
 import { lazy, memo, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { streamChat } from "@/lib/hermes-client";
+import { isHermesEndpoint, streamChat } from "@/lib/hermes-client";
 import { renderMarkdown } from "@/lib/markdown";
 import type { ChatMessage, ConnectionConfig, StoredMessage } from "@/lib/types";
 import { loadConfig, newMessage } from "@/lib/storage";
@@ -11,9 +11,10 @@ import {
 } from "@/lib/page-context";
 import { restoreOriginals, translatePage } from "@/lib/translator";
 import { buildSkillMessages, PROMPT_SKILLS, type PromptSkill } from "@/lib/skills";
-import { isLang, LANG_KEY, LANGS, replyLanguageInstruction, t, type Lang } from "@/lib/i18n";
+import { isLang, LANG_KEY, replyLanguageInstruction, t, type Lang } from "@/lib/i18n";
 import { isEnterSubmit } from "@/lib/keyboard";
 import { HiveSignIn } from "./HiveSignIn";
+import { HIVE_ENABLED } from "@/lib/cloud/client";
 // Lazy-loaded: keep the bookmark/market views and their AI modules out of the
 // initial (chat) bundle — they load only when the user opens those views.
 const BookmarksView = lazy(() => import("./BookmarksView"));
@@ -39,6 +40,18 @@ type HealthState = "unknown" | "online" | "offline";
 type Theme = "dark" | "light";
 
 const THEME_KEY = "hermes.theme";
+
+// Server-side Hermes skills surfaced as slash commands when connected to the
+// gateway. Selecting one prefills the input so the user finishes the request;
+// the agent then auto-invokes the named skill.
+const SERVER_SKILLS: { name: string; labelKey: string }[] = [
+  { name: "arxiv", labelKey: "slash.srv.arxiv" },
+  { name: "github", labelKey: "slash.srv.github" },
+  { name: "research", labelKey: "slash.srv.research" },
+  { name: "graphify", labelKey: "slash.srv.graphify" },
+  { name: "web", labelKey: "slash.srv.web" },
+  { name: "data-science", labelKey: "slash.srv.dataScience" },
+];
 
 /** Apply the theme to the document root so the CSS variables switch. */
 function applyTheme(theme: Theme) {
@@ -76,17 +89,16 @@ export default function App() {
     applyTheme(next);
     void chrome.storage.local.set({ [THEME_KEY]: next });
   }, []);
+  // UI language is loaded from storage and kept in sync via the storage
+  // onChanged listener below; it's *set* in the options page, not here.
   const [lang, setLangState] = useState<Lang>("ko");
-  const setLang = useCallback((next: Lang) => {
-    setLangState(next);
-    void chrome.storage.local.set({ [LANG_KEY]: next });
-  }, []);
   const [translateBusy, setTranslateBusy] = useState(false);
   const [translateProgress, setTranslateProgress] = useState<{ done: number; total: number } | null>(null);
   const [translateError, setTranslateError] = useState<string | null>(null);
   const translateAbortRef = useRef<AbortController | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
 
   // Refresh page context when tab changes / activates.
   useEffect(() => {
@@ -366,6 +378,7 @@ export default function App() {
       });
       if (result.chunks === 0) setTranslateError("No translatable text found");
     } catch (e) {
+      if (controller.signal.aborted) return; // user/unmount cancelled — not an error
       setTranslateError(e instanceof Error ? e.message : String(e));
     } finally {
       translateAbortRef.current = null;
@@ -381,7 +394,73 @@ export default function App() {
     setTranslateError(null);
   }, []);
 
+  // ── Slash commands ──────────────────────────────────────────────────
+  // Typing "/" in the chat box opens a filterable menu of the same actions
+  // available as buttons (skills, translate, new chat, view switches). The
+  // command names are language-neutral tokens so they're typeable in any UI lang.
+  const [slashIdx, setSlashIdx] = useState(0);
+  // Server (Hermes) skills only make sense against the local gateway / a Hermes
+  // endpoint — hide them when pointed at a plain cloud provider.
+  const hermesConnected = !!config && isHermesEndpoint(config.baseUrl);
+  const slashCommands = useMemo<{ name: string; label: string; run?: () => void; insert?: string }[]>(
+    () => [
+      ...PROMPT_SKILLS.map((s) => ({ name: s.id, label: t(lang, `skill.${s.id}`), run: () => void runPromptSkill(s) })),
+      { name: "links", label: t(lang, "skill.links"), run: () => void runLocalSkill() },
+      { name: "translate", label: t(lang, "translate"), run: () => void runTranslate() },
+      { name: "new", label: t(lang, "newChat"), run: () => newChat() },
+      { name: "bookmarks", label: t(lang, "bookmarks"), run: () => setView("bookmarks") },
+      { name: "market", label: t(lang, "market"), run: () => setView("market") },
+      ...(hermesConnected
+        ? SERVER_SKILLS.map((s) => ({
+            name: s.name,
+            label: t(lang, s.labelKey),
+            insert: t(lang, "slash.skillPrefix").replace("{skill}", s.name),
+          }))
+        : []),
+    ],
+    [lang, hermesConnected, runPromptSkill, runLocalSkill, runTranslate, newChat],
+  );
+  const slashQuery = input.startsWith("/") ? input.slice(1).toLowerCase() : null;
+  const slashOpen = view === "chat" && !streaming && slashQuery !== null && !/\s/.test(slashQuery);
+  const slashMatches = slashOpen ? slashCommands.filter((c) => c.name.startsWith(slashQuery ?? "")) : [];
+  const slashSel = Math.min(slashIdx, Math.max(0, slashMatches.length - 1));
+  const runSlash = (cmd: { run?: () => void; insert?: string }) => {
+    setSlashIdx(0);
+    // Server-skill commands prefill the input so the user completes the request;
+    // action commands run immediately and clear the box.
+    if (cmd.insert !== undefined) {
+      setInput(cmd.insert);
+      requestAnimationFrame(() => inputRef.current?.focus());
+      return;
+    }
+    setInput("");
+    cmd.run?.();
+  };
+
   const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    // Slash menu keyboard handling takes precedence over send while it's open.
+    if (slashOpen && slashMatches.length > 0) {
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        setSlashIdx((slashSel + 1) % slashMatches.length);
+        return;
+      }
+      if (e.key === "ArrowUp") {
+        e.preventDefault();
+        setSlashIdx((slashSel - 1 + slashMatches.length) % slashMatches.length);
+        return;
+      }
+      if (e.key === "Escape") {
+        e.preventDefault();
+        setInput("");
+        return;
+      }
+      if ((e.key === "Enter" || e.key === "Tab") && !e.nativeEvent.isComposing) {
+        e.preventDefault();
+        runSlash(slashMatches[slashSel]);
+        return;
+      }
+    }
     // `isComposing` guards against IME (Korean/Japanese/Chinese) — pressing
     // Enter to commit a composing character must not submit, or the last
     // character gets duplicated.
@@ -395,22 +474,11 @@ export default function App() {
 
   return (
     <div className="app">
-      {/* Top row: online status + language selection + settings-related controls. */}
+      {/* Top row: online status + settings-related controls. UI language is set
+          in the options page (Hermes Agent Chrome — Settings). */}
       <div className="topbar">
         <span className={`status ${health}`} title={t(lang, "statusTitle")}>
           {health === "online" ? t(lang, "online") : health === "offline" ? t(lang, "offline") : "…"}
-        </span>
-        <span className="lang-switch">
-          {LANGS.map((l) => (
-            <button
-              key={l.code}
-              className={`lang-btn${lang === l.code ? " active" : ""}`}
-              onClick={() => setLang(l.code)}
-              title={t(lang, "switchLang").replace("{name}", l.name)}
-            >
-              {l.label}
-            </button>
-          ))}
         </span>
         <button
           className="icon-btn theme"
@@ -440,13 +508,15 @@ export default function App() {
         >
           🔖
         </button>
-        <button
-          className={`icon-btn hive${view === "hive" ? " active" : ""}`}
-          onClick={() => setView((v) => (v === "hive" ? "chat" : "hive"))}
-          title={view === "hive" ? t(lang, "backToChat") : t(lang, "hiveFeedTitle")}
-        >
-          🐝
-        </button>
+        {HIVE_ENABLED && (
+          <button
+            className={`icon-btn hive${view === "hive" ? " active" : ""}`}
+            onClick={() => setView((v) => (v === "hive" ? "chat" : "hive"))}
+            title={view === "hive" ? t(lang, "backToChat") : t(lang, "hiveFeedTitle")}
+          >
+            🐝
+          </button>
+        )}
         <button
           className="icon-btn new-chat"
           onClick={newChat}
@@ -455,7 +525,7 @@ export default function App() {
         >
           ✎
         </button>
-        <HiveSignIn lang={lang} />
+        {HIVE_ENABLED && <HiveSignIn lang={lang} />}
         <button className="icon-btn settings" onClick={openOptions} title={t(lang, "settings")}>⚙</button>
       </div>
 
@@ -477,23 +547,25 @@ export default function App() {
           <option>French</option>
           <option>German</option>
         </select>
-        {translateBusy ? (
-          <button className="tx-go" onClick={() => translateAbortRef.current?.abort()} title={t(lang, "stop")}>
-            {t(lang, "stop")}
+        <span className="tx-actions">
+          {translateBusy ? (
+            <button className="tx-go" onClick={() => translateAbortRef.current?.abort()} title={t(lang, "stop")}>
+              {t(lang, "stop")}
+            </button>
+          ) : (
+            <button className="tx-go" onClick={() => void runTranslate()} disabled={!config} title={t(lang, "translateTitle")}>
+              {t(lang, "translate")}
+            </button>
+          )}
+          <button
+            className="tx-restore secondary"
+            onClick={() => void runRestore()}
+            disabled={translateBusy}
+            title={t(lang, "restoreTitle")}
+          >
+            {t(lang, "restore")}
           </button>
-        ) : (
-          <button className="tx-go" onClick={() => void runTranslate()} disabled={!config} title={t(lang, "translateTitle")}>
-            {t(lang, "translate")}
-          </button>
-        )}
-        <button
-          className="tx-restore secondary"
-          onClick={() => void runRestore()}
-          disabled={translateBusy}
-          title={t(lang, "restoreTitle")}
-        >
-          {t(lang, "restore")}
-        </button>
+        </span>
       </div>
       {(translateProgress || translateError) && (
         <div className={`tx-status ${translateError ? "err" : ""}`}>
@@ -505,7 +577,7 @@ export default function App() {
         </div>
       )}
 
-      {view === "hive" ? (
+      {HIVE_ENABLED && view === "hive" ? (
         <Suspense fallback={<div className="bm-status">…</div>}>
           <HiveFeedView config={config} lang={lang} />
         </Suspense>
@@ -569,12 +641,34 @@ export default function App() {
         })}
       </div>
 
+      {slashOpen && slashMatches.length > 0 && (
+        <div className="slash-menu" role="listbox" aria-label={t(lang, "slash.title")}>
+          {slashMatches.map((c, i) => (
+            <button
+              key={c.name}
+              type="button"
+              role="option"
+              aria-selected={i === slashSel}
+              className={`slash-item${i === slashSel ? " active" : ""}`}
+              onMouseEnter={() => setSlashIdx(i)}
+              onClick={() => runSlash(c)}
+            >
+              <span className="slash-cmd">/{c.name}</span>
+              <span className="slash-label">{c.label}</span>
+            </button>
+          ))}
+        </div>
+      )}
       <div className="input-row">
         <textarea
+          ref={inputRef}
           value={input}
-          onChange={(e) => setInput(e.target.value)}
+          onChange={(e) => {
+            setInput(e.target.value);
+            setSlashIdx(0);
+          }}
           onKeyDown={onKeyDown}
-          placeholder=""
+          placeholder={t(lang, "slashHint")}
           rows={1}
           disabled={streaming || !config}
         />

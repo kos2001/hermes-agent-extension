@@ -3,6 +3,8 @@ import type { BookmarkNode } from "./bookmarks";
 import {
   alarmSpec,
   bookmarksInFolder,
+  buildSynthesisMessages,
+  DEFAULT_SYNTHESIS_INSTRUCTION,
   htmlToText,
   joinDownloadPath,
   listFolders,
@@ -11,11 +13,41 @@ import {
   reportFilename,
   reportToMarkdown,
   sanitizePathSegment,
+  type SiteSummary,
 } from "./market-report";
 
 function node(id: string, title: string, url: string | undefined, parentId?: string): BookmarkNode {
   return { id, title, url, parentId, parentTitle: "", dateAdded: 0, index: 0 };
 }
+
+describe("buildSynthesisMessages", () => {
+  const sites: SiteSummary[] = [
+    { url: "https://a.com", title: "A", summary: "- point a" },
+    { url: "https://b.com", title: "B", summary: "", error: "fetch failed" },
+  ];
+
+  it("uses the built-in analyst prompt when no instruction is given", () => {
+    const msgs = buildSynthesisMessages("Tech", sites, "Korean");
+    expect(msgs[0].role).toBe("system");
+    expect(msgs[0].content).toContain(DEFAULT_SYNTHESIS_INSTRUCTION);
+    expect(msgs[0].content).toContain("Korean");
+    // Only the non-errored site is included in the body.
+    expect(msgs[1].content).toContain("A");
+    expect(msgs[1].content).not.toContain("fetch failed");
+  });
+
+  it("uses a custom instruction when provided, keeping the language directive", () => {
+    const msgs = buildSynthesisMessages("Tech", sites, "English", "Focus on risks for investors.");
+    expect(msgs[0].content).toContain("Focus on risks for investors.");
+    expect(msgs[0].content).not.toContain(DEFAULT_SYNTHESIS_INSTRUCTION);
+    expect(msgs[0].content).toContain("English");
+  });
+
+  it("falls back to the default when the instruction is blank", () => {
+    const msgs = buildSynthesisMessages("Tech", sites, "English", "   ");
+    expect(msgs[0].content).toContain(DEFAULT_SYNTHESIS_INSTRUCTION);
+  });
+});
 
 describe("htmlToText", () => {
   it("strips scripts, styles, tags and collapses whitespace", () => {

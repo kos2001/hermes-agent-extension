@@ -25,6 +25,42 @@ html, body { margin: 0; background: var(--bg); color: var(--text); }
 h1 { font-size: 18px; margin: 0 0 4px; }
 .subtitle { color: var(--muted); font-size: 12px; margin-bottom: 20px; }
 
+/* Settings tabs. */
+.tabs {
+  display: flex;
+  gap: 4px;
+  border-bottom: 1px solid var(--border);
+  margin: 20px 0 4px;
+}
+.tab {
+  background: transparent;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  margin-bottom: -1px;
+  padding: 8px 12px;
+  color: var(--muted);
+  font-weight: 500;
+  font-size: 13px;
+  cursor: pointer;
+}
+.tab:hover { color: var(--text); }
+.tab.active { color: var(--text); border-bottom-color: var(--accent); }
+
+/* Grouped settings sections (one shown per tab). */
+.section { margin-top: 20px; }
+.section > h2 {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  margin: 0 0 14px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.section-note { font-size: 12px; color: var(--muted); margin: -6px 0 14px; }
+
 .field { display: block; margin-bottom: 16px; }
 .field label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 4px; }
 .field input, .field textarea {
@@ -53,6 +89,32 @@ button {
 }
 button.secondary { background: var(--panel-2); color: var(--text); border: 1px solid var(--border); }
 button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* UI-language segmented control. */
+.lang-options { display: flex; gap: 8px; flex-wrap: wrap; }
+.lang-opt {
+  background: var(--panel-2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  font-weight: 500;
+  padding: 7px 12px;
+}
+.lang-opt:hover { border-color: var(--accent); }
+.lang-opt.active { background: var(--accent); color: #0b0e16; border-color: var(--accent); font-weight: 600; }
+
+.cmd {
+  margin: 0;
+  padding: 8px 10px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  color: var(--text);
+  user-select: all;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
 
 .note { font-size: 12px; color: var(--muted); }
 .note.ok { color: var(--ok); }

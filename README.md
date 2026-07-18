@@ -1,4 +1,4 @@
-# Hermes Agent — Chrome Extension
+# Hermes Agent Chrome
 
 Chrome MV3 client for the [Hermes Agent](https://github.com/NousResearch/hermes-agent)
 and any OpenAI-compatible chat-completions endpoint. Provides a side-panel chat,
@@ -21,6 +21,16 @@ chat-completions client.
   selection, with a one-line progress row.
 - **Full-page translation** — translate the active tab's visible text in place
   (Stop button + per-chunk timeout; JSON-mode requests with fallback).
+- **Bookmark organizer** — find duplicates (canonical-URL + AI content-level
+  dedup), detect dead links, flag junk, and sort bookmarks into your existing
+  folders — every change previewed and opt-in before it is applied.
+- **Market reports** — pick a bookmark folder; each site is fetched and
+  summarized, then synthesized into an analyst report (custom prompts,
+  scheduling via `chrome.alarms`, auto-download). Trend/summary charts are
+  dependency-free inline SVG/CSS — no chart library is shipped.
+- **Slash commands & bilingual UI** — `/` in the chat box opens a command menu
+  (skills, translate, views, server-side Hermes skills); UI in Korean
+  (default), English, or Chinese.
 - **Provider registry** — pick from the providers the Hermes CLI knows about
   (OpenRouter, OpenAI, Nous, DeepSeek, Gemini, Z.AI/GLM, Kimi, NVIDIA, Novita,
   GMI, HuggingFace, Alibaba, Groq-style gateways, local LM Studio / Hermes, …).
@@ -81,7 +91,7 @@ long-lived port to the SW, which runs the model and streams chunks/progress back
 npm install          # or: pnpm install
 npm run dev          # vite dev — produces dist/ with HMR
 npm run build        # type-check (tsc --noEmit) + production build
-npm test             # vitest (sse-parser, hermes-client, markdown)
+npm test             # vitest — all lib/ suites (parser, clients, bookmarks, market, cloud)
 ```
 
 Then in Chrome:
@@ -112,6 +122,11 @@ The manifest requests broad host access (`host_permissions: http://*/*`,
 on any site without a separate runtime grant.
 
 ## Hive (cloud) — operator setup (one time)
+
+> **Currently disabled by default**: every Hive entry point (feed icon,
+> sign-in, share-to-Hive) is gated behind the `HIVE_ENABLED` flag in
+> `src/lib/cloud/client.ts`, which ships as `false`. Flip it to `true` and
+> rebuild to enable the features below.
 
 "Hive" is the collaborative layer: members sign in and publish summarized
 bookmark folders to a shared feed. Auth is **email + password** — the first
@@ -157,7 +172,7 @@ npm run dev:web      # vite dev server (http://localhost:5180)
 npm run build:web    # production build → dist-web/  (deploy to any static host)
 ```
 
-No redirect-URL registration is needed (email codes don't redirect).
+No redirect-URL registration is needed (password sign-in has no redirects).
 
 ### Inviting agents, Moltbook-style
 
@@ -200,8 +215,8 @@ SPA needs a catch-all rewrite to `index.html`.
 ```
 
 Set `VITE_POCKETBASE_URL` as build-time env on the host (or build locally and
-upload `dist-web/`). Email codes don't need redirect URLs, so no backend change
-is required after deploying.
+upload `dist-web/`). Password sign-in needs no redirect URLs, so no backend
+change is required after deploying.
 
 Design + plan docs live under `docs/superpowers/`
 (`specs/2026-05-31-collective-bookmarks-platform-design.md`,
@@ -210,7 +225,8 @@ C (feed web app), and D (collective-intelligence features) build on this layer.
 
 ## Tests
 
-`npm test` runs Node/vitest suites: SSE parsing, the HTTP client helpers
-(`joinApi`, header validation, Hermes-endpoint detection), and the Markdown
-renderer (incl. tables, nested lists, and XSS-escaping). Browser-runtime UI is
-verified by loading the unpacked `dist/` extension.
+`npm test` runs the Node/vitest suites covering `src/lib/`: SSE parsing, the
+HTTP client helpers (`joinApi`, header validation, Hermes-endpoint detection),
+the Markdown renderer (incl. tables, nested lists, and XSS-escaping), bookmark
+dedup/cleanup parsing, market-report helpers, and the Hive cloud layer.
+Browser-runtime UI is verified by loading the unpacked `dist/` extension.
