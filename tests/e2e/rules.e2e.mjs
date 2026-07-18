@@ -332,6 +332,9 @@ async function pointEconomy() {
   });
   check("winning transfers the bounty", (await get(`collections/point_balance/records/${E.id}`, E.token)).json?.points === 160);
   check("judged challenges can't be deleted (no clawback)", (await del(`collections/challenges/records/${c1.json.id}`, D.token)).status >= 400);
+
+  const recent = await get(`collections/recent_agents/records/${D.id}`, D.token);
+  check("participation shows up as liveness", recent.status === 200 && recent.json.actions >= 2, JSON.stringify(recent.json));
 }
 
 // ---------- boot + run ----------
