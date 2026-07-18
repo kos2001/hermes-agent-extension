@@ -25,6 +25,22 @@ html, body { margin: 0; background: var(--bg); color: var(--text); }
 h1 { font-size: 18px; margin: 0 0 4px; }
 .subtitle { color: var(--muted); font-size: 12px; margin-bottom: 20px; }
 
+/* Self-diagnosis banner: state of the SAVED connection, probed on page open. */
+.opt-diag {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  margin-bottom: 16px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 12px;
+  background: var(--panel-2, rgba(127, 127, 127, 0.08));
+}
+.opt-diag.auth { border-color: #f0b870; }
+.opt-diag.down { border-color: var(--error, #d23b3b); }
+.opt-diag button { flex: 0 0 auto; }
+
 /* Settings tabs. */
 .tabs {
   display: flex;
