@@ -1,5 +1,12 @@
 import { useEffect, useState } from "react";
-import { assertHeadersLatin1, listModels, normaliseBaseUrl } from "@/lib/hermes-client";
+import {
+  assertHeadersLatin1,
+  HermesError,
+  listModels,
+  normaliseBaseUrl,
+  probeHealth,
+  type HealthState,
+} from "@/lib/hermes-client";
 import { DEFAULT_CONFIG, type ConnectionConfig } from "@/lib/types";
 import { getProvider, OPENROUTER_HEADERS, PROVIDERS, type ProviderProfile } from "@/lib/providers";
 import { loadConfig, saveConfig } from "@/lib/storage";
@@ -26,7 +33,20 @@ export default function Options() {
   const [probe, setProbe] = useState<ProbeState>({ kind: "idle" });
   const [providerId, setProviderId] = useState<string>("");
   const [lang, setLang] = useState<Lang>("ko");
-  const [tab, setTab] = useState<"connection" | "gateway" | "hive" | "language">("connection");
+  // #gateway / #hive / #language deep-links (e.g. the "키 오류" chip lands here).
+  const [tab, setTab] = useState<"connection" | "gateway" | "hive" | "language">(() => {
+    const h = location.hash.replace("#", "");
+    return h === "gateway" || h === "hive" || h === "language" ? h : "connection";
+  });
+
+  // Self-diagnosis on open: probe the SAVED connection so the page tells the
+  // user what state they're in before they touch anything.
+  const [diag, setDiag] = useState<{ state: HealthState; url: string } | null>(null);
+  useEffect(() => {
+    void loadConfig().then(async (saved) =>
+      setDiag({ state: await probeHealth(saved), url: saved.baseUrl }),
+    );
+  }, []);
 
   // Hive server (runtime URL — see lib/cloud/config.ts and the hive-easy-setup spec).
   const [hiveUrl, setHiveUrl] = useState<string | null>(null);
@@ -206,7 +226,12 @@ export default function Options() {
       setProbe({ kind: "ok", models: models.map((m) => m.id) });
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
-      setProbe({ kind: "err", message: `Cannot reach ${test.baseUrl} — ${msg}` });
+      // A 401/403 is not "unreachable" — say what it is and how to fix it.
+      const rejected = e instanceof HermesError && (e.status === 401 || e.status === 403);
+      setProbe({
+        kind: "err",
+        message: rejected ? t(lang, "opt.test.authHint") : `Cannot reach ${test.baseUrl} — ${msg}`,
+      });
     }
   };
 
@@ -214,6 +239,20 @@ export default function Options() {
     <div className="wrap">
       <h1>Hermes Agent Chrome — Settings</h1>
       <div className="subtitle">{t(lang, "opt.subtitle")}</div>
+
+      {diag && (
+        <div className={`opt-diag ${diag.state}`}>
+          {t(lang, `opt.probe.${diag.state === "ok" ? "ok" : diag.state === "auth" ? "auth" : "down"}`).replace(
+            "{url}",
+            diag.url,
+          )}
+          {diag.state === "auth" && tab !== "gateway" && (
+            <button className="secondary" onClick={() => setTab("gateway")}>
+              {t(lang, "opt.probe.goGateway")}
+            </button>
+          )}
+        </div>
+      )}
 
       <div className="tabs">
         <button type="button" className={`tab${tab === "connection" ? " active" : ""}`} onClick={() => setTab("connection")}>

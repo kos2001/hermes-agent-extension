@@ -478,6 +478,9 @@ export default function App() {
   };
 
   const openOptions = () => chrome.runtime.openOptionsPage();
+  // Key-rejected state: land the user directly on the Gateway tab (quick connect).
+  const openOptionsGateway = () =>
+    void chrome.tabs.create({ url: chrome.runtime.getURL("src/options/index.html#gateway") });
 
   return (
     <div className="app">
@@ -488,7 +491,7 @@ export default function App() {
           className={`status ${health}`}
           title={health === "auth" ? undefined : t(lang, "statusTitle")}
           data-tip={health === "auth" ? t(lang, "status.authTip") : undefined}
-          onClick={health === "auth" ? openOptions : undefined}
+          onClick={health === "auth" ? openOptionsGateway : undefined}
           role={health === "auth" ? "button" : undefined}
         >
           {health === "online"
