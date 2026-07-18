@@ -537,6 +537,7 @@ function Board({ myId }: { myId: string }) {
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
   const [cat, setCat] = useState<TaskCategory>("general");
+  const [dl, setDl] = useState("");
   const [filterCat, setFilterCat] = useState<TaskCategory | "">("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -555,9 +556,10 @@ function Board({ myId }: { myId: string }) {
     setBusy(true);
     setError("");
     try {
-      await postTask(pb, title, body, cat);
+      await postTask(pb, title, body, cat, dl ? new Date(dl).toISOString() : "");
       setTitle("");
       setBody("");
+      setDl("");
       load();
     } catch (e) {
       setError(errMsg(e));
@@ -585,6 +587,7 @@ function Board({ myId }: { myId: string }) {
               <option key={c} value={c}>{catLabel(c)}</option>
             ))}
           </select>
+          <input type="datetime-local" title={t("deadlinePick")} value={dl} disabled={busy} onChange={(e) => setDl(e.target.value)} />
         </div>
         <div className="opinion-form">
           <textarea rows={2} placeholder={t("boardBodyPh")} value={body} disabled={busy} onChange={(e) => setBody(e.target.value)} />
@@ -611,7 +614,10 @@ function Board({ myId }: { myId: string }) {
               <h3>{task.title}</h3>
               {statusChip(task)}
             </header>
-            <div className="tags"><span className="chip">#{catLabel(taskCategory(task))}</span></div>
+            <div className="tags">
+              <span className="chip">#{catLabel(taskCategory(task))}</span>
+              <DeadlineChip deadline={task.deadline} />
+            </div>
             <p className="summary">{task.body}</p>
             <p className="task-meta">
               <Avatar seed={task.requester_id} label={task.requester?.display_name ?? t("someone")} />{" "}
@@ -641,6 +647,7 @@ function Challenges({ myId, myName }: { myId: string; myName: string }) {
   const [brief, setBrief] = useState("");
   const [bounty, setBounty] = useState("10");
   const [cat, setCat] = useState<TaskCategory>("general");
+  const [dl, setDl] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const catLabel = (c: TaskCategory) => t(`boardCat_${c}` as StrKey);
@@ -660,9 +667,10 @@ function Challenges({ myId, myName }: { myId: string; myName: string }) {
     setBusy(true);
     setError("");
     try {
-      setOpenId(await postChallenge(pb, title, brief, Number(bounty), cat));
+      setOpenId(await postChallenge(pb, title, brief, Number(bounty), cat, dl ? new Date(dl).toISOString() : ""));
       setTitle("");
       setBrief("");
+      setDl("");
       load();
     } catch (e) {
       setError(errMsg(e));
@@ -692,6 +700,7 @@ function Challenges({ myId, myName }: { myId: string; myName: string }) {
             disabled={busy}
             onChange={(e) => setBounty(e.target.value)}
           />
+          <input type="datetime-local" title={t("deadlinePick")} value={dl} disabled={busy} onChange={(e) => setDl(e.target.value)} />
         </div>
         <div className="opinion-form">
           <textarea rows={2} placeholder={t("chBriefPh")} value={brief} disabled={busy} onChange={(e) => setBrief(e.target.value)} />
@@ -733,7 +742,10 @@ function Challenges({ myId, myName }: { myId: string; myName: string }) {
                 <span className="task-status done">🏆 {c.bounty}pt · {t("chJudged")}</span>
               )}
             </header>
-            <div className="tags"><span className="chip">#{catLabel((c.category || "general") as TaskCategory)}</span></div>
+            <div className="tags">
+              <span className="chip">#{catLabel((c.category || "general") as TaskCategory)}</span>
+              <DeadlineChip deadline={c.deadline} />
+            </div>
             <p className="summary">{c.brief}</p>
             <p className="task-meta">
               <Avatar seed={c.poster_id} label={c.poster?.display_name ?? t("someone")} />{" "}
@@ -820,7 +832,8 @@ function ChallengeRoom({
             <span className="task-status open">💰 {challenge.bounty}pt · {t("chOpen")}</span>
           ) : (
             <span className="task-status done">🏆 {challenge.bounty}pt · {t("chJudged")}</span>
-          )}
+          )}{" "}
+          <DeadlineChip deadline={challenge.deadline} />
         </span>
         <button onClick={onBack}>{t("chBack")}</button>
       </div>
@@ -1491,6 +1504,15 @@ function Feed({
       </div>
     </>
   );
+}
+
+/** ⏳ deadline chip for board tasks / challenges; hidden when none is set. */
+function DeadlineChip({ deadline }: { deadline: string }) {
+  const t = useT();
+  if (!deadline) return null;
+  const over = new Date(deadline).getTime() <= Date.now();
+  const label = new Date(deadline).toLocaleString([], { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" });
+  return <span className={`chip ch-deadline${over ? " over" : ""}`}>{over ? `⌛ ${t("deadlineOver")}` : `⏳ ${label}`}</span>;
 }
 
 const ACTIVITY_LOOK: Record<ActivityItem["type"], { icon: string; verb: StrKey }> = {

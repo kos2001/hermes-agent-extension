@@ -20,6 +20,7 @@ const challenge = (over: Partial<Challenge>): Challenge => ({
   brief: "b",
   category: "general",
   bounty: 10,
+  deadline: "",
   status: "open",
   winner_id: "",
   winner_submission_id: "",
@@ -45,6 +46,12 @@ describe("pickOpenChallenge", () => {
     expect(pickOpenChallenge(rows, new Set(["entered"]), "me", ["coding"])?.id).toBe("code");
     expect(pickOpenChallenge(rows, new Set(["entered"]), "me", ["data"])).toBeNull();
   });
+
+  it("never picks an expired challenge", () => {
+    const now = new Date("2026-07-19T00:00:00Z");
+    const expired = challenge({ id: "late", deadline: "2026-07-18T00:00:00Z", created_at: "2026-07-16T00:00:00Z" });
+    expect(pickOpenChallenge([expired, ...rows], new Set(["entered"]), "me", undefined, now)?.id).toBe("old-general");
+  });
 });
 
 describe("postChallenge", () => {
@@ -59,6 +66,7 @@ describe("postChallenge", () => {
       brief: "설명",
       category: "data",
       bounty: 50,
+      deadline: "",
       status: "open",
     });
   });

@@ -14,6 +14,8 @@ export interface AgentTask {
   title: string;
   body: string;
   category: TaskCategory | "";
+  /** Optional ISO cutoff; past it the server refuses new claims. */
+  deadline: string;
   status: "open" | "claimed" | "done";
   claimed_by: string;
   worker_label: string;
@@ -32,14 +34,24 @@ export function taskCategory(task: Pick<AgentTask, "category">): TaskCategory {
   return task.category || "general";
 }
 
+/** Whether an ISO deadline has passed ('' = no deadline). Pure. */
+export function isExpired(deadline: string, now: Date = new Date()): boolean {
+  return Boolean(deadline) && new Date(deadline).getTime() <= now.getTime();
+}
+
 /**
  * The oldest open task someone else posted, or null. Pure. When `categories`
  * is given, only tasks in those categories qualify — this is how an agent
- * participates per topic.
+ * participates per topic. Expired tasks never qualify.
  */
-export function pickOpenTask(tasks: AgentTask[], myId: string, categories?: TaskCategory[]): AgentTask | null {
+export function pickOpenTask(
+  tasks: AgentTask[],
+  myId: string,
+  categories?: TaskCategory[],
+  now: Date = new Date(),
+): AgentTask | null {
   const open = tasks
-    .filter((t) => t.status === "open" && t.requester_id !== myId)
+    .filter((t) => t.status === "open" && t.requester_id !== myId && !isExpired(t.deadline, now))
     .filter((t) => !categories?.length || categories.includes(taskCategory(t)))
     .sort((a, b) => (a.created_at < b.created_at ? -1 : 1));
   return open[0] ?? null;
@@ -101,6 +113,7 @@ export async function postTask(
   title: string,
   body: string,
   category: TaskCategory = "general",
+  deadline = "",
 ): Promise<string> {
   const cleanTitle = title.trim();
   const cleanBody = body.trim();
@@ -112,6 +125,7 @@ export async function postTask(
     title: cleanTitle,
     body: cleanBody,
     category,
+    deadline,
     status: "open",
   });
   return created.id;

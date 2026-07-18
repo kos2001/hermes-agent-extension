@@ -78,6 +78,9 @@ const catExpr = (c) => (c === "general" ? "(category='general' || category='')" 
 /** Extra filter clause restricting to this agent's categories ('' = all). */
 const myCategoriesClause = () => (CATEGORIES.length ? ` && (${CATEGORIES.map(catExpr).join(" || ")})` : "");
 
+/** Filter clause skipping rows whose deadline has passed. */
+const notExpired = " && (deadline = '' || deadline > @now)";
+
 /** Pull `--<name> <value>` out of args (mutates); null when absent. */
 function flagValue(args, name) {
   const i = args.indexOf(name);
@@ -164,7 +167,7 @@ async function solveOneChallenge(llmArgs) {
   const mine = await api(records("challenge_submissions", `${flt(`user_id='${USER_ID}'`)}&fields=challenge_id&perPage=200`));
   const entered = new Set(mine.items.map((s) => s.challenge_id));
   const out = await api(
-    records("challenges", `${flt(`status='open' && poster_id!='${USER_ID}'${myCategoriesClause()}`)}&sort=created_at&perPage=10`),
+    records("challenges", `${flt(`status='open' && poster_id!='${USER_ID}'${myCategoriesClause()}${notExpired}`)}&sort=created_at&perPage=10`),
   );
   for (const c of out.items) {
     if (entered.has(c.id)) continue;
@@ -316,13 +319,14 @@ try {
   } else if (cmd === "post") {
     requireWriteEnv();
     const category = flagValue(args, "--category") || "general";
+    const deadline = flagValue(args, "--deadline") || "";
     const sep = args.indexOf("--");
     const title = (sep >= 0 ? args.slice(0, sep) : args.slice(0, 1)).join(" ");
     const body = (sep >= 0 ? args.slice(sep + 1) : args.slice(1)).join(" ");
-    if (!title || !body) throw new Error("usage: post <title> -- <body> [--category <c>]");
+    if (!title || !body) throw new Error("usage: post <title> -- <body> [--category <c>] [--deadline <ISO>]");
     const row = await api(records("agent_tasks"), {
       method: "POST",
-      body: { requester_id: USER_ID, title, body, category, status: "open" },
+      body: { requester_id: USER_ID, title, body, category, deadline, status: "open" },
     });
     console.log(`posted request (${category}):`, row.id);
   } else if (cmd === "claim") {
@@ -349,7 +353,7 @@ try {
     const out = await api(
       records(
         "agent_tasks",
-        `${flt(`status='open' && requester_id!='${USER_ID}'${myCategoriesClause()}`)}&sort=created_at&perPage=1`,
+        `${flt(`status='open' && requester_id!='${USER_ID}'${myCategoriesClause()}${notExpired}`)}&sort=created_at&perPage=1`,
       ),
     );
     const task = out.items[0];
@@ -402,14 +406,15 @@ try {
     requireWriteEnv();
     const bounty = Number(flagValue(args, "--bounty"));
     const category = flagValue(args, "--category") || "general";
+    const deadline = flagValue(args, "--deadline") || "";
     if (!Number.isInteger(bounty) || bounty < 1) throw new Error("--bounty <positive integer> is required");
     const sep = args.indexOf("--");
     const title = (sep >= 0 ? args.slice(0, sep) : args.slice(0, 1)).join(" ");
     const brief = (sep >= 0 ? args.slice(sep + 1) : args.slice(1)).join(" ");
-    if (!title || !brief) throw new Error("usage: challenge <title> -- <brief> --bounty <n> [--category <c>]");
+    if (!title || !brief) throw new Error("usage: challenge <title> -- <brief> --bounty <n> [--category <c>] [--deadline <ISO>]");
     const row = await api(records("challenges"), {
       method: "POST",
-      body: { poster_id: USER_ID, title, brief, category, bounty, status: "open" },
+      body: { poster_id: USER_ID, title, brief, category, bounty, deadline, status: "open" },
     });
     console.log(`posted challenge (💰${bounty}pt, ${category}):`, row.id);
   } else if (cmd === "submit") {
@@ -527,7 +532,7 @@ try {
     const open = await api(
       records(
         "agent_tasks",
-        `${flt(`status='open' && requester_id!='${USER_ID}'${myCategoriesClause()}`)}&sort=created_at&perPage=1`,
+        `${flt(`status='open' && requester_id!='${USER_ID}'${myCategoriesClause()}${notExpired}`)}&sort=created_at&perPage=1`,
       ),
     );
     if (open.items[0] && !(await tryClaim(open.items[0].id))) {
