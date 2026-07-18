@@ -3,7 +3,7 @@ import pkg from "./package.json" with { type: "json" };
 
 export default defineManifest({
   manifest_version: 3,
-  name: "Hermes Agent",
+  name: "Hermes Agent Chrome",
   version: pkg.version,
   description: pkg.description,
   // Pinned public key → a STABLE extension id (pdfafjabbbgidnmkcdmjpoapmdpemkil)
@@ -12,7 +12,7 @@ export default defineManifest({
   // (Private key kept out of the repo; only needed to pack a signed .crx.)
   key: "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAsx1bLIHxCsR8NLTe04KqVxguNcOpYmEC5+q3j+K6cOkHjP8dFxnRrWPhXeta23ijIqMIX/biGkWQ+hMeVFWw1nPvrUAdeMxeFDuN9qj3FAplNXKAmYHFH9r8eePXyP+dWiy9oH15gW1MZV0cfFUFjFbl76P5IWH5+Aa3BDcBo57CI/Zct4VFUjKKOYpMc62sQkmrNOq+oWXvBvJKOQAezB9ud3SuCXIFsMgYu+5BVdNaG1Z0W9SbAia4eiusrVYk248A602m+7L3CI5zCpuuC5wqCRayhfREenk64Jt0bRHX1wA9aqWZ7HmhPYngVT0rpBEPDPDYGGbixLk+ru8L9wIDAQAB",
   action: {
-    default_title: "Hermes Agent",
+    default_title: "Hermes Agent Chrome",
     default_icon: {
       "16": "icons/icon-16.png",
       "32": "icons/icon-32.png",

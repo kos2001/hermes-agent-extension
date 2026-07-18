@@ -1,4 +1,4 @@
-# Hermes Agent — Chrome Extension
+# Hermes Agent Chrome
 
 Chrome MV3 client for the [Hermes Agent](https://github.com/NousResearch/hermes-agent)
 and any OpenAI-compatible chat-completions endpoint. Provides a side-panel chat,
