@@ -61,5 +61,6 @@ UI is bilingual with Korean (`ko`) as default (`src/lib/i18n.ts`). Selection-too
 - Path alias `@/` → `src/` (set in all three Vite configs + `tsconfig.json` + `vitest.config.ts`).
 - Strict TS, ESM, React 18 (`react-jsx`). Charts are dependency-free inline SVG/CSS (`src/sidepanel/Charts.tsx`).
 - Feature design + plans live in `docs/superpowers/specs/` and `docs/superpowers/plans/` (dated). Hive sub-projects build on the platform foundation plan; current work tracks `feature/bookmark-organizer`.
-- Tests are `vitest` in **node** environment (no jsdom) — they cover `lib/` logic, not React rendering. Browser-runtime UI is verified by loading unpacked `dist/`.
+- Tests are `vitest` in **node** environment (no jsdom) — they cover `lib/` logic, not React rendering. For runtime UI verification use the project **`verify` skill** (`.claude/skills/verify/` — stubbed-chrome harness + Chrome-for-Testing E2E); for connectivity triage use **`diagnose-hermes`**.
+- **Before committing any merge**: `grep -rn "^<<<<<<< \|^>>>>>>> " src web docs *.ts *.md` — markers inside block comments pass `tsc` and vitest, and one has already reached main that way. Never trust `git merge`'s `| tail` output to list every conflicted file.
 - Secrets (`.env`, `extension-key.pem`, `*.pem`) and build artifacts (`dist/`, `dist-web/`, `*.zip`) are gitignored.
