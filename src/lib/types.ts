@@ -38,7 +38,7 @@ export const DEFAULT_CONFIG: ConnectionConfig = {
   headers: {
     // OpenRouter attribution headers (optional but recommended).
     "HTTP-Referer": "https://github.com/local/hermes-agent-extension",
-    "X-Title": "Hermes Agent Extension",
+    "X-Title": "Hermes Agent Chrome",
   },
 };
 

@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useRef, useState } from "react";
+import { lazy, memo, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import type { ConnectionConfig } from "@/lib/types";
 import { t, type Lang } from "@/lib/i18n";
 import { collectChat } from "@/lib/hermes-client";
@@ -17,12 +17,15 @@ import {
   parseCleanupRemovals,
 } from "@/lib/bookmarks";
 import { runSemanticDedup } from "@/lib/semantic-dedup";
-import { cloudConfigured, pb } from "@/lib/cloud/client";
+import { cloudConfigured, HIVE_ENABLED, pb } from "@/lib/cloud/client";
 import { getSession } from "@/lib/cloud/auth";
 import { publishFolder } from "@/lib/cloud/folders";
 import { listCommunities } from "@/lib/cloud/communities";
 import type { Community } from "@/lib/cloud/types";
 import { summarizeFolder } from "@/lib/cloud/summarize-folder";
+
+// Charts stay code-split so the view renders before the chart module loads.
+const BookmarkCharts = lazy(() => import("./Charts").then((m) => ({ default: m.BookmarkCharts })));
 
 /** null = idle. Long ops: "dead"/"ai"/"clean"/"sdup"/"share". "apply" = applying. */
 type Busy = null | "dead" | "ai" | "clean" | "sdup" | "apply" | "share";
@@ -163,6 +166,7 @@ export default function BookmarksView({
       const merged = [...byId.values()];
       setResult(merged, noChanges(merged.length));
     } catch (e) {
+      if (ctrl.signal.aborted) return; // user/unmount cancelled — not an error
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       deadAbort.current = null;
@@ -379,7 +383,7 @@ export default function BookmarksView({
         <button className="skill" onClick={() => void runAi()} disabled={disabled || !config}>{t(lang, "bm.ai")}</button>
       </div>
 
-      {cloudConfigured && (
+      {HIVE_ENABLED && cloudConfigured && (
         <div className="bm-share" title={t(lang, "bm.shareTitle")}>
           <select
             className="tx-lang"
@@ -429,6 +433,13 @@ export default function BookmarksView({
       {(busy === "ai" || busy === "apply") && <div className="bm-status">{t(lang, "working")}</div>}
       {error && <div className="bm-status err">⚠ {error}</div>}
       {note && <div className="bm-status">{note}</div>}
+
+      {/* Gate on data so the lazy chart chunk is never fetched when nothing would render. */}
+      {nodes.some((n) => n.url) && (
+        <Suspense fallback={null}>
+          <BookmarkCharts nodes={nodes} lang={lang} />
+        </Suspense>
+      )}
 
       <div className="bm-list">
         {actions.length === 0 && !disabled && !note && <div className="bm-empty">{t(lang, "bm.empty")}</div>}

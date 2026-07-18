@@ -33,6 +33,8 @@ export interface MarketSettings {
   saveFolder: string;
   /** Auto-download each scheduled report to `saveFolder`. */
   autoSave: boolean;
+  /** Custom report-writing instruction; empty = built-in analyst prompt. */
+  prompt: string;
 }
 
 /** Defaults merged over any stored settings (so older saves gain new fields). */
@@ -42,7 +44,15 @@ export const DEFAULT_MARKET_SETTINGS: MarketSettings = {
   hour: 9,
   saveFolder: "market-reports",
   autoSave: false,
+  prompt: "",
 };
+
+/** A user-named, reusable report-writing prompt. */
+export interface SavedPrompt {
+  id: string;
+  name: string;
+  text: string;
+}
 
 export interface FolderInfo {
   id: string;
@@ -184,6 +194,38 @@ export async function summarizeSite(
   return (await collectChat({ config, messages, signal })).trim();
 }
 
+/** Default report-writing instruction when the user hasn't set a custom one. */
+export const DEFAULT_SYNTHESIS_INSTRUCTION =
+  "You are a market analyst. From the per-site summaries, write a comprehensive " +
+  "market-trends report in Markdown with: an executive summary, key trends across " +
+  "sources, notable signals and risks, and a short outlook. Be specific and cite site titles.";
+
+/**
+ * Build the chat messages for the synthesis step. Pure (no network) so it's
+ * unit-testable. A non-empty `instruction` replaces the default analyst prompt;
+ * the language + grounding directives are always appended so reports stay in
+ * the UI language and stay based on the gathered summaries.
+ */
+export function buildSynthesisMessages(
+  folderTitle: string,
+  sites: SiteSummary[],
+  language: string,
+  instruction?: string,
+): ChatMessage[] {
+  const body = sites
+    .filter((s) => !s.error && s.summary)
+    .map((s) => `## ${s.title}\n${s.url}\n${s.summary}`)
+    .join("\n\n");
+  const base = instruction?.trim() || DEFAULT_SYNTHESIS_INSTRUCTION;
+  return [
+    {
+      role: "system",
+      content: `${base}\n\nBase the report only on the per-site summaries provided. Write the entire report in ${language}.`,
+    },
+    { role: "user", content: `Folder: ${folderTitle}\n\n${body}` },
+  ];
+}
+
 /** Synthesize per-site summaries into a comprehensive Markdown report. */
 export async function synthesizeReport(
   config: ConnectionConfig,
@@ -191,22 +233,9 @@ export async function synthesizeReport(
   sites: SiteSummary[],
   language: string,
   signal?: AbortSignal,
+  instruction?: string,
 ): Promise<string> {
-  const body = sites
-    .filter((s) => !s.error && s.summary)
-    .map((s) => `## ${s.title}\n${s.url}\n${s.summary}`)
-    .join("\n\n");
-  const messages: ChatMessage[] = [
-    {
-      role: "system",
-      content:
-        "You are a market analyst. From the per-site summaries, write a comprehensive " +
-        "market-trends report in Markdown with: an executive summary, key trends across " +
-        "sources, notable signals and risks, and a short outlook. Be specific and cite " +
-        `site titles. Write the entire report in ${language}.`,
-    },
-    { role: "user", content: `Folder: ${folderTitle}\n\n${body}` },
-  ];
+  const messages = buildSynthesisMessages(folderTitle, sites, language, instruction);
   return (await collectChat({ config, messages, signal })).trim();
 }
 
@@ -217,6 +246,8 @@ export interface RunMarketReportOpts {
   config: ConnectionConfig;
   /** UI language the report (and summaries) should be written in. */
   lang: Lang;
+  /** Custom report-writing instruction; empty/undefined = built-in prompt. */
+  instruction?: string;
   signal?: AbortSignal;
   onProgress?: (done: number, total: number, label: string) => void;
 }
@@ -253,7 +284,7 @@ export async function runMarketReport(opts: RunMarketReportOpts): Promise<Market
   // otherwise fetch with an already-aborted signal and throw.
   const synthesis =
     !opts.signal?.aborted && sites.some((s) => !s.error && s.summary)
-      ? await synthesizeReport(opts.config, opts.folderTitle, sites, language, opts.signal)
+      ? await synthesizeReport(opts.config, opts.folderTitle, sites, language, opts.signal, opts.instruction)
       : "";
   return {
     id: crypto.randomUUID(),
@@ -268,7 +299,36 @@ export async function runMarketReport(opts: RunMarketReportOpts): Promise<Market
 
 const REPORTS_KEY = "hermes.market.reports";
 const SETTINGS_KEY = "hermes.market.settings";
+const PROMPTS_KEY = "hermes.market.prompts";
 const MAX_REPORTS = 10;
+
+/** Load the user's saved report-writing prompts. */
+export async function loadPrompts(): Promise<SavedPrompt[]> {
+  const r = await chrome.storage.local.get(PROMPTS_KEY);
+  return (r[PROMPTS_KEY] as SavedPrompt[] | undefined) ?? [];
+}
+
+/** Add a named prompt (or overwrite one with the same name); returns the list. */
+export async function savePrompt(name: string, text: string): Promise<SavedPrompt[]> {
+  const trimmed = name.trim();
+  const list = await loadPrompts();
+  const existing = list.find((p) => p.name === trimmed);
+  let next: SavedPrompt[];
+  if (existing) {
+    next = list.map((p) => (p.id === existing.id ? { ...p, text } : p));
+  } else {
+    next = [...list, { id: crypto.randomUUID(), name: trimmed, text }];
+  }
+  await chrome.storage.local.set({ [PROMPTS_KEY]: next });
+  return next;
+}
+
+/** Delete a saved prompt by id; returns the new list. */
+export async function deletePrompt(id: string): Promise<SavedPrompt[]> {
+  const next = (await loadPrompts()).filter((p) => p.id !== id);
+  await chrome.storage.local.set({ [PROMPTS_KEY]: next });
+  return next;
+}
 
 /** Alarm name for the scheduled market report. */
 export const MARKET_ALARM = "hermes.market.run";

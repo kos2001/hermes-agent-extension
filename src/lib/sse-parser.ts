@@ -128,10 +128,20 @@ export async function consumeSseStream(
   try {
     while (true) {
       if (signal?.aborted) {
-        await reader.cancel();
+        await reader.cancel().catch(() => {});
         return;
       }
-      const { done, value } = await reader.read();
+      let result: ReadableStreamReadResult<Uint8Array>;
+      try {
+        result = await reader.read();
+      } catch (e) {
+        // An abort fired mid-read rejects with a DOMException (e.g. Chrome's
+        // "BodyStreamBuffer was aborted"). That's an expected cancellation, not
+        // a stream failure — return quietly instead of surfacing it as an error.
+        if (signal?.aborted) return;
+        throw e;
+      }
+      const { done, value } = result;
       if (done) break;
       buffer += decoder.decode(value, { stream: true });
 
