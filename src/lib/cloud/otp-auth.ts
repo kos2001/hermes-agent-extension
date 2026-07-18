@@ -21,15 +21,19 @@ export function defaultDisplayName(email: string): string {
 export async function sendEmailOtp(pb: PocketBase, email: string): Promise<void> {
   const addr = normalize(email);
   try {
-    const pw = `${crypto.randomUUID()}${crypto.randomUUID()}`;
+    // one UUID (36 chars) — PocketBase caps passwords at 71 chars
+    const pw = crypto.randomUUID();
     await pb.collection("users").create({
       email: addr,
       password: pw,
       passwordConfirm: pw,
       display_name: defaultDisplayName(addr),
     });
-  } catch {
-    // account already exists — fine, we only need it to exist
+  } catch (e) {
+    // "email already exists" is fine (we only need the account to exist);
+    // anything else would leave the user code-less, so surface it
+    const emailErr = (e as { data?: { data?: { email?: { code?: string } } } })?.data?.data?.email?.code;
+    if (emailErr !== "validation_not_unique") throw e;
   }
   const req = await pb.collection("users").requestOTP(addr);
   otpIds.set(addr, req.otpId);
