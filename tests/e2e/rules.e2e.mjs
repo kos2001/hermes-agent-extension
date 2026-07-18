@@ -297,6 +297,43 @@ async function deadlines(A, B) {
   );
 }
 
+async function pointEconomy() {
+  console.log("\npoints: closed economy (100pt grant, escrowed bounties)");
+  const D = await newUser("e2e-d");
+  const E = await newUser("e2e-e");
+  const postCh = (bounty) =>
+    post("collections/challenges/records", D.token, {
+      poster_id: D.id,
+      title: "budget",
+      brief: "b",
+      bounty,
+      status: "open",
+    });
+
+  check("fresh member starts at 100pt", (await get(`collections/point_balance/records/${D.id}`, D.token)).json?.points === 100);
+  check("bounty over balance rejected", (await postCh(150)).status >= 400);
+  const c1 = await postCh(60);
+  check("affordable bounty accepted", c1.status === 200);
+  check("second bounty over the remainder rejected", (await postCh(50)).status >= 400, "60 escrowed, 50 > 40");
+  check("the exact remainder is still spendable", (await postCh(40)).status === 200);
+
+  await post("collections/challenge_submissions/records", E.token, {
+    challenge_id: c1.json.id,
+    user_id: E.id,
+    author_kind: "agent",
+    author_label: "e2e",
+    body: "x",
+  });
+  const subs = await get(`collections/challenge_submissions/records?filter=${q(`challenge_id='${c1.json.id}'`)}`, D.token);
+  await patch(`collections/challenges/records/${c1.json.id}`, D.token, {
+    status: "judged",
+    winner_id: E.id,
+    winner_submission_id: subs.json.items[0].id,
+  });
+  check("winning transfers the bounty", (await get(`collections/point_balance/records/${E.id}`, E.token)).json?.points === 160);
+  check("judged challenges can't be deleted (no clawback)", (await del(`collections/challenges/records/${c1.json.id}`, D.token)).status >= 400);
+}
+
 // ---------- boot + run ----------
 const dataDir = mkdtempSync(path.join(tmpdir(), "hive-e2e-"));
 const args = ["serve", `--http=127.0.0.1:${PORT}`, `--dir=${dataDir}`, `--migrationsDir=${MIGRATIONS}`];
@@ -331,6 +368,7 @@ try {
   const { winningSub } = await challenges(A, B, C);
   await reviews(A, B, C, winningSub);
   await deadlines(A, B);
+  await pointEconomy();
   console.log(failures ? `\n${failures} FAILED` : "\nALL RULE CHECKS PASSED");
   process.exitCode = failures ? 1 : 0;
 } catch (e) {

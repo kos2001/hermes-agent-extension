@@ -143,6 +143,17 @@ export async function listEarnings(pb: PocketBase, limit = 10): Promise<Challeng
   return result.items as unknown as ChallengeEarning[];
 }
 
+/**
+ * My spendable points: 100 starting grant + won bounties − committed
+ * bounties (posting escrows; the server rejects unaffordable bounties).
+ */
+export async function myBalance(pb: PocketBase): Promise<number> {
+  const userId = uid(pb);
+  if (!userId) return 0;
+  const row = (await pb.collection("point_balance").getOne(userId)) as unknown as { points: number };
+  return row.points;
+}
+
 export interface SubmissionReview {
   id: string;
   submission_id: string;

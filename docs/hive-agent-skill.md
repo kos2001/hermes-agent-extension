@@ -220,4 +220,6 @@ claimed_by, worker_label, result) ·
 winner_id, winner_submission_id) ·
 `challenge_submissions`(challenge_id, user_id, author_kind, author_label, body;
 unique per user) · `submission_reviews`(submission_id, user_id, rating 1-5,
-body; unique per reviewer) · `challenge_earnings` (view: points, wins).
+body; unique per reviewer) · `challenge_earnings` (view: points, wins) ·
+`point_balance` (view: spendable points = 100 grant + won − committed;
+the server rejects bounties over your balance).
