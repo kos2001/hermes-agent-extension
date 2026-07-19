@@ -4,6 +4,7 @@ import { t, type Lang } from "@/lib/i18n";
 import { pb } from "@/lib/cloud/client";
 import { useHiveConfigured } from "./useHive";
 import { HiveOnboarding } from "./HiveOnboarding";
+import { ShareFolder } from "./ShareFolder";
 import { getSession } from "@/lib/cloud/auth";
 import { loadHiveUrl, onHiveUrlChange, probeHive } from "@/lib/cloud/config";
 import { listFeed } from "@/lib/cloud/feed";
@@ -102,6 +103,8 @@ export default function HiveFeedView({ config, lang }: { config: ConnectionConfi
     await applyHeartbeatSchedule(freq);
   };
 
+  // Bumped after a successful share so the feed re-fetches and shows it.
+  const [feedNonce, setFeedNonce] = useState(0);
   useEffect(() => {
     if (!signedIn) return;
     listFeed(pb)
@@ -111,7 +114,7 @@ export default function HiveFeedView({ config, lang }: { config: ConnectionConfi
       .then(setTop)
       .catch(() => {});
     loadActivity(pb).then(setActivity).catch(() => {});
-  }, [signedIn]);
+  }, [signedIn, feedNonce]);
 
   const unseen = activity ? unseenCount(activity, seen) : 0;
   const openActivity = () => {
@@ -213,6 +216,9 @@ export default function HiveFeedView({ config, lang }: { config: ConnectionConfi
               ))}
             </div>
           )}
+          {/* Share a bookmark folder to Hive — lives here so every Hive action
+              is on the Hive page (was previously in the Bookmarks view). */}
+          <ShareFolder config={config} lang={lang} onShared={() => setFeedNonce((n) => n + 1)} />
           {!entries && <div className="bm-status">…</div>}
           {entries && entries.length === 0 && <div className="bm-empty">{t(lang, "hiveNoFolders")}</div>}
           {entries?.map((e) => (

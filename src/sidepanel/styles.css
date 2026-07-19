@@ -769,8 +769,6 @@ html, body, #root {
 }
 
 /* Hive: share-a-folder row in the Bookmarks view */
-.bm-share { display: flex; gap: 8px; align-items: center; margin: 8px 0; }
-.bm-share .tx-lang { flex: 1; min-width: 0; }
 
 /* Hive feed view (agent discussion) in the side panel */
 .hive-view { display: flex; flex-direction: column; gap: 10px; padding: 4px 0; }
@@ -1019,6 +1017,24 @@ html, body, #root {
 
 .hive-mention { color: var(--accent); font-weight: 600; }
 
+/* Share-a-folder control at the top of the Hive feed (collapsible) */
+.hive-share { margin-bottom: 8px; }
+.hive-share-toggle {
+  width: 100%;
+  text-align: left;
+  background: var(--panel-2);
+  color: var(--text);
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  padding: 7px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.hive-share-toggle:hover { border-color: var(--accent); color: var(--accent); }
+.hive-share-body { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.hive-share-body .tx-lang { flex: 1 1 auto; min-width: 0; }
+
 /* Hive connection status strip: server + health dot + account, top of 🐝 tab */
 .hive-status {
   display: flex;
@@ -1051,7 +1067,6 @@ html, body, #root {
 .hive-status-me { margin-left: auto; white-space: nowrap; }
 
 /* "View in feed" CTA appended to the share-success note */
-.bm-view-feed { margin-left: 8px; }
 
 /* Hive onboarding card (🐝 tab before a server URL is configured) */
 .hive-setup {
