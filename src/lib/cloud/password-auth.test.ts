@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { mockPb } from "./pb-mock";
 import {
   defaultDisplayName,
+  ensureFreshSession,
   requestPasswordReset,
   signInWithPassword,
   VerificationPendingError,
@@ -105,6 +106,42 @@ describe("signInWithPassword", () => {
     await expect(signInWithPassword(pb, "a@b.com", "hunter22")).rejects.toThrow(
       "No session after sign-in",
     );
+  });
+});
+
+describe("ensureFreshSession", () => {
+  it("clears a stored session the server no longer honors (e.g. token secret rotated)", async () => {
+    const dead = Object.assign(new Error("The request requires valid record authorization token."), {
+      status: 401,
+    });
+    const u = users({ authRefresh: vi.fn().mockRejectedValue(dead) });
+    const clear = vi.fn();
+    const pb = mockPb({ users: u });
+    (pb.authStore as unknown as { clear: () => void }).clear = clear;
+    expect(await ensureFreshSession(pb)).toBeNull();
+    expect(clear).toHaveBeenCalled();
+  });
+
+  it("keeps the session on transient network failures", async () => {
+    const offline = Object.assign(new Error("Failed to fetch"), { status: 0 });
+    const u = users({ authRefresh: vi.fn().mockRejectedValue(offline) });
+    const pb = mockPb({ users: u });
+    const s = await ensureFreshSession(pb);
+    expect(s?.user.id).toBe("u1");
+  });
+
+  it("returns the session when the server confirms it", async () => {
+    const u = users({ authRefresh: vi.fn().mockResolvedValue({}) });
+    const pb = mockPb({ users: u });
+    const s = await ensureFreshSession(pb);
+    expect(s?.user.id).toBe("u1");
+  });
+
+  it("is null without a stored session (no server call)", async () => {
+    const u = users({ authRefresh: vi.fn() });
+    const pb = mockPb({ users: u }, null);
+    expect(await ensureFreshSession(pb)).toBeNull();
+    expect(u.authRefresh).not.toHaveBeenCalled();
   });
 });
 

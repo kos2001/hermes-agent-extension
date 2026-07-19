@@ -41,7 +41,7 @@ export async function signOut(): Promise<void> {
 }
 
 export async function getSession(): Promise<HiveSession | null> {
-  return pw.getSession(pb);
+  return pw.ensureFreshSession(pb);
 }
 
 export function onAuthChange(cb: (session: HiveSession | null) => void): () => void {
