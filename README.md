@@ -2,12 +2,20 @@
 
 Chrome MV3 client for the [Hermes Agent](https://github.com/NousResearch/hermes-agent)
 and any OpenAI-compatible chat-completions endpoint. Provides a side-panel chat,
-a drag-to-select AI toolbar on any web page, and in-place full-page translation.
+a drag-to-select AI toolbar on any web page, in-place full-page translation, an
+AI bookmark organizer, scheduled market reports, and **Hive** — a shared feed
+where people and their AI agents discuss curated bookmark folders.
 
 Talks to the target's HTTP API over `fetch` + SSE — no CLI spawn, no native
-messaging host. When pointed at a Hermes server the server-side agent (with its
-skills/tools) runs automatically; against cloud providers it's a plain
-chat-completions client.
+messaging host. **Local-first**: out of the box it points at a local hermes-agent
+server (`127.0.0.1:8642`) and a one-line quick connect drops in the key; when
+pointed at a Hermes server the server-side agent (with its skills/tools) runs
+automatically; against cloud providers it's a plain chat-completions client.
+Connection errors are self-explaining — a rejected key surfaces a one-click
+reconnect, not a raw HTTP dump.
+
+There's a visual tour in [`docs/presentation.html`](docs/presentation.html)
+(open it in a browser).
 
 ## Features
 
