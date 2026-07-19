@@ -727,6 +727,22 @@ html, body, #root {
   font-size: 13px;
 }
 .hive-pop-row { display: flex; justify-content: space-between; gap: 8px; }
+/* Quick-start button + the divider between it and the email form */
+.hive-quick { width: 100%; }
+.hive-pop-divider {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 0 4px;
+  font-size: 10px;
+  color: var(--muted);
+}
+.hive-pop-divider::before,
+.hive-pop-divider::after {
+  content: "";
+  flex: 1;
+  border-top: 1px solid var(--border);
+}
 .hive-pop-link {
   background: none;
   border: none;
