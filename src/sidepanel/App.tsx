@@ -7,6 +7,7 @@ import {
   capturePageContext,
   formatContextForPrompt,
   getActiveTab,
+  pageErrorMessage as pageErrorMessageBase,
   type PageContext,
 } from "@/lib/page-context";
 import { restoreOriginals, translatePage } from "@/lib/translator";
@@ -262,13 +263,13 @@ export default function App() {
               schedule();
             },
             onError: (msg) =>
-              updateAssistant({
-                // A rejected key (401) is opaque JSON to users — append the fix.
-                error:
-                  /HTTP 401/.test(msg) && isHermesEndpoint(config.baseUrl)
-                    ? `${msg}\n→ ${t(lang, "err.401.hint")}`
-                    : msg,
-              }),
+              // A rejected key (401) becomes an actionable card (one-click
+              // reconnect), not opaque JSON + a text instruction to read.
+              updateAssistant(
+                /HTTP 401/.test(msg) && isHermesEndpoint(config.baseUrl)
+                  ? { error: t(lang, "err.401.card"), errorAction: "reconnect" }
+                  : { error: msg },
+              ),
             onDone: () => schedule(),
           },
         );
@@ -311,10 +312,13 @@ export default function App() {
       setPageCtx(ctx);
       const display = t(lang, `skill.${skill.id}.user`);
       if (!ctx || ctx.error || !ctx.text.trim()) {
+        // Show the localized, detailed reason (restricted page / no tab / …)
+        // rather than the raw English capture error.
+        const reason = ctx ? pageErrorMessageBase(ctx, lang) || t(lang, "noPageText") : t(lang, "noPageText");
         setMessages((prev) => [
           ...prev,
           newMessage("user", display),
-          { ...newMessage("assistant", ""), error: ctx?.error || t(lang, "noPageText") },
+          { ...newMessage("assistant", ""), error: reason },
         ]);
         return;
       }
@@ -646,7 +650,16 @@ export default function App() {
           return (
             <div key={m.id} className={`bubble ${m.role}${m.error ? " error" : ""}`}>
               {m.error ? (
-                m.error
+                m.errorAction === "reconnect" ? (
+                  <div className="err-action">
+                    <span>{m.error}</span>
+                    <button className="err-action-btn" onClick={openOptionsGateway}>
+                      {t(lang, "err.401.fix")}
+                    </button>
+                  </div>
+                ) : (
+                  m.error
+                )
               ) : m.role === "assistant" ? (
                 m.content ? (
                   streaming && isLast ? (

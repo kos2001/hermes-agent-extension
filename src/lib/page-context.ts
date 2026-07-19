@@ -8,6 +8,16 @@
  * don't blow the model's context.
  */
 
+import { t, type Lang } from "./i18n";
+
+/**
+ * Why a capture produced no text — machine-readable so the UI can show a
+ * localized, detailed explanation instead of the raw English `error` string.
+ * "restricted" = a browser-internal page (chrome://, extension, new tab, web
+ * store) where content scripts are forbidden.
+ */
+export type PageErrorKind = "no-tab" | "restricted" | "empty" | "other";
+
 export interface PageContext {
   url: string;
   title: string;
@@ -15,6 +25,7 @@ export interface PageContext {
   selection: string;
   truncated: boolean;
   error?: string;
+  errorKind?: PageErrorKind;
 }
 
 export const MAX_CHARS = 30_000;
@@ -62,18 +73,19 @@ const empty = (
   url: string,
   title: string,
   error: string,
-): PageContext => ({ url, title, text: "", selection: "", truncated: false, error });
+  errorKind: PageErrorKind,
+): PageContext => ({ url, title, text: "", selection: "", truncated: false, error, errorKind });
 
 export async function capturePageContext(): Promise<PageContext> {
   const tab = await getActiveTab();
   if (!tab || tab.id === undefined) {
-    return empty("", "", "No active tab");
+    return empty("", "", "No active tab", "no-tab");
   }
 
   const url = tab.url ?? "";
   const title = tab.title ?? "";
   if (/^(chrome|chrome-extension|edge|about|devtools|view-source):/i.test(url)) {
-    return empty(url, title, "Cannot read browser/extension pages");
+    return empty(url, title, "Cannot read browser/extension pages", "restricted");
   }
 
   try {
@@ -83,11 +95,11 @@ export async function capturePageContext(): Promise<PageContext> {
       args: [MAX_CHARS],
     });
     const out = results[0]?.result;
-    if (!out) return empty(url, title, "Empty extraction result");
+    if (!out) return empty(url, title, "Empty extraction result", "empty");
     return { url, title, ...out };
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
-    return empty(url, title, msg);
+    return empty(url, title, msg, "other");
   }
 }
 
@@ -102,6 +114,26 @@ export async function hasAllSitesAccess(): Promise<boolean> {
   return chrome.permissions.contains({
     origins: ["http://*/*", "https://*/*"],
   });
+}
+
+/**
+ * A localized, detailed explanation for a failed capture (or "" when the
+ * context is usable). Maps the machine-readable `errorKind` to i18n copy so
+ * the raw English `error` string never reaches the user.
+ */
+export function pageErrorMessage(ctx: PageContext, lang: Lang): string {
+  switch (ctx.errorKind) {
+    case "restricted":
+      return t(lang, "pageErr.restricted");
+    case "no-tab":
+      return t(lang, "pageErr.noTab");
+    case "empty":
+      return t(lang, "pageErr.empty");
+    case "other":
+      return ctx.error ?? t(lang, "noPageText");
+    default:
+      return "";
+  }
 }
 
 /** Format a captured PageContext as a system-message body. */
