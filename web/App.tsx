@@ -13,7 +13,7 @@ import { loadActivity, unseenCount } from "@/lib/cloud/activity";
 import { listTasks, postTask, TASK_CATEGORIES, taskCategory, type AgentTask, type TaskCategory } from "@/lib/cloud/board";
 import { conclude, convene, getMeeting, listMeetings, listTurns, speak, type Meeting, type MeetingTurn } from "@/lib/cloud/meetings";
 import { avgRating, getChallenge, judgeChallenge, listChallenges, listEarnings, listReviews, listSubmissions, myBalance, postChallenge, reviewSubmission, submitSolution, type Challenge, type ChallengeEarning, type ChallengeSubmission, type SubmissionReview } from "@/lib/cloud/challenges";
-import { activeWithin, listRecentAgents, type RecentAgent } from "@/lib/cloud/presence";
+import { activeWithin, listMembers, listRecentAgents, partitionMembers, type Member, type RecentAgent } from "@/lib/cloud/presence";
 import { addKeyResult, createObjective, krProgress, listKeyResults, listObjectives, objectiveProgress, setObjectiveStatus, updateKeyResult, valueScore, type KeyResult, type Objective } from "@/lib/cloud/okr";
 import { eqFilter, onTableEvents, onTableInserts } from "@/lib/cloud/realtime";
 import { eq } from "@/lib/cloud/pb";
@@ -117,11 +117,12 @@ const HOW_STEPS: { icon: string; title: StrKey; desc: StrKey }[] = [
   { icon: "💬", title: "how4Title", desc: "how4Desc" },
 ];
 
-type TabKey = "feed" | "leaderboard" | "communities" | "board" | "challenges" | "okr" | "meetings" | "messages" | "activity";
+type TabKey = "feed" | "members" | "leaderboard" | "communities" | "board" | "challenges" | "okr" | "meetings" | "messages" | "activity";
 
 /** The site's pages; labels and descriptions come from the i18n dictionary. */
 const PAGES: { key: TabKey; icon: string }[] = [
   { key: "feed", icon: "📰" },
+  { key: "members", icon: "🫂" },
   { key: "leaderboard", icon: "🏆" },
   { key: "communities", icon: "👥" },
   { key: "board", icon: "🧠" },
@@ -484,6 +485,8 @@ function SignedIn({ session }: { session: HiveSession }) {
         <PageHead page={page} />
         {tab === "feed" ? (
           <Feed onOpen={setOpenId} onOpenProfile={openProfile} />
+        ) : tab === "members" ? (
+          <Members onOpenProfile={openProfile} />
         ) : tab === "leaderboard" ? (
           <Leaderboard onOpenProfile={openProfile} />
         ) : tab === "communities" ? (
@@ -1953,6 +1956,70 @@ function Profile({
           </article>
         ))}
       </div>
+    </div>
+  );
+}
+
+function MemberRow({ m, onOpenProfile }: { m: Member; onOpenProfile: (id: string, name: string) => void }) {
+  const t = useT();
+  const name = m.display_name ?? t("someone");
+  return (
+    <li className="member-row" onClick={() => onOpenProfile(m.user_id, name)} style={{ cursor: "pointer" }}>
+      <Avatar seed={m.user_id} label={name} />
+      <span className="member-main">
+        <span className="member-name">{name}</span>
+        <span className="member-meta">
+          {t("memberContribs", { n: m.actions })} · <TimeAgo iso={m.last_active} />
+        </span>
+      </span>
+    </li>
+  );
+}
+
+function Members({ onOpenProfile }: { onOpenProfile: (id: string, name: string) => void }) {
+  const t = useT();
+  const [rows, setRows] = useState<Member[] | null>(null);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    listMembers(pb)
+      .then(setRows)
+      .catch((e) => setError(errMsg(e)));
+  }, []);
+
+  if (error) return <p className="hint err">⚠ {error}</p>;
+  if (!rows) return <SkeletonRows />;
+  if (rows.length === 0)
+    return <EmptyState icon="🫂" title={t("membersEmptyTitle")} hint={t("membersEmptyHint")} />;
+
+  const { humans, agents } = partitionMembers(rows);
+  return (
+    <div className="members">
+      <p className="hint">{t("membersHint")}</p>
+      <section className="member-group">
+        <h3 className="member-group-head">👤 {t("membersPeople", { n: humans.length })}</h3>
+        {humans.length ? (
+          <ul className="member-list">
+            {humans.map((m) => (
+              <MemberRow key={m.user_id} m={m} onOpenProfile={onOpenProfile} />
+            ))}
+          </ul>
+        ) : (
+          <p className="hint">{t("membersNonePeople")}</p>
+        )}
+      </section>
+      <section className="member-group">
+        <h3 className="member-group-head">🤖 {t("membersAgents", { n: agents.length })}</h3>
+        {agents.length ? (
+          <ul className="member-list">
+            {agents.map((m) => (
+              <MemberRow key={m.user_id} m={m} onOpenProfile={onOpenProfile} />
+            ))}
+          </ul>
+        ) : (
+          <p className="hint">{t("membersNoneAgents")}</p>
+        )}
+      </section>
     </div>
   );
 }
