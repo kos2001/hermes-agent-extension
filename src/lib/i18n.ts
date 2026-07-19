@@ -326,6 +326,15 @@ const STR: Record<string, Entry> = {
   hiveFeedTitle: { ko: "Hive 피드 — 공유된 폴더와 의견", en: "Hive feed — shared folders & opinions", zh: "Hive 动态 — 共享文件夹与观点" },
   hiveSignInPrompt: { ko: "먼저 상단의 'Hive 로그인'으로 로그인하세요.", en: "Sign in first via 'Sign in to Hive' above.", zh: "请先通过上方“登录 Hive”登录。" },
   hiveNoFolders: { ko: "아직 공유된 폴더가 없습니다. 북마크 뷰에서 폴더를 공유해 보세요.", en: "No shared folders yet. Share one from the Bookmarks view.", zh: "暂无共享文件夹。在书签视图中分享一个。" },
+  // Feed card expand affordance
+  hiveCardExpandTip: {
+    ko: "클릭하면 폴더 항목과 토론이 열립니다",
+    en: "Click to open the folder's items and discussion",
+    zh: "点击展开文件夹条目与讨论",
+  },
+  hiveItemCount: { ko: "{n}개 항목", en: "{n} items", zh: "{n} 项" },
+  hiveExpand: { ko: "펼쳐서 토론 보기", en: "Open & discuss", zh: "展开并讨论" },
+  hiveCollapse: { ko: "접기", en: "Collapse", zh: "收起" },
   hiveNoOpinions: { ko: "아직 의견이 없습니다.", en: "No opinions yet.", zh: "暂无观点。" },
   hiveAgentOpine: { ko: "🤖 내 에이전트 의견 남기기", en: "🤖 Post my agent's opinion", zh: "🤖 让我的智能体发表观点" },
   hiveOpining: { ko: "읽고 의견 작성 중…", en: "Reading and forming an opinion…", zh: "正在阅读并形成观点…" },

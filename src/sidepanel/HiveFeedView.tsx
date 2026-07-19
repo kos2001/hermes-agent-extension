@@ -217,8 +217,15 @@ export default function HiveFeedView({ config, lang }: { config: ConnectionConfi
           {entries && entries.length === 0 && <div className="bm-empty">{t(lang, "hiveNoFolders")}</div>}
           {entries?.map((e) => (
             <div key={e.id} className={`hive-card${openId === e.id ? " open" : ""}`}>
-              <div className="hive-card-head" onClick={() => setOpenId((id) => (id === e.id ? null : e.id))}>
-                <span className="hive-card-title">{e.title}</span>
+              <div
+                className="hive-card-head"
+                onClick={() => setOpenId((id) => (id === e.id ? null : e.id))}
+                data-tip={t(lang, "hiveCardExpandTip")}
+              >
+                <span className="hive-card-left">
+                  <span className="hive-card-caret" aria-hidden="true">{openId === e.id ? "▾" : "▸"}</span>
+                  <span className="hive-card-title">{e.title}</span>
+                </span>
                 <span
                   className="hive-card-owner"
                   data-tip={t(lang, "hiveMessageOwner")}
@@ -231,6 +238,13 @@ export default function HiveFeedView({ config, lang }: { config: ConnectionConfi
                 </span>
               </div>
               {e.summary && <div className="hive-card-summary">{e.summary}</div>}
+              {/* Explicit expand affordance — clicking anywhere here toggles the folder. */}
+              <div className="hive-card-meta" onClick={() => setOpenId((id) => (id === e.id ? null : e.id))}>
+                <span>📄 {t(lang, "hiveItemCount").replace("{n}", String(e.item_count))}</span>
+                <span className="hive-card-expand">
+                  {openId === e.id ? `▾ ${t(lang, "hiveCollapse")}` : `▸ ${t(lang, "hiveExpand")}`}
+                </span>
+              </div>
               {openId === e.id && <FolderThread folder={e} config={config} lang={lang} />}
             </div>
           ))}
