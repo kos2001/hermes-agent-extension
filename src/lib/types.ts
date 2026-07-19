@@ -11,6 +11,12 @@ export interface StoredMessage extends ChatMessage {
   /** Tool progress lines emitted while assistant was streaming. */
   toolProgress?: string[];
   error?: string;
+  /**
+   * When set, the error bubble renders an actionable card instead of raw text.
+   * "reconnect" = the key was rejected; the card offers a one-click jump to the
+   * gateway quick-connect (see App.tsx).
+   */
+  errorAction?: "reconnect";
 }
 
 export interface ChatSession {
