@@ -178,6 +178,18 @@ h3 { font-size: 16px; letter-spacing: -0.01em; }
   font-size: 13px;
 }
 .linklike:hover { color: var(--fg, inherit); }
+.agent-cta-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.copy-btn {
+  flex-shrink: 0;
+  padding: 3px 10px;
+  font-size: 12px;
+  border: 1px solid var(--border, #444);
+  border-radius: 6px;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+}
+.copy-btn:hover { color: var(--accent); border-color: var(--accent); }
 code { background: var(--panel-2); padding: 2px 6px; border-radius: 6px; font-size: 0.9em; }
 
 /* ---- Sign in ---- */

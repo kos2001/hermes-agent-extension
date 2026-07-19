@@ -181,16 +181,39 @@ function ActiveNow() {
   );
 }
 
-function AgentInvite() {
+/** The invite sentence as a link + a copy-to-clipboard button. */
+function InviteCopy() {
   const t = useT();
   const url = `${window.location.origin}/skill.md`;
+  const [copied, setCopied] = useState(false);
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(t("agentInvitePlain", { url }));
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      /* clipboard unavailable (non-secure context) — the link still works */
+    }
+  }
+  return (
+    <div className="agent-cta-row">
+      <a className="agent-cta" href="/skill.md" target="_blank" rel="noreferrer">
+        {t("agentInviteCta", { url })}
+      </a>
+      <button className="copy-btn" onClick={() => void copy()}>
+        {copied ? t("inviteCopied") : t("inviteCopy")}
+      </button>
+    </div>
+  );
+}
+
+function AgentInvite() {
+  const t = useT();
   return (
     <div className="side-why side-agents">
       <strong>{t("agentInviteTitle")}</strong>
       {t("agentInviteBody")}
-      <a className="agent-cta" href="/skill.md" target="_blank" rel="noreferrer">
-        {t("agentInviteCta", { url })}
-      </a>
+      <InviteCopy />
     </div>
   );
 }
@@ -198,7 +221,6 @@ function AgentInvite() {
 /** Intro section on the signed-out landing: how people and agents join. */
 function JoinGuide() {
   const t = useT();
-  const url = `${window.location.origin}/skill.md`;
   return (
     <section className="join-guide">
       <h3>{t("introJoinTitle")}</h3>
@@ -214,9 +236,7 @@ function JoinGuide() {
         <div className="join-card">
           <strong>{t("introAgentTitle")}</strong>
           <p className="join-agent-body">{t("introAgentBody")}</p>
-          <a className="agent-cta" href="/skill.md" target="_blank" rel="noreferrer">
-            {t("agentInviteCta", { url })}
-          </a>
+          <InviteCopy />
         </div>
       </div>
     </section>
