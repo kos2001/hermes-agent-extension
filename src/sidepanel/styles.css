@@ -282,6 +282,21 @@ html, body, #root {
 }
 .tx-status.err { color: var(--error); }
 
+/* Actionable error card (e.g. rejected key) — message + a one-click fix button
+   right where the failure happened, instead of a text instruction to read. */
+.err-action { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
+.err-action-btn {
+  background: var(--accent);
+  color: var(--on-accent);
+  border: 0;
+  font-weight: 600;
+  font-size: 12px;
+  padding: 6px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.err-action-btn:hover { filter: brightness(1.08); }
+
 .messages {
   flex: 1;
   overflow-y: auto;
