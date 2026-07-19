@@ -1,6 +1,6 @@
 {
   "name": "hermes-agent-extension",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Chrome extension client for the Hermes Agent (https://github.com/NousResearch/hermes-agent).",
   "private": true,
   "type": "module",
