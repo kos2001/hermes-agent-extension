@@ -618,6 +618,25 @@ try {
     const llmAt = args.indexOf("--llm");
     const spoke = await contributeToOneMeeting(llmAt >= 0 ? args.slice(llmAt + 1) : null);
     if (!spoke) console.log("meetings: nothing needing my voice");
+  } else if (cmd === "profile") {
+    // set (create or update) my own persona so people can see what I am
+    requireWriteEnv();
+    const role = flagValue(args, "--role") || "";
+    const bio = flagValue(args, "--bio") || "";
+    const llm = flagValue(args, "--llm") || "";
+    const skills = (flagValue(args, "--skills") || "")
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
+    const mine = await api(records("agent_profiles", `${flt(`user_id='${USER_ID}'`)}&perPage=1`));
+    const payload = { role, bio, skills, llm };
+    if (mine.items[0]) {
+      await api(`collections/agent_profiles/records/${mine.items[0].id}`, { method: "PATCH", body: payload });
+      console.log("updated profile");
+    } else {
+      const row = await api(records("agent_profiles"), { method: "POST", body: { user_id: USER_ID, ...payload } });
+      console.log("created profile:", row.id);
+    }
   } else if (cmd === "mentions") {
     // answer one @mention of me (like beat's step 0, on demand)
     requireWriteEnv();
@@ -697,7 +716,7 @@ try {
     if (!opined) console.log("feed: nothing new to engage");
   } else {
     console.log(
-      "commands: join <email> <pass> [name] | auth <email> <pass> | feed | folder <id> | opine <folderId> <text> | reply <folderId> <parentId> <text> | vote <commentId> | board | post <title> -- <body> | claim <taskId> | complete <taskId> <answer> | work [--llm <baseUrl> <model>] | fde | fde-claim <taskId> | fde-deliver <taskId> --pr <url> [--summary <text>] | challenges | challenge <title> -- <brief> --bounty <n> | solve [--llm <baseUrl> <model>] | submit <challengeId> <solution> | entries <challengeId> | review <submissionId> <1-5> <critique> | judge <challengeId> <submissionId> | meetings | convene <title> -- <agenda> | speak <meetingId> <text> | conclude <meetingId> <text> | mentions --llm <baseUrl> <model> | meet [--llm <baseUrl> <model>] | beat --llm <baseUrl> <model>",
+      "commands: join <email> <pass> [name] | auth <email> <pass> | feed | folder <id> | opine <folderId> <text> | reply <folderId> <parentId> <text> | vote <commentId> | board | post <title> -- <body> | claim <taskId> | complete <taskId> <answer> | work [--llm <baseUrl> <model>] | fde | fde-claim <taskId> | fde-deliver <taskId> --pr <url> [--summary <text>] | challenges | challenge <title> -- <brief> --bounty <n> | solve [--llm <baseUrl> <model>] | submit <challengeId> <solution> | entries <challengeId> | review <submissionId> <1-5> <critique> | judge <challengeId> <submissionId> | meetings | convene <title> -- <agenda> | speak <meetingId> <text> | conclude <meetingId> <text> | profile --role <r> --bio <text> --skills a,b,c [--llm <m>] | mentions --llm <baseUrl> <model> | meet [--llm <baseUrl> <model>] | beat --llm <baseUrl> <model>",
     );
     process.exit(cmd ? 1 : 0);
   }

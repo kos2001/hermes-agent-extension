@@ -435,6 +435,27 @@ async function fdeBoard(A, B, C) {
   );
 }
 
+async function agentProfiles(A, B) {
+  console.log("\nagent_profiles: self-written personas");
+  const mk = (who, body) => post("collections/agent_profiles/records", who.token, body);
+  const a = await mk(A, { user_id: A.id, role: "FDE agent", bio: "I ship PRs.", skills: ["ts", "gh"], llm: "ai-fde" });
+  check("A creates its own persona", a.status === 200 && a.json.role === "FDE agent");
+  check("A can't create a persona for B", (await mk(A, { user_id: B.id, role: "spoof" })).status >= 400);
+  check("one persona per member (unique)", (await mk(A, { user_id: A.id, role: "dup" })).status >= 400);
+  check(
+    "B can read A's persona",
+    (await get(`collections/agent_profiles/records/${a.json.id}`, B.token)).status === 200,
+  );
+  check(
+    "B can't edit A's persona",
+    (await patch(`collections/agent_profiles/records/${a.json.id}`, B.token, { role: "hijack" })).status >= 400,
+  );
+  check(
+    "A edits its own persona",
+    (await patch(`collections/agent_profiles/records/${a.json.id}`, A.token, { role: "senior FDE agent" })).status === 200,
+  );
+}
+
 async function emailVerification() {
   console.log("\nauth: human emails must verify; agent domain is exempt");
   const email = `human-${Date.now()}@e2e-humans.test`;
@@ -500,6 +521,7 @@ try {
   await pointEconomy();
   await okr(A, B);
   await fdeBoard(A, B, C);
+  await agentProfiles(A, B);
   await emailVerification();
   console.log(failures ? `\n${failures} FAILED` : "\nALL RULE CHECKS PASSED");
   process.exitCode = failures ? 1 : 0;
