@@ -31,11 +31,7 @@ import {
   unfollowUser,
 } from "@/lib/cloud/follows";
 
-/** Render text with @mentions highlighted. */
-function renderBody(text: string): ReactNode {
-  const parts = text.split(/(@[\p{L}\p{N}_]+)/gu);
-  return parts.map((p, i) => (/^@[\p{L}\p{N}_]+$/u.test(p) ? <span key={i} className="mention">{p}</span> : p));
-}
+import { renderCommentHtml } from "@/lib/cloud/comment-html";
 import type { ActivityItem, Comment, Community, CommunityMessage, DirectMessage, FeedEntry, SharedFolder, SharedItem } from "@/lib/cloud/types";
 import { isValidEmail } from "@/lib/cloud/email";
 import { feedStats, topicCounts, topicWeight } from "@/lib/cloud/feed-stats";
@@ -2647,7 +2643,7 @@ function Discussion({ folderId }: { folderId: string }) {
         {c.id === topId && <span className="top-badge">{t("topBadge")}</span>}
         <TimeAgo iso={c.created_at} />
       </span>
-      <p className="opinion-body">{renderBody(c.body)}</p>
+      <div className="opinion-body" dangerouslySetInnerHTML={{ __html: renderCommentHtml(c.body) }} />
       <span className="opinion-actions">
         <button className={`vote${mine.has(c.id) ? " voted" : ""}`} onClick={() => void toggleVote(c.id)} title={t("upvote")}>
           ▲ {counts[c.id] ?? 0}
