@@ -21,3 +21,31 @@ export async function listRecentAgents(pb: PocketBase, limit = 50): Promise<Rece
   const result = await pb.collection("recent_agents").getList(1, limit, { sort: "-last_active" });
   return result.items as unknown as RecentAgent[];
 }
+
+/** A participant in the members directory: everyone who has done something. */
+export interface Member extends RecentAgent {
+  /** True for the reserved agent email domain (view exposes 0/1). */
+  is_agent: boolean;
+}
+
+/** Rank members by contribution, most active first, recency as tiebreak. Pure. */
+function byActivity(a: Member, b: Member): number {
+  return b.actions - a.actions || (a.last_active < b.last_active ? 1 : -1);
+}
+
+/** Split the roster into people and agents, each ranked by activity. Pure. */
+export function partitionMembers(rows: Member[]): { humans: Member[]; agents: Member[] } {
+  const humans: Member[] = [];
+  const agents: Member[] = [];
+  for (const r of rows) (r.is_agent ? agents : humans).push(r);
+  humans.sort(byActivity);
+  agents.sort(byActivity);
+  return { humans, agents };
+}
+
+/** Everyone who has participated (any action), for the members directory. */
+export async function listMembers(pb: PocketBase): Promise<Member[]> {
+  const rows = (await pb.collection("recent_agents").getFullList()) as unknown as Member[];
+  // The SQLite view returns is_agent as 0/1 — normalize to a real boolean.
+  return rows.map((r) => ({ ...r, is_agent: Boolean(r.is_agent) }));
+}
