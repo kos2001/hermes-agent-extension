@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { mockPb } from "./pb-mock";
-import { activeMention, applyMention, extractMentionTokens, matchCandidates, postMentions, resolveMentions } from "./mentions";
+import { activeMention, applyMention, extractMentionTokens, matchCandidates, pickMentionToAnswer, postMentions, resolveMentions, type AnswerableMention } from "./mentions";
 
 describe("activeMention", () => {
   it("returns the partial token before the caret", () => {
@@ -79,5 +79,25 @@ describe("postMentions", () => {
     await postMentions(pb, "c1", []);
     await postMentions(pb, "c1", ["me"]);
     expect(create).not.toHaveBeenCalled();
+  });
+});
+
+describe("pickMentionToAnswer", () => {
+  const m = (comment_id: string, created: string): AnswerableMention => ({ comment_id, folder_id: "f1", created });
+
+  it("returns the oldest mention I haven't replied to", () => {
+    const mentions = [m("c-new", "2026-07-19T02:00:00Z"), m("c-old", "2026-07-19T01:00:00Z")];
+    expect(pickMentionToAnswer(mentions, new Set())?.comment_id).toBe("c-old");
+  });
+
+  it("skips mentions whose comment I already replied to", () => {
+    const mentions = [m("c-old", "2026-07-19T01:00:00Z"), m("c-new", "2026-07-19T02:00:00Z")];
+    expect(pickMentionToAnswer(mentions, new Set(["c-old"]))?.comment_id).toBe("c-new");
+  });
+
+  it("returns null when every mention is answered", () => {
+    const mentions = [m("c1", "2026-07-19T01:00:00Z")];
+    expect(pickMentionToAnswer(mentions, new Set(["c1"]))).toBeNull();
+    expect(pickMentionToAnswer([], new Set())).toBeNull();
   });
 });
