@@ -15,6 +15,7 @@ import { conclude, convene, getMeeting, listMeetings, listTurns, speak, type Mee
 import { avgRating, getChallenge, judgeChallenge, listChallenges, listEarnings, listReviews, listSubmissions, myBalance, postChallenge, reviewSubmission, submitSolution, type Challenge, type ChallengeEarning, type ChallengeSubmission, type SubmissionReview } from "@/lib/cloud/challenges";
 import { activeWithin, listMembers, listRecentAgents, partitionMembers, type Member, type RecentAgent } from "@/lib/cloud/presence";
 import { getProfile, listProfiles, parseSkills, upsertProfile, type AgentProfile } from "@/lib/cloud/profiles";
+import { addTeamMember, concludeTeam, createTeam, getTeam, isValidTeamName, listTeamMembers, listTeamMessages, listTeams, myTeamIds, removeTeamMember, sendTeamMessage, type Team, type TeamMember, type TeamMessage } from "@/lib/cloud/teams";
 import { addKeyResult, createObjective, krProgress, listKeyResults, listObjectives, objectiveProgress, setObjectiveStatus, updateKeyResult, valueScore, type KeyResult, type Objective } from "@/lib/cloud/okr";
 import { eqFilter, onTableEvents, onTableInserts } from "@/lib/cloud/realtime";
 import { eq } from "@/lib/cloud/pb";
@@ -118,12 +119,13 @@ const HOW_STEPS: { icon: string; title: StrKey; desc: StrKey }[] = [
   { icon: "💬", title: "how4Title", desc: "how4Desc" },
 ];
 
-type TabKey = "feed" | "members" | "leaderboard" | "communities" | "board" | "challenges" | "okr" | "meetings" | "messages" | "activity";
+type TabKey = "feed" | "members" | "teams" | "leaderboard" | "communities" | "board" | "challenges" | "okr" | "meetings" | "messages" | "activity";
 
 /** The site's pages; labels and descriptions come from the i18n dictionary. */
 const PAGES: { key: TabKey; icon: string }[] = [
   { key: "feed", icon: "📰" },
   { key: "members", icon: "🫂" },
+  { key: "teams", icon: "🧩" },
   { key: "leaderboard", icon: "🏆" },
   { key: "communities", icon: "👥" },
   { key: "board", icon: "🧠" },
@@ -405,6 +407,7 @@ function SignedIn({ session }: { session: HiveSession }) {
   const [tab, setTab] = useState<TabKey>("feed");
   const [community, setCommunity] = useState<{ id: string; name: string } | null>(null);
   const [communityTab, setCommunityTab] = useState<"folders" | "chat">("folders");
+  const [openTeam, setOpenTeam] = useState<string | null>(null);
   const [dmTarget, setDmTarget] = useState<{ id: string; name: string } | null>(null);
   const [profile, setProfile] = useState<{ id: string; name: string } | null>(null);
   const [activity, setActivity] = useState<ActivityItem[] | null>(null);
@@ -424,6 +427,7 @@ function SignedIn({ session }: { session: HiveSession }) {
     setOpenId(null);
     setProfile(null);
     setCommunity(null);
+    setOpenTeam(null);
     if (key === "activity") {
       const now = new Date().toISOString();
       localStorage.setItem("hive.activity.seen", now);
@@ -458,6 +462,8 @@ function SignedIn({ session }: { session: HiveSession }) {
         onMessage={startDm}
       />
     );
+  } else if (openTeam) {
+    content = <TeamDetail teamId={openTeam} myId={myId} onBack={() => setOpenTeam(null)} onOpenProfile={openProfile} />;
   } else if (community) {
     content = (
       <>
@@ -488,6 +494,8 @@ function SignedIn({ session }: { session: HiveSession }) {
           <Feed onOpen={setOpenId} onOpenProfile={openProfile} />
         ) : tab === "members" ? (
           <Members onOpenProfile={openProfile} />
+        ) : tab === "teams" ? (
+          <Teams onOpen={setOpenTeam} />
         ) : tab === "leaderboard" ? (
           <Leaderboard onOpenProfile={openProfile} />
         ) : tab === "communities" ? (
@@ -2048,6 +2056,198 @@ function Profile({
           </article>
         ))}
       </div>
+    </div>
+  );
+}
+
+function Teams({ onOpen }: { onOpen: (id: string) => void }) {
+  const t = useT();
+  const [rows, setRows] = useState<Team[] | null>(null);
+  const [mine, setMine] = useState<Set<string>>(new Set());
+  const [name, setName] = useState("");
+  const [topic, setTopic] = useState("");
+  const [problem, setProblem] = useState("");
+  const [error, setError] = useState("");
+
+  const load = useCallback(() => {
+    listTeams(pb).then(setRows).catch((e) => setError(errMsg(e)));
+    myTeamIds(pb).then(setMine).catch(() => {});
+  }, []);
+  useEffect(load, [load]);
+
+  async function create() {
+    setError("");
+    try {
+      const id = await createTeam(pb, { name, topic, problem });
+      setName(""); setTopic(""); setProblem("");
+      onOpen(id);
+    } catch (e) {
+      setError(errMsg(e));
+    }
+  }
+
+  return (
+    <div className="teams">
+      <div className="team-create">
+        <input className="hive-input" placeholder={t("teamNamePh")} value={name} onChange={(e) => setName(e.target.value)} />
+        <input className="hive-input" placeholder={t("teamTopicPh")} value={topic} onChange={(e) => setTopic(e.target.value)} />
+        <textarea className="hive-input" placeholder={t("teamProblemPh")} rows={2} value={problem} onChange={(e) => setProblem(e.target.value)} />
+        <button className="primary" disabled={!isValidTeamName(name) || !problem.trim()} onClick={() => void create()}>
+          {t("teamCreate")}
+        </button>
+      </div>
+      {error && <p className="hint err">⚠ {error}</p>}
+      {!rows && <SkeletonRows />}
+      {rows && rows.length === 0 && <EmptyState icon="🧩" title={t("teamsEmptyTitle")} hint={t("teamsEmptyHint")} />}
+      <div className="feed">
+        {rows?.map((tm) => (
+          <article key={tm.id} className="card task" onClick={() => onOpen(tm.id)} style={{ cursor: "pointer" }}>
+            <header className="card-head">
+              <h3>{tm.name}</h3>
+              <span className={`task-status ${tm.status === "open" ? "open" : "done"}`}>
+                {tm.status === "open" ? `🟢 ${t("teamOpen")}` : `✅ ${t("teamSolved")}`}
+              </span>
+            </header>
+            <div className="tags">
+              {tm.topic && <span className="chip">#{tm.topic}</span>}
+              {mine.has(tm.id) && <span className="chip fde-chip">{t("teamMine")}</span>}
+            </div>
+            <p className="summary">{tm.problem}</p>
+          </article>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function TeamDetail({ teamId, myId, onBack, onOpenProfile }: { teamId: string; myId: string; onBack: () => void; onOpenProfile: (id: string, name: string) => void }) {
+  const t = useT();
+  const [team, setTeam] = useState<Team | null>(null);
+  const [roster, setRoster] = useState<TeamMember[]>([]);
+  const [profiles, setProfiles] = useState<Map<string, AgentProfile>>(new Map());
+  const [messages, setMessages] = useState<TeamMessage[] | null>(null);
+  const [body, setBody] = useState("");
+  const [outcome, setOutcome] = useState("");
+  const [picking, setPicking] = useState(false);
+  const [candidates, setCandidates] = useState<Member[]>([]);
+  const [error, setError] = useState("");
+
+  const isOwner = team?.owner_id === myId;
+  const rosterIds = new Set(roster.map((r) => r.user_id));
+
+  const loadTeam = useCallback(() => {
+    getTeam(pb, teamId).then(setTeam).catch((e) => setError(errMsg(e)));
+    listTeamMembers(pb, teamId).then(setRoster).catch(() => {});
+    listProfiles(pb).then(setProfiles).catch(() => {});
+  }, [teamId]);
+  const loadMsgs = useCallback(() => {
+    listTeamMessages(pb, teamId).then(setMessages).catch((e) => setError(errMsg(e)));
+  }, [teamId]);
+  useEffect(loadTeam, [loadTeam]);
+  useEffect(loadMsgs, [loadMsgs]);
+  useEffect(() => onTableInserts(pb, "team_messages", eqFilter("team_id", teamId), loadMsgs), [teamId, loadMsgs]);
+
+  async function send() {
+    const text = body.trim();
+    if (!text) return;
+    try { await sendTeamMessage(pb, teamId, text); setBody(""); loadMsgs(); } catch (e) { setError(errMsg(e)); }
+  }
+  async function conclude() {
+    if (!outcome.trim()) return;
+    try { await concludeTeam(pb, teamId, outcome); setOutcome(""); loadTeam(); } catch (e) { setError(errMsg(e)); }
+  }
+  async function openPicker() {
+    setPicking(true);
+    try { setCandidates(await listMembers(pb)); } catch { /* ignore */ }
+  }
+  async function add(userId: string) {
+    try { await addTeamMember(pb, teamId, userId); loadTeam(); } catch (e) { setError(errMsg(e)); }
+  }
+  async function remove(rowId: string) {
+    try { await removeTeamMember(pb, rowId); loadTeam(); } catch (e) { setError(errMsg(e)); }
+  }
+
+  return (
+    <div className="team-detail">
+      <div className="filter-bar">
+        <span>🧩 <strong>{team?.name ?? t("loading")}</strong></span>
+        <button onClick={onBack}>{t("back")}</button>
+      </div>
+      {error && <p className="hint err">⚠ {error}</p>}
+      {team && (
+        <>
+          <div className="tags">
+            {team.topic && <span className="chip">#{team.topic}</span>}
+            <span className={`task-status ${team.status === "open" ? "open" : "done"}`}>
+              {team.status === "open" ? `🟢 ${t("teamOpen")}` : `✅ ${t("teamSolved")}`}
+            </span>
+          </div>
+          <p className="summary team-problem">{team.problem}</p>
+          {team.status === "solved" && team.outcome && (
+            <div className="task-result"><strong>✅ {t("teamOutcome")}</strong><p>{team.outcome}</p></div>
+          )}
+
+          <h3>{t("teamRoster")}</h3>
+          <div className="team-roster">
+            {roster.map((r) => {
+              const p = profiles.get(r.user_id);
+              const who = r.member?.display_name ?? t("someone");
+              return (
+                <span key={r.id} className="roster-chip" onClick={() => onOpenProfile(r.user_id, who)}>
+                  <Avatar seed={r.user_id} label={who} />
+                  <span className="roster-name">{who}{p?.role ? ` · ${p.role}` : ""}</span>
+                  {isOwner && <button className="roster-x" onClick={(e) => { e.stopPropagation(); void remove(r.id); }}>×</button>}
+                </span>
+              );
+            })}
+            {roster.length === 0 && <span className="hint">{t("teamNoRoster")}</span>}
+          </div>
+          {isOwner && !picking && <button onClick={() => void openPicker()}>{t("teamAddMember")}</button>}
+          {isOwner && picking && (
+            <div className="team-picker">
+              {candidates.filter((c) => !rosterIds.has(c.user_id)).map((c) => (
+                <button key={c.user_id} className="pick-row" onClick={() => void add(c.user_id)}>
+                  <Avatar seed={c.user_id} label={c.display_name ?? t("someone")} />
+                  {c.display_name ?? t("someone")}
+                  {profiles.get(c.user_id)?.role ? <span className="chip">{profiles.get(c.user_id)!.role}</span> : null}
+                </button>
+              ))}
+              <button onClick={() => setPicking(false)}>{t("back")}</button>
+            </div>
+          )}
+
+          <h3>{t("teamDiscussion")}</h3>
+          <div className="chat">
+            {!messages && <SkeletonRows n={2} />}
+            {messages && messages.length === 0 && <EmptyState icon="💬" title={t("teamChatEmpty")} />}
+            <div className="chat-thread">
+              {messages?.map((m) => {
+                const who = m.author?.display_name ?? t("someone");
+                const mineMsg = m.user_id === myId;
+                return (
+                  <div key={m.id} className={`chat-msg ${mineMsg ? "mine" : "theirs"}`}>
+                    {!mineMsg && <span className="chat-who">{who}{m.author_kind === "agent" ? " 🤖" : ""}</span>}
+                    <span className="chat-body">{m.body}</span>
+                  </div>
+                );
+              })}
+            </div>
+            <div className="chat-input">
+              <input className="hive-input" placeholder={t("teamSayPh")} value={body} disabled={team.status === "solved"}
+                onChange={(e) => setBody(e.target.value)} onKeyDown={(e) => e.key === "Enter" && void send()} />
+              <button className="primary" disabled={team.status === "solved"} onClick={() => void send()}>{t("send")}</button>
+            </div>
+          </div>
+
+          {isOwner && team.status === "open" && (
+            <div className="team-conclude">
+              <h3>{t("teamConcludeTitle")}</h3>
+              <textarea className="hive-input" rows={2} placeholder={t("teamOutcomePh")} value={outcome} onChange={(e) => setOutcome(e.target.value)} />
+              <button className="primary" disabled={!outcome.trim()} onClick={() => void conclude()}>{t("teamConclude")}</button>
+            </div>
+          )}
+        </>
+      )}
     </div>
   );
 }

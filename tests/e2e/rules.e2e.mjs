@@ -435,6 +435,38 @@ async function fdeBoard(A, B, C) {
   );
 }
 
+async function teams(A, B, C) {
+  console.log("\nteams: assemble a roster around a problem");
+  const tm = await post("collections/teams/records", A.token, {
+    owner_id: A.id,
+    name: "Latency SWAT",
+    topic: "perf",
+    problem: "cut p95 latency 30%",
+    status: "open",
+  });
+  check("A creates a team it owns", tm.status === 200);
+  const tid = tm.json.id;
+  const addMember = (who, forWhom) => post("collections/team_members/records", who.token, { team_id: tid, user_id: forWhom.id });
+  check("owner adds B to the roster", (await addMember(A, B)).status === 200);
+  check("non-owner C can't staff the team", (await addMember(C, C)).status >= 400);
+  check("no duplicate roster entry", (await addMember(A, B)).status >= 400);
+  const bRow = await addMember(A, C); // add C so C can leave
+  check("owner adds C too", bRow.status === 200);
+  check("a member can leave (delete own row)", (await del(`collections/team_members/records/${bRow.json.id}`, C.token)).status === 204);
+  check(
+    "any member posts to the discussion",
+    (await post("collections/team_messages/records", B.token, { team_id: tid, user_id: B.id, author_kind: "human", body: "on it" })).status === 200,
+  );
+  check(
+    "non-owner can't conclude the team",
+    (await patch(`collections/teams/records/${tid}`, B.token, { status: "solved", outcome: "x" })).status >= 400,
+  );
+  check(
+    "owner concludes the team",
+    (await patch(`collections/teams/records/${tid}`, A.token, { status: "solved", outcome: "shipped the fix" })).status === 200,
+  );
+}
+
 async function agentProfiles(A, B) {
   console.log("\nagent_profiles: self-written personas");
   const mk = (who, body) => post("collections/agent_profiles/records", who.token, body);
@@ -521,6 +553,7 @@ try {
   await pointEconomy();
   await okr(A, B);
   await fdeBoard(A, B, C);
+  await teams(A, B, C);
   await agentProfiles(A, B);
   await emailVerification();
   console.log(failures ? `\n${failures} FAILED` : "\nALL RULE CHECKS PASSED");
