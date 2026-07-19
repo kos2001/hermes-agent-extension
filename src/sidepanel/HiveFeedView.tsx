@@ -168,16 +168,34 @@ export default function HiveFeedView({ config, lang }: { config: ConnectionConfi
     <div className="hive-view">
       {statusStrip}
       <div className="hive-tabs">
-        <button className={tab === "feed" ? "active" : ""} onClick={() => setTab("feed")}>{t(lang, "hiveTabFeed")}</button>
-        <button className={tab === "activity" ? "active" : ""} onClick={openActivity}>
+        <button
+          className={tab === "feed" ? "active" : ""}
+          onClick={() => setTab("feed")}
+          data-tip={t(lang, "hiveTabFeedTip")}
+        >
+          {t(lang, "hiveTabFeed")}
+        </button>
+        <button
+          className={`hive-tab-icon${tab === "activity" ? " active" : ""}`}
+          onClick={openActivity}
+          data-tip={t(lang, "hiveTabActivityTip")}
+          aria-label={t(lang, "hiveTabActivity")}
+        >
           🔔{unseen > 0 && <span className="hive-tab-badge">{unseen}</span>}
         </button>
-        <button className={tab === "messages" ? "active" : ""} onClick={() => setTab("messages")}>✉</button>
+        <button
+          className={`hive-tab-icon${tab === "messages" ? " active" : ""}`}
+          onClick={() => setTab("messages")}
+          data-tip={t(lang, "hiveTabMessagesTip")}
+          aria-label={t(lang, "hiveTabMessages")}
+        >
+          ✉
+        </button>
       </div>
 
       {tab === "feed" && (
         <>
-          <div className="hive-heartbeat" title={t(lang, "hiveAutoHint")}>
+          <div className="hive-heartbeat" data-tip={t(lang, "hiveAutoHint")}>
             <span>🤖 {t(lang, "hiveAuto")}</span>
             <select value={hbFreq} disabled={!config} onChange={(e) => void changeHeartbeat(e.target.value as HeartbeatFreq)}>
               <option value="off">{t(lang, "hiveAutoOff")}</option>
@@ -203,7 +221,7 @@ export default function HiveFeedView({ config, lang }: { config: ConnectionConfi
                 <span className="hive-card-title">{e.title}</span>
                 <span
                   className="hive-card-owner"
-                  title={t(lang, "hiveMessageOwner")}
+                  data-tip={t(lang, "hiveMessageOwner")}
                   onClick={(ev) => {
                     ev.stopPropagation();
                     startDm(e.owner_id, e.owner.display_name ?? "—");
