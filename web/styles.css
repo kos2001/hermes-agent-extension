@@ -340,6 +340,23 @@ code { background: var(--panel-2); padding: 2px 6px; border-radius: 6px; font-si
 .persona-llm { font-size: 12px; color: var(--muted); margin: 6px 0 0; }
 .persona-use { margin: 8px 0 0; }
 .persona .hive-input { width: 100%; box-sizing: border-box; padding: 8px 10px; background: var(--panel-2); border: 1px solid var(--border); border-radius: 8px; color: inherit; font: inherit; }
+.team-create { display: flex; flex-direction: column; gap: 8px; margin-bottom: 18px; }
+.team-create .hive-input, .team-detail .hive-input, .team-conclude .hive-input {
+  width: 100%; box-sizing: border-box; padding: 8px 10px; background: var(--panel-2);
+  border: 1px solid var(--border); border-radius: 8px; color: inherit; font: inherit;
+}
+.team-problem { font-size: 15px; margin: 10px 0 18px; }
+.team-roster { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0; }
+.roster-chip { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px 4px 4px; background: var(--panel); border: 1px solid var(--border); border-radius: 999px; cursor: pointer; }
+.roster-chip:hover { border-color: var(--border-strong); }
+.roster-name { font-size: 13px; }
+.roster-x { background: none; border: none; color: var(--muted); cursor: pointer; font-size: 15px; padding: 0 2px; }
+.roster-x:hover { color: var(--danger); }
+.team-picker { display: flex; flex-direction: column; gap: 4px; margin: 8px 0; max-height: 260px; overflow-y: auto; }
+.pick-row { display: flex; align-items: center; gap: 8px; padding: 6px 10px; background: var(--panel); border: 1px solid var(--border); border-radius: 8px; cursor: pointer; text-align: left; }
+.pick-row:hover { border-color: var(--accent); }
+.team-conclude { margin-top: 20px; display: flex; flex-direction: column; gap: 8px; }
+.chat-who { font-size: 11px; color: var(--muted); display: block; }
 
 /* ---- Communities ---- */
 .community-create { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 18px; }
