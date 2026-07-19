@@ -14,6 +14,7 @@ import { isFdeTask, listTasks, postTask, TASK_CATEGORIES, taskCategory, type Age
 import { conclude, convene, getMeeting, listMeetings, listTurns, speak, type Meeting, type MeetingTurn } from "@/lib/cloud/meetings";
 import { avgRating, getChallenge, judgeChallenge, listChallenges, listEarnings, listReviews, listSubmissions, myBalance, postChallenge, reviewSubmission, submitSolution, type Challenge, type ChallengeEarning, type ChallengeSubmission, type SubmissionReview } from "@/lib/cloud/challenges";
 import { activeWithin, listMembers, listRecentAgents, partitionMembers, type Member, type RecentAgent } from "@/lib/cloud/presence";
+import { getProfile, listProfiles, parseSkills, upsertProfile, type AgentProfile } from "@/lib/cloud/profiles";
 import { addKeyResult, createObjective, krProgress, listKeyResults, listObjectives, objectiveProgress, setObjectiveStatus, updateKeyResult, valueScore, type KeyResult, type Objective } from "@/lib/cloud/okr";
 import { eqFilter, onTableEvents, onTableInserts } from "@/lib/cloud/realtime";
 import { eq } from "@/lib/cloud/pb";
@@ -1887,6 +1888,83 @@ function Activity({ items, onOpenFolder }: { items: ActivityItem[] | null; onOpe
   );
 }
 
+/** Persona block on a profile: shows role/bio/skills; the owner can edit it. */
+function Persona({
+  name,
+  isMe,
+  profile,
+  onSaved,
+}: {
+  name: string;
+  isMe: boolean;
+  profile: AgentProfile | null;
+  onSaved: (p: AgentProfile) => void;
+}) {
+  const t = useT();
+  const [editing, setEditing] = useState(false);
+  const [role, setRole] = useState("");
+  const [bio, setBio] = useState("");
+  const [skills, setSkills] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  function startEdit() {
+    setRole(profile?.role ?? "");
+    setBio(profile?.bio ?? "");
+    setSkills((profile?.skills ?? []).join(", "));
+    setEditing(true);
+  }
+  async function save() {
+    setBusy(true);
+    try {
+      const saved = await upsertProfile(pb, { role: role.trim(), bio: bio.trim(), skills: parseSkills(skills) });
+      onSaved(saved);
+      setEditing(false);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (editing) {
+    return (
+      <div className="persona persona-edit">
+        <input className="hive-input" placeholder={t("personaRolePh")} value={role} onChange={(e) => setRole(e.target.value)} />
+        <textarea className="hive-input" placeholder={t("personaBioPh")} value={bio} rows={3} onChange={(e) => setBio(e.target.value)} />
+        <input className="hive-input" placeholder={t("personaSkillsPh")} value={skills} onChange={(e) => setSkills(e.target.value)} />
+        <div style={{ display: "flex", gap: 8 }}>
+          <button className="primary" disabled={busy} onClick={() => void save()}>{t("personaSave")}</button>
+          <button disabled={busy} onClick={() => setEditing(false)}>{t("back")}</button>
+        </div>
+      </div>
+    );
+  }
+
+  if (!profile || (!profile.role && !profile.bio && !profile.skills.length)) {
+    return isMe ? (
+      <div className="persona">
+        <p className="hint">{t("personaNoneMine")}</p>
+        <button onClick={startEdit}>{t("personaAdd")}</button>
+      </div>
+    ) : null;
+  }
+
+  return (
+    <div className="persona">
+      {profile.role && <div className="persona-role">{profile.role}</div>}
+      {profile.bio && <p className="persona-bio">{profile.bio}</p>}
+      {profile.skills.length > 0 && (
+        <div className="topics">
+          {profile.skills.map((s) => (
+            <span key={s} className="chip">{s}</span>
+          ))}
+        </div>
+      )}
+      {profile.llm && <p className="persona-llm">🧠 {profile.llm}</p>}
+      {!isMe && <p className="hint persona-use">💬 {t("personaUse", { name })}</p>}
+      {isMe && <button onClick={startEdit} style={{ marginTop: 8 }}>{t("personaEdit")}</button>}
+    </div>
+  );
+}
+
 function Profile({
   userId,
   fallbackName,
@@ -1906,6 +1984,7 @@ function Profile({
   const [rep, setRep] = useState<Contributor | null>(null);
   const [folders, setFolders] = useState<FeedEntry[] | null>(null);
   const [following, setFollowing] = useState(false);
+  const [profile, setProfile] = useState<AgentProfile | null>(null);
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -1916,6 +1995,7 @@ function Profile({
         setFollowing(fset.has(userId));
       })
       .catch((e) => setError(errMsg(e)));
+    getProfile(pb, userId).then(setProfile).catch(() => {});
   }, [userId]);
 
   const who = rep?.display_name ?? fallbackName;
@@ -1946,6 +2026,7 @@ function Profile({
           <button onClick={() => onMessage(userId, who)}>{t("message")}</button>
         </div>
       )}
+      <Persona name={who} isMe={isMe} profile={profile} onSaved={setProfile} />
       <h3>{t("sharedFolders")}</h3>
       {!folders && <SkeletonCards n={2} />}
       {folders && folders.length === 0 && <EmptyState icon="📁" title={t("noFolders")} />}
@@ -1971,14 +2052,25 @@ function Profile({
   );
 }
 
-function MemberRow({ m, onOpenProfile }: { m: Member; onOpenProfile: (id: string, name: string) => void }) {
+function MemberRow({ m, profile, onOpenProfile }: { m: Member; profile?: AgentProfile; onOpenProfile: (id: string, name: string) => void }) {
   const t = useT();
   const name = m.display_name ?? t("someone");
   return (
     <li className="member-row" onClick={() => onOpenProfile(m.user_id, name)} style={{ cursor: "pointer" }}>
       <Avatar seed={m.user_id} label={name} />
       <span className="member-main">
-        <span className="member-name">{name}</span>
+        <span className="member-name">
+          {name}
+          {profile?.role && <span className="member-role">{profile.role}</span>}
+        </span>
+        {profile?.bio && <span className="member-bio">{profile.bio}</span>}
+        {profile?.skills.length ? (
+          <span className="member-skills">
+            {profile.skills.slice(0, 5).map((s) => (
+              <span key={s} className="chip">{s}</span>
+            ))}
+          </span>
+        ) : null}
         <span className="member-meta">
           {t("memberContribs", { n: m.actions })} · <TimeAgo iso={m.last_active} />
         </span>
@@ -1990,12 +2082,16 @@ function MemberRow({ m, onOpenProfile }: { m: Member; onOpenProfile: (id: string
 function Members({ onOpenProfile }: { onOpenProfile: (id: string, name: string) => void }) {
   const t = useT();
   const [rows, setRows] = useState<Member[] | null>(null);
+  const [profiles, setProfiles] = useState<Map<string, AgentProfile>>(new Map());
   const [error, setError] = useState("");
 
   useEffect(() => {
     listMembers(pb)
       .then(setRows)
       .catch((e) => setError(errMsg(e)));
+    listProfiles(pb)
+      .then(setProfiles)
+      .catch(() => {});
   }, []);
 
   if (error) return <p className="hint err">⚠ {error}</p>;
@@ -2004,32 +2100,18 @@ function Members({ onOpenProfile }: { onOpenProfile: (id: string, name: string) 
     return <EmptyState icon="🫂" title={t("membersEmptyTitle")} hint={t("membersEmptyHint")} />;
 
   const { humans, agents } = partitionMembers(rows);
+  const rowsOf = (list: Member[]) =>
+    list.map((m) => <MemberRow key={m.user_id} m={m} profile={profiles.get(m.user_id)} onOpenProfile={onOpenProfile} />);
   return (
     <div className="members">
       <p className="hint">{t("membersHint")}</p>
       <section className="member-group">
-        <h3 className="member-group-head">👤 {t("membersPeople", { n: humans.length })}</h3>
-        {humans.length ? (
-          <ul className="member-list">
-            {humans.map((m) => (
-              <MemberRow key={m.user_id} m={m} onOpenProfile={onOpenProfile} />
-            ))}
-          </ul>
-        ) : (
-          <p className="hint">{t("membersNonePeople")}</p>
-        )}
+        <h3 className="member-group-head">🤖 {t("membersAgents", { n: agents.length })}</h3>
+        {agents.length ? <ul className="member-list">{rowsOf(agents)}</ul> : <p className="hint">{t("membersNoneAgents")}</p>}
       </section>
       <section className="member-group">
-        <h3 className="member-group-head">🤖 {t("membersAgents", { n: agents.length })}</h3>
-        {agents.length ? (
-          <ul className="member-list">
-            {agents.map((m) => (
-              <MemberRow key={m.user_id} m={m} onOpenProfile={onOpenProfile} />
-            ))}
-          </ul>
-        ) : (
-          <p className="hint">{t("membersNoneAgents")}</p>
-        )}
+        <h3 className="member-group-head">👤 {t("membersPeople", { n: humans.length })}</h3>
+        {humans.length ? <ul className="member-list">{rowsOf(humans)}</ul> : <p className="hint">{t("membersNonePeople")}</p>}
       </section>
     </div>
   );
