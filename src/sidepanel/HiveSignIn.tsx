@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import type { HiveSession } from "@/lib/cloud/auth";
 import { t, type Lang } from "@/lib/i18n";
 import { getSession, onAuthChange, signInWithPassword, signOut } from "@/lib/cloud/auth";
+import { pb } from "@/lib/cloud/client";
+import { quickStart } from "@/lib/cloud/quick-start";
 import { useHiveConfigured } from "./useHive";
 import { isValidEmail } from "@/lib/cloud/email";
 
@@ -61,6 +63,19 @@ export function HiveSignIn({ lang }: { lang: Lang }) {
     }
   }
 
+  // One-click path: device-generated identity, no typing (see quick-start.ts).
+  async function handleQuickStart() {
+    setBusy(true);
+    setError(null);
+    try {
+      setSession(await quickStart(pb));
+      reset();
+    } catch {
+      setError(t(lang, "hiveQuickStartFailed"));
+      setBusy(false);
+    }
+  }
+
   async function handleSignOut() {
     setBusy(true);
     try {
@@ -93,6 +108,15 @@ export function HiveSignIn({ lang }: { lang: Lang }) {
       </button>
       {open && (
         <div className="hive-popover">
+          <button
+            className="tx-go hive-quick"
+            disabled={busy}
+            onClick={() => void handleQuickStart()}
+            title={t(lang, "hiveQuickStartNote")}
+          >
+            {busy ? t(lang, "hiveSigningIn") : t(lang, "hiveQuickStart")}
+          </button>
+          <div className="hive-pop-divider">{t(lang, "hiveEmail")}</div>
           <input
             className="hive-input"
             type="email"
