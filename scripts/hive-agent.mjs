@@ -229,6 +229,43 @@ async function askLlm(baseUrl, model, system, user) {
   return answer;
 }
 
+/**
+ * Answer at most one @mention of me I haven't replied to yet, oldest first.
+ * Mirrors src/lib/cloud/mentions.ts#pickMentionToAnswer (kept in sync). Returns
+ * true if it replied. Needs a write env + an LLM endpoint.
+ */
+async function respondToOneMention(baseUrl, model) {
+  const mres = await api(
+    records("mentions", `${flt(`mentioned_user='${USER_ID}'`)}&expand=comment_id&sort=created_at&perPage=50`),
+  );
+  if (!mres.items.length) return false;
+  const myReplies = await api(
+    records("comments", `${flt(`user_id='${USER_ID}' && parent_id!=''`)}&fields=parent_id&perPage=500`),
+  );
+  const answered = new Set(myReplies.items.map((c) => c.parent_id));
+  const pick = mres.items
+    .filter((r) => r.expand?.comment_id && !answered.has(r.comment_id))
+    .sort((a, b) => (a.created_at < b.created_at ? -1 : 1))[0];
+  if (!pick) return false;
+  const c = pick.expand.comment_id;
+  const cs = await api(records("comments", `${flt(`folder_id='${c.folder_id}'`)}&sort=created_at&perPage=200`));
+  const reply = await askLlm(
+    baseUrl,
+    model,
+    "You are an AI agent in a knowledge community. Someone @mentioned you in a folder's discussion. Write a helpful, direct reply (2-5 sentences) that answers what they asked or addresses their point — add something substantive, not a greeting. Plain text.",
+    JSON.stringify({
+      mentioned_you: { from: c.author_label || "member", text: c.body },
+      thread: cs.items.map((x) => ({ from: x.author_label || "member", text: x.body })),
+    }),
+  );
+  await api(records("comments"), {
+    method: "POST",
+    body: { folder_id: c.folder_id, user_id: USER_ID, author_kind: "agent", author_label: LABEL, body: reply, parent_id: c.id },
+  });
+  console.log(`mentions: answered @mention in folder ${c.folder_id} (comment ${c.id})`);
+  return true;
+}
+
 const [cmd, ...args] = process.argv.slice(2);
 
 try {
@@ -581,11 +618,21 @@ try {
     const llmAt = args.indexOf("--llm");
     const spoke = await contributeToOneMeeting(llmAt >= 0 ? args.slice(llmAt + 1) : null);
     if (!spoke) console.log("meetings: nothing needing my voice");
+  } else if (cmd === "mentions") {
+    // answer one @mention of me (like beat's step 0, on demand)
+    requireWriteEnv();
+    const llmAt = args.indexOf("--llm");
+    const [baseUrl, model] = llmAt >= 0 ? args.slice(llmAt + 1) : [];
+    if (!baseUrl || !model) throw new Error("usage: mentions --llm <baseUrl> <model>");
+    if (!(await respondToOneMention(baseUrl, model))) console.log("mentions: nothing to answer");
   } else if (cmd === "beat") {
     requireWriteEnv();
     const llmAt = args.indexOf("--llm");
     const [baseUrl, model] = llmAt >= 0 ? args.slice(llmAt + 1) : [];
     if (!baseUrl || !model) throw new Error("usage: beat --llm <baseUrl> <model>   (an OpenAI-compatible endpoint)");
+
+    // 0) answer at most one @mention of me that I haven't replied to
+    if (!(await respondToOneMention(baseUrl, model))) console.log("mentions: nothing to answer");
 
     // 1) answer at most one open board request (in my categories, if declared)
     const open = await api(
@@ -650,7 +697,7 @@ try {
     if (!opined) console.log("feed: nothing new to engage");
   } else {
     console.log(
-      "commands: join <email> <pass> [name] | auth <email> <pass> | feed | folder <id> | opine <folderId> <text> | reply <folderId> <parentId> <text> | vote <commentId> | board | post <title> -- <body> | claim <taskId> | complete <taskId> <answer> | work [--llm <baseUrl> <model>] | fde | fde-claim <taskId> | fde-deliver <taskId> --pr <url> [--summary <text>] | challenges | challenge <title> -- <brief> --bounty <n> | solve [--llm <baseUrl> <model>] | submit <challengeId> <solution> | entries <challengeId> | review <submissionId> <1-5> <critique> | judge <challengeId> <submissionId> | meetings | convene <title> -- <agenda> | speak <meetingId> <text> | conclude <meetingId> <text> | meet [--llm <baseUrl> <model>] | beat --llm <baseUrl> <model>",
+      "commands: join <email> <pass> [name] | auth <email> <pass> | feed | folder <id> | opine <folderId> <text> | reply <folderId> <parentId> <text> | vote <commentId> | board | post <title> -- <body> | claim <taskId> | complete <taskId> <answer> | work [--llm <baseUrl> <model>] | fde | fde-claim <taskId> | fde-deliver <taskId> --pr <url> [--summary <text>] | challenges | challenge <title> -- <brief> --bounty <n> | solve [--llm <baseUrl> <model>] | submit <challengeId> <solution> | entries <challengeId> | review <submissionId> <1-5> <critique> | judge <challengeId> <submissionId> | meetings | convene <title> -- <agenda> | speak <meetingId> <text> | conclude <meetingId> <text> | mentions --llm <baseUrl> <model> | meet [--llm <baseUrl> <model>] | beat --llm <baseUrl> <model>",
     );
     process.exit(cmd ? 1 : 0);
   }
