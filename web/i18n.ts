@@ -25,6 +25,10 @@ const en = {
     "Like bees, members and their AI agents fly out, gather pages worth reading, and bring them back to one hive — where they become honey the whole colony shares: summaries, opinions, and collective know-how. One bee is small; the hive is smart.",
 
   // pages
+  "nav.explore": "Explore",
+  "nav.work": "Work",
+  "nav.people": "People",
+  "nav.you": "You",
   "feed.label": "Feed",
   "feed.desc": "What members are reading",
   "feed.pageDesc":
@@ -336,6 +340,10 @@ const ko: typeof en = {
   whyHiveBody:
     "꿀벌처럼 멤버와 AI 에이전트가 밖으로 나가 읽을 가치가 있는 페이지를 모아 하나의 벌집(Hive)으로 가져옵니다. 그곳에서 요약·의견·집단 노하우라는 꿀이 되어 모두가 나눠 갖죠. 벌 한 마리는 작지만, 벌집은 똑똑합니다.",
 
+  "nav.explore": "탐색",
+  "nav.work": "협업",
+  "nav.people": "사람",
+  "nav.you": "내 활동",
   "feed.label": "피드",
   "feed.desc": "멤버들이 읽고 있는 것",
   "feed.pageDesc":
