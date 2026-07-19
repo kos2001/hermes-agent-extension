@@ -1,6 +1,6 @@
 import type PocketBase from "pocketbase";
 import { and, eq, inList, uid } from "./pb";
-import type { TaskCategory } from "./board";
+import { isExpired, workValueFields, type TaskCategory, type WorkValue } from "./board";
 
 /**
  * Kaggle-style challenges: a member posts a task with a point bounty;
@@ -15,6 +15,12 @@ export interface Challenge {
   brief: string;
   category: TaskCategory | "";
   bounty: number;
+  /** Optional ISO cutoff; past it the server refuses new/updated entries. */
+  deadline: string;
+  /** Optional OKR link + valuation (value density = impact ÷ effort_mm). */
+  objective_id: string;
+  effort_mm: number;
+  impact: number;
   status: "open" | "judged";
   winner_id: string;
   winner_submission_id: string;
@@ -76,6 +82,8 @@ export async function postChallenge(
   brief: string,
   bounty: number,
   category: TaskCategory = "general",
+  deadline = "",
+  value?: WorkValue,
 ): Promise<string> {
   const cleanTitle = title.trim();
   const cleanBrief = brief.trim();
@@ -89,7 +97,9 @@ export async function postChallenge(
     brief: cleanBrief,
     category,
     bounty,
+    deadline,
     status: "open",
+    ...workValueFields(value),
   });
   return created.id;
 }
@@ -137,6 +147,17 @@ export async function judgeChallenge(pb: PocketBase, challengeId: string, submis
 export async function listEarnings(pb: PocketBase, limit = 10): Promise<ChallengeEarning[]> {
   const result = await pb.collection("challenge_earnings").getList(1, limit, { sort: "-points" });
   return result.items as unknown as ChallengeEarning[];
+}
+
+/**
+ * My spendable points: 100 starting grant + won bounties − committed
+ * bounties (posting escrows; the server rejects unaffordable bounties).
+ */
+export async function myBalance(pb: PocketBase): Promise<number> {
+  const userId = uid(pb);
+  if (!userId) return 0;
+  const row = (await pb.collection("point_balance").getOne(userId)) as unknown as { points: number };
+  return row.points;
 }
 
 export interface SubmissionReview {
@@ -204,9 +225,10 @@ export function pickOpenChallenge(
   myEnteredIds: Set<string>,
   myId: string,
   categories?: TaskCategory[],
+  now: Date = new Date(),
 ): Challenge | null {
   const open = challenges
-    .filter((c) => c.status === "open" && c.poster_id !== myId && !myEnteredIds.has(c.id))
+    .filter((c) => c.status === "open" && c.poster_id !== myId && !myEnteredIds.has(c.id) && !isExpired(c.deadline, now))
     .filter((c) => !categories?.length || categories.includes(c.category || "general"))
     .sort((a, b) => (a.created_at < b.created_at ? -1 : 1));
   return open[0] ?? null;

@@ -20,9 +20,20 @@ export const pb: PocketBase = new PocketBase(url ?? "http://invalid.local");
 // the earlier ones, so it stays off.
 pb.autoCancellation(false);
 
-/** Sign in; creates the account when the email is new. */
+export { VerificationPendingError } from "@/lib/cloud/password-auth";
+
+/**
+ * Sign in; creates the account when the email is new. Human emails must be
+ * verified (throws VerificationPendingError after mailing the link); the
+ * agent domain is exempt server-side.
+ */
 export async function signInWithPassword(email: string, password: string): Promise<HiveSession> {
   return pw.signInWithPassword(pb, email, password);
+}
+
+/** Email a password-reset link. */
+export async function requestPasswordReset(email: string): Promise<void> {
+  return pw.requestPasswordReset(pb, email);
 }
 
 export async function signOut(): Promise<void> {
@@ -30,7 +41,7 @@ export async function signOut(): Promise<void> {
 }
 
 export async function getSession(): Promise<HiveSession | null> {
-  return pw.getSession(pb);
+  return pw.ensureFreshSession(pb);
 }
 
 export function onAuthChange(cb: (session: HiveSession | null) => void): () => void {

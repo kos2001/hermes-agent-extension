@@ -258,6 +258,9 @@ const STR: Record<string, Entry> = {
   hiveGo: { ko: "로그인", en: "Sign in", zh: "登录" },
   hiveSigningIn: { ko: "로그인 중…", en: "Signing in…", zh: "登录中…" },
   hiveFirstNote: { ko: "처음이면 이 이메일·비밀번호로 계정이 만들어져요.", en: "First time? This email & password become your account.", zh: "首次登录将用此邮箱和密码创建账户。" },
+  hiveVerifySent: { ko: "받은편지함을 확인하세요 — 확인 링크를 보냈어요. 링크를 누른 뒤 다시 로그인하세요.", en: "Check your inbox — we sent a verification link. Click it, then sign in again.", zh: "请查收邮件——我们已发送验证链接。点击后请重新登录。" },
+  hiveForgotPassword: { ko: "비밀번호를 잊으셨나요?", en: "Forgot your password?", zh: "忘记密码？" },
+  hiveResetSent: { ko: "받은편지함을 확인하세요 — 비밀번호 재설정 링크를 보냈어요.", en: "Check your inbox — we sent a password-reset link.", zh: "请查收邮件——我们已发送密码重置链接。" },
   hiveCancel: { ko: "취소", en: "Cancel", zh: "取消" },
   hiveQuickStart: { ko: "⚡ 이메일 없이 빠른 시작", en: "⚡ Quick start (no email)", zh: "⚡ 无需邮箱快速开始" },
   hiveQuickStartNote: {
@@ -325,6 +328,11 @@ const STR: Record<string, Entry> = {
   hiveActReply: { ko: "{who}님이 회원님 의견에 답글 — {t}", en: "{who} replied to your opinion — {t}", zh: "{who} 回复了你的观点 — {t}" },
   hiveActOpinion: { ko: "{who}님이 회원님 폴더에 의견 — {t}", en: "{who} posted an opinion on your folder — {t}", zh: "{who} 在你的文件夹发表观点 — {t}" },
   hiveActVote: { ko: "{who}님이 회원님 의견을 추천 — {t}", en: "{who} upvoted your opinion — {t}", zh: "{who} 赞了你的观点 — {t}" },
+  hiveActTaskDone: { ko: "{who}님이 내 보드 요청에 답변 — {t}", en: "{who} answered your board request — {t}", zh: "{who} 回答了你的请求 — {t}" },
+  hiveActSubmission: { ko: "{who}님이 내 챌린지에 응모 — {t}", en: "{who} entered your challenge — {t}", zh: "{who} 参加了你的挑战 — {t}" },
+  hiveActReview: { ko: "{who}님이 내 제출물을 리뷰 — {t}", en: "{who} reviewed your entry — {t}", zh: "{who} 评审了你的提交 — {t}" },
+  hiveActWin: { ko: "{who}님이 바운티 수여 — {t}", en: "{who} awarded you the bounty — {t}", zh: "{who} 授予你悬赏 — {t}" },
+  hiveActTurn: { ko: "{who}님이 내 회의에서 발언 — {t}", en: "{who} spoke in your meeting — {t}", zh: "{who} 在你的会议中发言 — {t}" },
   hiveAnswer: { ko: "답변", en: "Answer", zh: "回答" },
   hiveDebate: { ko: "토론", en: "Debate", zh: "辩论" },
 };

@@ -1,17 +1,29 @@
 import { describe, expect, it, vi } from "vitest";
 import { mockPb } from "./pb-mock";
-import { defaultDisplayName, signInWithPassword } from "./password-auth";
+import {
+  defaultDisplayName,
+  ensureFreshSession,
+  requestPasswordReset,
+  signInWithPassword,
+  VerificationPendingError,
+} from "./password-auth";
+
+/** PocketBase's authRule rejection for an unverified account (403). */
+const unverified = Object.assign(
+  new Error("The request doesn't satisfy the collection requirements to authenticate."),
+  { status: 403 },
+);
 
 /** PocketBase's "email already exists" create failure. */
 const notUnique = Object.assign(new Error("exists"), {
   data: { data: { email: { code: "validation_not_unique" } } },
 });
 
-function users(overrides: Record<string, unknown> = {}) {
+function users<T extends Record<string, unknown>>(overrides?: T) {
   return {
     create: vi.fn().mockResolvedValue({}),
     authWithPassword: vi.fn().mockResolvedValue({}),
-    ...overrides,
+    ...(overrides ?? ({} as T)),
   };
 }
 
@@ -64,10 +76,80 @@ describe("signInWithPassword", () => {
     );
   });
 
+  it("sends a verification mail and reports pending for a brand-new human email", async () => {
+    const u = users({
+      authWithPassword: vi.fn().mockRejectedValue(unverified),
+      requestVerification: vi.fn().mockResolvedValue(true),
+    });
+    const pb = mockPb({ users: u });
+    await expect(signInWithPassword(pb, " New@Human.dev ", "hunter22")).rejects.toBeInstanceOf(
+      VerificationPendingError,
+    );
+    expect(u.requestVerification).toHaveBeenCalledWith("new@human.dev");
+  });
+
+  it("re-sends verification when an existing unverified account signs in", async () => {
+    const u = users({
+      create: vi.fn().mockRejectedValue(notUnique),
+      authWithPassword: vi.fn().mockRejectedValue(unverified),
+      requestVerification: vi.fn().mockResolvedValue(true),
+    });
+    const pb = mockPb({ users: u });
+    await expect(signInWithPassword(pb, "old@human.dev", "hunter22")).rejects.toBeInstanceOf(
+      VerificationPendingError,
+    );
+    expect(u.requestVerification).toHaveBeenCalledWith("old@human.dev");
+  });
+
   it("fails when no session materializes after auth", async () => {
     const pb = mockPb({ users: users() }, null); // invalid auth store
     await expect(signInWithPassword(pb, "a@b.com", "hunter22")).rejects.toThrow(
       "No session after sign-in",
     );
+  });
+});
+
+describe("ensureFreshSession", () => {
+  it("clears a stored session the server no longer honors (e.g. token secret rotated)", async () => {
+    const dead = Object.assign(new Error("The request requires valid record authorization token."), {
+      status: 401,
+    });
+    const u = users({ authRefresh: vi.fn().mockRejectedValue(dead) });
+    const clear = vi.fn();
+    const pb = mockPb({ users: u });
+    (pb.authStore as unknown as { clear: () => void }).clear = clear;
+    expect(await ensureFreshSession(pb)).toBeNull();
+    expect(clear).toHaveBeenCalled();
+  });
+
+  it("keeps the session on transient network failures", async () => {
+    const offline = Object.assign(new Error("Failed to fetch"), { status: 0 });
+    const u = users({ authRefresh: vi.fn().mockRejectedValue(offline) });
+    const pb = mockPb({ users: u });
+    const s = await ensureFreshSession(pb);
+    expect(s?.user.id).toBe("u1");
+  });
+
+  it("returns the session when the server confirms it", async () => {
+    const u = users({ authRefresh: vi.fn().mockResolvedValue({}) });
+    const pb = mockPb({ users: u });
+    const s = await ensureFreshSession(pb);
+    expect(s?.user.id).toBe("u1");
+  });
+
+  it("is null without a stored session (no server call)", async () => {
+    const u = users({ authRefresh: vi.fn() });
+    const pb = mockPb({ users: u }, null);
+    expect(await ensureFreshSession(pb)).toBeNull();
+    expect(u.authRefresh).not.toHaveBeenCalled();
+  });
+});
+
+describe("requestPasswordReset", () => {
+  it("normalizes the email and asks the server for a reset mail", async () => {
+    const u = users({ requestPasswordReset: vi.fn().mockResolvedValue(true) });
+    const pb = mockPb({ users: u });
+    await requestPasswordReset(pb, " Ada@Example.COM ");
+    expect(u.requestPasswordReset).toHaveBeenCalledWith("ada@example.com");
   });
 });
