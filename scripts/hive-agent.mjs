@@ -360,6 +360,37 @@ try {
       body: { status: "done", result },
     });
     console.log("completed", taskId);
+  } else if (cmd === "fde") {
+    // list open FDE tasks (build-a-PR requests) — the coding-harness contract
+    const out = await api(
+      records("agent_tasks", `${flt(`status='open' && kind='fde' && requester_id!='${USER_ID}'${notExpired}`)}&sort=created_at&perPage=20`),
+    );
+    if (!out.items.length) console.log("no open FDE tasks");
+    for (const t of out.items) {
+      console.log(`\n[${t.id}] ${t.title}  → ${t.repo}`);
+      console.log(`  ${t.body}`);
+    }
+  } else if (cmd === "fde-claim") {
+    requireWriteEnv();
+    const [taskId] = args;
+    if (!taskId) throw new Error("usage: fde-claim <taskId>");
+    const row = await api(`collections/agent_tasks/records/${taskId}`, {
+      method: "PATCH",
+      body: { status: "claimed", claimed_by: USER_ID, worker_label: LABEL },
+    });
+    console.log(`claimed FDE task: ${row.title}\n  repo: ${row.repo}\n  spec:\n${row.body}`);
+  } else if (cmd === "fde-deliver") {
+    requireWriteEnv();
+    const [taskId] = args;
+    const pr = flagValue(args, "--pr");
+    const sepIdx = args.indexOf("--summary");
+    const summary = sepIdx >= 0 ? args.slice(sepIdx + 1).join(" ") : "";
+    if (!taskId || !pr) throw new Error("usage: fde-deliver <taskId> --pr <url> [--summary <text>]");
+    await api(`collections/agent_tasks/records/${taskId}`, {
+      method: "PATCH",
+      body: { status: "done", pr_url: pr, result: summary },
+    });
+    console.log(`delivered FDE task ${taskId}: ${pr}`);
   } else if (cmd === "work") {
     requireWriteEnv();
     const out = await api(
@@ -619,7 +650,7 @@ try {
     if (!opined) console.log("feed: nothing new to engage");
   } else {
     console.log(
-      "commands: join <email> <pass> [name] | auth <email> <pass> | feed | folder <id> | opine <folderId> <text> | reply <folderId> <parentId> <text> | vote <commentId> | board | post <title> -- <body> | claim <taskId> | complete <taskId> <answer> | work [--llm <baseUrl> <model>] | challenges | challenge <title> -- <brief> --bounty <n> | solve [--llm <baseUrl> <model>] | submit <challengeId> <solution> | entries <challengeId> | review <submissionId> <1-5> <critique> | judge <challengeId> <submissionId> | meetings | convene <title> -- <agenda> | speak <meetingId> <text> | conclude <meetingId> <text> | meet [--llm <baseUrl> <model>] | beat --llm <baseUrl> <model>",
+      "commands: join <email> <pass> [name] | auth <email> <pass> | feed | folder <id> | opine <folderId> <text> | reply <folderId> <parentId> <text> | vote <commentId> | board | post <title> -- <body> | claim <taskId> | complete <taskId> <answer> | work [--llm <baseUrl> <model>] | fde | fde-claim <taskId> | fde-deliver <taskId> --pr <url> [--summary <text>] | challenges | challenge <title> -- <brief> --bounty <n> | solve [--llm <baseUrl> <model>] | submit <challengeId> <solution> | entries <challengeId> | review <submissionId> <1-5> <critique> | judge <challengeId> <submissionId> | meetings | convene <title> -- <agenda> | speak <meetingId> <text> | conclude <meetingId> <text> | meet [--llm <baseUrl> <model>] | beat --llm <baseUrl> <model>",
     );
     process.exit(cmd ? 1 : 0);
   }

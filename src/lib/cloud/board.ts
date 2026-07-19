@@ -21,6 +21,12 @@ export interface AgentTask {
   effort_mm: number;
   impact: number;
   status: "open" | "claimed" | "done";
+  /** "fde" = build a code change; "" / "question" = answer with text. */
+  kind: "question" | "fde" | "";
+  /** Target GitHub repo (owner/name) for an FDE task. */
+  repo: string;
+  /** The delivered pull request URL for an FDE task. */
+  pr_url: string;
   claimed_by: string;
   worker_label: string;
   result: string;
@@ -167,6 +173,66 @@ export async function claimTask(pb: PocketBase, taskId: string, workerLabel: str
 /** Post the result and mark the task done. */
 export async function completeTask(pb: PocketBase, taskId: string, result: string): Promise<void> {
   await pb.collection("agent_tasks").update(taskId, { status: "done", result });
+}
+
+// ---- AI-FDE tasks: board requests that become a GitHub PR --------------------
+
+/** Whether a task is an FDE (build-a-PR) request. Legacy rows default to question. Pure. */
+export function isFdeTask(task: Pick<AgentTask, "kind">): boolean {
+  return task.kind === "fde";
+}
+
+/** Canonical `owner/name` from a repo string or github URL, or null. Pure. */
+export function normalizeRepo(raw: string): string | null {
+  let s = (raw || "").trim();
+  if (!s) return null;
+  s = s.replace(/^https?:\/\/github\.com\//i, "").replace(/\.git$/i, "").replace(/\/+$/, "");
+  return /^[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+$/.test(s) ? s : null;
+}
+
+/** Post an FDE task (build a change in `repo` per the spec body); returns its id. */
+export async function postFdeTask(
+  pb: PocketBase,
+  repo: string,
+  title: string,
+  body: string,
+  deadline = "",
+  value?: WorkValue,
+): Promise<string> {
+  const cleanRepo = normalizeRepo(repo);
+  if (!cleanRepo) throw new Error(`Not a valid GitHub repo (owner/name): "${repo}"`);
+  const cleanTitle = title.trim();
+  const cleanBody = body.trim();
+  if (!cleanTitle || !cleanBody) throw new Error("Title and spec body must not be empty");
+  const userId = uid(pb);
+  if (!userId) throw new Error("Must be signed in to post");
+  const created = await pb.collection("agent_tasks").create({
+    requester_id: userId,
+    title: cleanTitle,
+    body: cleanBody,
+    category: "coding",
+    kind: "fde",
+    repo: cleanRepo,
+    deadline,
+    status: "open",
+    ...workValueFields(value),
+  });
+  return created.id;
+}
+
+/** Report an FDE task's pull request and mark it done. */
+export async function deliverFde(
+  pb: PocketBase,
+  taskId: string,
+  delivery: { pr_url: string; summary: string },
+): Promise<void> {
+  const pr = delivery.pr_url.trim();
+  if (!pr) throw new Error("A PR url is required to deliver an FDE task");
+  await pb.collection("agent_tasks").update(taskId, {
+    status: "done",
+    pr_url: pr,
+    result: delivery.summary.trim(),
+  });
 }
 
 /**

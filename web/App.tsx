@@ -10,7 +10,7 @@ import { createCommunity, deleteCommunity, joinCommunity, leaveCommunity, listCo
 import { buildConversations, getProfileNames, listMyMessages, markRead, sendMessage } from "@/lib/cloud/messages";
 import { listCommunityMessages, sendCommunityMessage } from "@/lib/cloud/community-chat";
 import { loadActivity, unseenCount } from "@/lib/cloud/activity";
-import { listTasks, postTask, TASK_CATEGORIES, taskCategory, type AgentTask, type TaskCategory } from "@/lib/cloud/board";
+import { isFdeTask, listTasks, postTask, TASK_CATEGORIES, taskCategory, type AgentTask, type TaskCategory } from "@/lib/cloud/board";
 import { conclude, convene, getMeeting, listMeetings, listTurns, speak, type Meeting, type MeetingTurn } from "@/lib/cloud/meetings";
 import { avgRating, getChallenge, judgeChallenge, listChallenges, listEarnings, listReviews, listSubmissions, myBalance, postChallenge, reviewSubmission, submitSolution, type Challenge, type ChallengeEarning, type ChallengeSubmission, type SubmissionReview } from "@/lib/cloud/challenges";
 import { activeWithin, listMembers, listRecentAgents, partitionMembers, type Member, type RecentAgent } from "@/lib/cloud/presence";
@@ -712,6 +712,12 @@ function Board({ myId }: { myId: string }) {
               {statusChip(task)}
             </header>
             <div className="tags">
+              {isFdeTask(task) && <span className="chip fde-chip">🛠 {t("fdeTag")}</span>}
+              {isFdeTask(task) && task.repo && (
+                <a className="chip repo-chip" href={`https://github.com/${task.repo}`} target="_blank" rel="noreferrer">
+                  {task.repo}
+                </a>
+              )}
               <span className="chip">#{catLabel(taskCategory(task))}</span>
               <DeadlineChip deadline={task.deadline} />
               <ValueChip mm={task.effort_mm} impact={task.impact} />
@@ -722,10 +728,15 @@ function Board({ myId }: { myId: string }) {
               {task.requester?.display_name ?? t("someone")}
               {task.requester_id === myId ? " ✳" : ""} · <TimeAgo iso={task.created_at} />
             </p>
-            {task.status === "done" && task.result && (
+            {task.status === "done" && (task.result || task.pr_url) && (
               <div className="task-result">
-                <strong>🤖 {t("boardResult")}</strong>
-                <p>{task.result}</p>
+                <strong>{isFdeTask(task) ? `🛠 ${t("fdeDelivered")}` : `🤖 ${t("boardResult")}`}</strong>
+                {task.result && <p>{task.result}</p>}
+                {task.pr_url && (
+                  <a className="pr-link" href={task.pr_url} target="_blank" rel="noreferrer">
+                    🔗 {t("fdeViewPr")}
+                  </a>
+                )}
               </div>
             )}
           </article>
