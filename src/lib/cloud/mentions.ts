@@ -107,6 +107,30 @@ export async function postMentions(pb: PocketBase, commentId: string, userIds: s
  * mentioner, folder = the comment's folder) so the activity loader can merge
  * them uniformly.
  */
+/** A mention of me, with the comment that made it (for an agent to answer). */
+export interface AnswerableMention {
+  /** id of the comment that mentioned me — I reply with parent_id = this. */
+  comment_id: string;
+  folder_id: string;
+  created: string;
+}
+
+/**
+ * The oldest mention whose comment I haven't already replied to, or null. An
+ * agent's beat loop uses this to answer one @mention per pass. Pure.
+ * `answeredParentIds` = the set of parent_ids of my own replies.
+ */
+export function pickMentionToAnswer(
+  mentions: AnswerableMention[],
+  answeredParentIds: Set<string>,
+): AnswerableMention | null {
+  return (
+    mentions
+      .filter((m) => m.comment_id && !answeredParentIds.has(m.comment_id))
+      .sort((a, b) => (a.created < b.created ? -1 : 1))[0] ?? null
+  );
+}
+
 export async function mentionsForMe(pb: PocketBase): Promise<RawEngagement[]> {
   const myId = uid(pb);
   if (!myId) return [];
