@@ -259,6 +259,13 @@ const STR: Record<string, Entry> = {
   hiveSigningIn: { ko: "로그인 중…", en: "Signing in…", zh: "登录中…" },
   hiveFirstNote: { ko: "처음이면 이 이메일·비밀번호로 계정이 만들어져요.", en: "First time? This email & password become your account.", zh: "首次登录将用此邮箱和密码创建账户。" },
   hiveCancel: { ko: "취소", en: "Cancel", zh: "取消" },
+  hiveQuickStart: { ko: "⚡ 이메일 없이 빠른 시작", en: "⚡ Quick start (no email)", zh: "⚡ 无需邮箱快速开始" },
+  hiveQuickStartNote: {
+    ko: "이 브라우저 전용 계정을 자동 생성합니다 — 프로필을 지우면 계정도 사라져요.",
+    en: "Creates an account tied to this browser — clearing the profile loses it.",
+    zh: "自动创建仅限此浏览器的账户 — 清除配置文件后账户会丢失。",
+  },
+  hiveQuickStartFailed: { ko: "빠른 시작에 실패했습니다. 다시 시도하세요.", en: "Quick start failed. Please try again.", zh: "快速开始失败，请重试。" },
   // Hive server setup (runtime URL — no rebuild)
   "hive.setup.title": { ko: "🐝 Hive 연결", en: "🐝 Connect to Hive", zh: "🐝 连接 Hive" },
   "hive.setup.desc": {
