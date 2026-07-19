@@ -12,6 +12,7 @@
     "type-check": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:e2e": "node tests/e2e/rules.e2e.mjs",
     "package": "npm run build && cd dist && rm -f ../hermes-agent-extension.zip && zip -rq ../hermes-agent-extension.zip . -x '*.map'"
   },
   "dependencies": {
