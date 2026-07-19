@@ -51,6 +51,29 @@ const STR: Record<string, Entry> = {
     en: "The API key no longer matches the server. Re-run quick connect in Settings (⚙) → Gateway tab.",
     zh: "API 密钥与服务器不匹配。请在设置（⚙）→ 网关标签页重新运行快速连接。",
   },
+  // Actionable 401 card in the chat (button jumps straight to quick connect)
+  "err.401.card": {
+    ko: "🔑 API 키가 서버와 일치하지 않아요. 토큰이 바뀌었을 수 있습니다 — 아래 버튼으로 다시 연결하세요.",
+    en: "🔑 The API key doesn't match the server. The token may have rotated — reconnect with the button below.",
+    zh: "🔑 API 密钥与服务器不匹配。令牌可能已更换 — 请用下方按钮重新连接。",
+  },
+  "err.401.fix": { ko: "⚙ 설정 열고 다시 연결", en: "⚙ Open Settings & reconnect", zh: "⚙ 打开设置并重新连接" },
+  // Page-restriction explanations (localized from PageContext.errorKind)
+  "pageErr.restricted": {
+    ko: "이 페이지는 읽을 수 없어요. 브라우저 내부 페이지(chrome:// 설정, 확장 프로그램 페이지, 새 탭, 웹 스토어)에는 보안상 스크립트를 넣을 수 없어서 요약·번역·설명 기능이 동작하지 않습니다. 일반 웹페이지(http:// 또는 https://)를 연 뒤 다시 시도해 주세요.",
+    en: "This page can't be read. Browser-internal pages (chrome:// settings, extension pages, the new-tab page, the Web Store) forbid content scripts for security, so summarize/translate/explain can't run here. Open a normal web page (http:// or https://) and try again.",
+    zh: "无法读取此页面。浏览器内部页面（chrome:// 设置、扩展程序页面、新标签页、网上应用店）出于安全考虑禁止注入脚本，因此总结、翻译、解释功能无法在此运行。请打开普通网页（http:// 或 https://）后重试。",
+  },
+  "pageErr.noTab": {
+    ko: "활성 탭을 찾을 수 없어요. 읽을 웹페이지 탭을 클릭한 뒤 다시 시도해 주세요.",
+    en: "No active tab found. Click the web-page tab you want to read, then try again.",
+    zh: "找不到活动标签页。请点击要读取的网页标签页后重试。",
+  },
+  "pageErr.empty": {
+    ko: "이 페이지에서 읽을 수 있는 텍스트를 찾지 못했어요. 본문이 이미지·캔버스이거나 아직 로딩 중일 수 있습니다.",
+    en: "No readable text found on this page. It may be image/canvas-based or still loading.",
+    zh: "在此页面未找到可读取的文本。页面可能基于图片/画布，或仍在加载中。",
+  },
   statusTitle: { ko: "Hermes 서버 연결 상태", en: "Hermes server connection status", zh: "Hermes 服务器连接状态" },
   switchLang: { ko: "UI 언어: {name}", en: "UI language: {name}", zh: "界面语言：{name}" },
   translateTo: { ko: "📄 페이지 번역", en: "📄 Translate page", zh: "📄 翻译页面" },
