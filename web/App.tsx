@@ -122,18 +122,28 @@ const HOW_STEPS: { icon: string; title: StrKey; desc: StrKey }[] = [
 type TabKey = "feed" | "members" | "teams" | "leaderboard" | "communities" | "board" | "challenges" | "okr" | "meetings" | "messages" | "activity";
 
 /** The site's pages; labels and descriptions come from the i18n dictionary. */
-const PAGES: { key: TabKey; icon: string }[] = [
-  { key: "feed", icon: "📰" },
-  { key: "members", icon: "🫂" },
-  { key: "teams", icon: "🧩" },
-  { key: "leaderboard", icon: "🏆" },
-  { key: "communities", icon: "👥" },
-  { key: "board", icon: "🧠" },
-  { key: "challenges", icon: "🎯" },
-  { key: "okr", icon: "🧭" },
-  { key: "meetings", icon: "🗣️" },
-  { key: "messages", icon: "✉️" },
-  { key: "activity", icon: "🔔" },
+type NavGroup = "explore" | "work" | "people" | "you";
+
+const PAGES: { key: TabKey; icon: string; group: NavGroup }[] = [
+  { key: "feed", icon: "📰", group: "explore" },
+  { key: "communities", icon: "👥", group: "explore" },
+  { key: "board", icon: "🧠", group: "work" },
+  { key: "teams", icon: "🧩", group: "work" },
+  { key: "challenges", icon: "🎯", group: "work" },
+  { key: "meetings", icon: "🗣️", group: "work" },
+  { key: "okr", icon: "🧭", group: "work" },
+  { key: "members", icon: "🫂", group: "people" },
+  { key: "leaderboard", icon: "🏆", group: "people" },
+  { key: "messages", icon: "✉️", group: "you" },
+  { key: "activity", icon: "🔔", group: "you" },
+];
+
+/** Sidebar section order + their heading i18n keys. */
+const NAV_GROUPS: { group: NavGroup; label: StrKey }[] = [
+  { group: "explore", label: "nav.explore" },
+  { group: "work", label: "nav.work" },
+  { group: "people", label: "nav.people" },
+  { group: "you", label: "nav.you" },
 ];
 
 const pageKey = (key: TabKey, part: "label" | "desc" | "pageDesc") => `${key}.${part}` as StrKey;
@@ -530,17 +540,22 @@ function SignedIn({ session }: { session: HiveSession }) {
         <aside className="sidebar">
           <p className="side-tagline">{t("tagline")}</p>
           <nav className="side-nav" aria-label="Pages">
-            {PAGES.map((p) => (
-              <button key={p.key} className={`side-item${tab === p.key ? " active" : ""}`} onClick={() => goTab(p.key)}>
-                <span className="side-icon" aria-hidden>{p.icon}</span>
-                <span className="side-text">
-                  <span className="side-label">
-                    {t(pageKey(p.key, "label"))}
-                    {p.key === "activity" && unseen > 0 && <span className="tab-badge">{unseen}</span>}
-                  </span>
-                  <span className="side-desc">{t(pageKey(p.key, "desc"))}</span>
-                </span>
-              </button>
+            {NAV_GROUPS.map((g) => (
+              <div key={g.group} className="side-group">
+                <div className="side-group-head">{t(g.label)}</div>
+                {PAGES.filter((p) => p.group === g.group).map((p) => (
+                  <button key={p.key} className={`side-item${tab === p.key ? " active" : ""}`} onClick={() => goTab(p.key)}>
+                    <span className="side-icon" aria-hidden>{p.icon}</span>
+                    <span className="side-text">
+                      <span className="side-label">
+                        {t(pageKey(p.key, "label"))}
+                        {p.key === "activity" && unseen > 0 && <span className="tab-badge">{unseen}</span>}
+                      </span>
+                      <span className="side-desc">{t(pageKey(p.key, "desc"))}</span>
+                    </span>
+                  </button>
+                ))}
+              </div>
             ))}
           </nav>
           <ActiveNow />
