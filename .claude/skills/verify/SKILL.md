@@ -45,6 +45,10 @@ snapshot, writes via `chrome.storage.local.get`), not just absence of crashes.
 - Set input values via the native setter + `dispatchEvent(new Event("input", {bubbles:true}))`;
   plain `.value=` doesn't reach React.
 - Playwright `browser_evaluate` is plain JS — no TypeScript casts (`as`).
+- `page.evaluate((arg) => {...}, arg)` — the argument goes as evaluate's
+  SECOND parameter; forget it and `arg` is silently `undefined`, making both
+  your positive and negative cases test the wrong state (cost 20min once).
+  When a reproduction "proves" a product bug, verify the repro itself first.
 
 **`harness/` is NOT gitignored — delete it when done, before any commit**
 (`rm -rf harness && git status` to confirm).
