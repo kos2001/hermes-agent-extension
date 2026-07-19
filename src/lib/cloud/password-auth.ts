@@ -81,6 +81,27 @@ export function getSession(pb: PocketBase): HiveSession | null {
   return currentSession(pb);
 }
 
+/**
+ * Validate the stored session against the server, clearing it when the
+ * server no longer honors the token (e.g. the auth secret rotated after a
+ * collection migration) — otherwise a dead session browses as a silent
+ * guest and every member-readable list looks empty. Transient network
+ * failures keep the session.
+ */
+export async function ensureFreshSession(pb: PocketBase): Promise<HiveSession | null> {
+  if (!pb.authStore.isValid) return null;
+  try {
+    await pb.collection("users").authRefresh();
+  } catch (e) {
+    const status = (e as { status?: number })?.status;
+    if (status === 401 || status === 403 || status === 404) {
+      pb.authStore.clear();
+      return null;
+    }
+  }
+  return currentSession(pb);
+}
+
 /** Subscribe to auth changes; returns an unsubscribe function. */
 export function onAuthChange(
   pb: PocketBase,
