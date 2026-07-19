@@ -5,31 +5,22 @@ import { collectChat } from "@/lib/hermes-client";
 import {
   type Action,
   type BookmarkNode,
-  type FolderChoice,
   applyActions,
   buildCategorizePrompt,
   buildCleanupPrompt,
   checkDeadLinks,
   findDuplicates,
-  listFolderChoices,
   loadBookmarks,
   parseCategorization,
   parseCleanupRemovals,
 } from "@/lib/bookmarks";
 import { runSemanticDedup } from "@/lib/semantic-dedup";
-import { pb } from "@/lib/cloud/client";
-import { useHiveConfigured } from "./useHive";
-import { getSession } from "@/lib/cloud/auth";
-import { publishFolder } from "@/lib/cloud/folders";
-import { listCommunities } from "@/lib/cloud/communities";
-import type { Community } from "@/lib/cloud/types";
-import { summarizeFolder } from "@/lib/cloud/summarize-folder";
 
 // Charts stay code-split so the view renders before the chart module loads.
 const BookmarkCharts = lazy(() => import("./Charts").then((m) => ({ default: m.BookmarkCharts })));
 
-/** null = idle. Long ops: "dead"/"ai"/"clean"/"sdup"/"share". "apply" = applying. */
-type Busy = null | "dead" | "ai" | "clean" | "sdup" | "apply" | "share";
+/** null = idle. Long ops: "dead"/"ai"/"clean"/"sdup". "apply" = applying. */
+type Busy = null | "dead" | "ai" | "clean" | "sdup" | "apply";
 
 /** Short rationale for an action: the AI's note if present, else a default. */
 function rationale(a: Action, lang: Lang): string {
@@ -91,12 +82,9 @@ const BookmarkRow = memo(function BookmarkRow({
 export default function BookmarksView({
   config,
   lang,
-  onOpenHive,
 }: {
   config: ConnectionConfig | null;
   lang: Lang;
-  /** Switch the side panel to the 🐝 feed (used after a successful share). */
-  onOpenHive?: () => void;
 }) {
   const [nodes, setNodes] = useState<BookmarkNode[]>([]);
   const [actions, setActions] = useState<Action[]>([]);
@@ -105,8 +93,6 @@ export default function BookmarksView({
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
   const [note, setNote] = useState("");
   const [error, setError] = useState("");
-  // True right after a successful Hive share — surfaces the "view in feed" CTA.
-  const [sharedOk, setSharedOk] = useState(false);
   const deadAbort = useRef<AbortController | null>(null);
 
   const reload = useCallback(async () => {
@@ -126,7 +112,6 @@ export default function BookmarksView({
     setChecked(new Set());
     setNote(noteMsg);
     setError("");
-    setSharedOk(false);
   }, []);
 
   const allChecked = actions.length > 0 && checked.size === actions.length;
@@ -272,75 +257,6 @@ export default function BookmarksView({
   }, [config, nodes, lang, setResult]);
 
   // Hive share is available only when a server URL is configured (runtime).
-  const hiveOn = useHiveConfigured() === true;
-
-  // Folders the user can publish to Hive (non-empty, with at least one bookmark).
-  const shareFolders: FolderChoice[] = (() => {
-    if (!hiveOn) return [];
-    const withItems = new Set(nodes.filter((n) => n.url && n.parentId).map((n) => n.parentId));
-    return listFolderChoices(nodes).filter((f) => withItems.has(f.id));
-  })();
-  const [shareFolderId, setShareFolderId] = useState("");
-  const [shareCommunityId, setShareCommunityId] = useState("");
-  const [communities, setCommunities] = useState<Community[]>([]);
-
-  // Load communities to offer as share targets (only when Hive is configured).
-  useEffect(() => {
-    if (!hiveOn) return;
-    void listCommunities(pb)
-      .then(setCommunities)
-      .catch(() => {});
-  }, [hiveOn]);
-
-  // Share a folder to Hive: summarize its bookmarks client-side, then publish.
-  const runShare = useCallback(async () => {
-    if (!config) {
-      setError(t(lang, "bm.needConfig"));
-      return;
-    }
-    const folder = listFolderChoices(nodes).find((f) => f.id === shareFolderId);
-    if (!folder) return;
-    const items = nodes
-      .filter((n) => n.parentId === folder.id && n.url)
-      .map((n) => ({ title: n.title || n.url!, url: n.url! }));
-    if (items.length === 0) return;
-
-    setResult([]);
-    setError("");
-    setBusy("share");
-    setProgress({ done: 0, total: items.length });
-    const ctrl = new AbortController();
-    deadAbort.current = ctrl;
-    try {
-      const session = await getSession();
-      if (!session) {
-        setError(t(lang, "bm.shareNeedSignIn"));
-        return;
-      }
-      // Reads each page (progress) then synthesizes insights via the LLM.
-      const summary = await summarizeFolder(config, folder.path, items, {
-        signal: ctrl.signal,
-        onProgress: (done, total) => setProgress({ done, total }),
-      });
-      setProgress(null);
-      await publishFolder(pb, {
-        title: folder.path,
-        sourceFolderName: folder.path,
-        summary: summary.summary,
-        topics: summary.topics,
-        items: summary.items,
-        communityId: shareCommunityId || null,
-      });
-      setNote(t(lang, "bm.shareDone").replace("{n}", String(summary.items.length)));
-      setSharedOk(true);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : t(lang, "bm.shareFailed"));
-    } finally {
-      deadAbort.current = null;
-      setBusy(null);
-      setProgress(null);
-    }
-  }, [config, nodes, shareFolderId, shareCommunityId, lang, setResult]);
 
   const toggle = useCallback((id: string) => {
     setChecked((prev) => {
@@ -394,46 +310,7 @@ export default function BookmarksView({
         <button className="skill" onClick={() => void runAi()} disabled={disabled || !config}>{t(lang, "bm.ai")}</button>
       </div>
 
-      {hiveOn && (
-        <div className="bm-share" title={t(lang, "bm.shareTitle")}>
-          <select
-            className="tx-lang"
-            value={shareFolderId}
-            onChange={(e) => setShareFolderId(e.target.value)}
-            disabled={disabled}
-          >
-            <option value="">{t(lang, "bm.sharePick")}</option>
-            {shareFolders.map((f) => (
-              <option key={f.id} value={f.id}>{f.path}</option>
-            ))}
-          </select>
-          {communities.length > 0 && (
-            <select
-              className="tx-lang"
-              value={shareCommunityId}
-              onChange={(e) => setShareCommunityId(e.target.value)}
-              disabled={disabled}
-              title={t(lang, "bm.shareCommunity")}
-            >
-              <option value="">{t(lang, "bm.shareNoCommunity")}</option>
-              {communities.map((c) => (
-                <option key={c.id} value={c.id}>{c.name}</option>
-              ))}
-            </select>
-          )}
-          <button
-            className="tx-go"
-            onClick={() => void runShare()}
-            disabled={disabled || !config || !shareFolderId}
-            title={t(lang, "bm.shareTitle")}
-          >
-            {t(lang, "bm.shareToHive")}
-          </button>
-        </div>
-      )}
-      {busy === "share" && !progress && <div className="bm-status">{t(lang, "bm.sharing")}</div>}
-
-      {(busy === "dead" || busy === "clean" || busy === "sdup" || busy === "share") && progress && (
+      {(busy === "dead" || busy === "clean" || busy === "sdup") && progress && (
         <div className="bm-status">
           {progress.done} / {progress.total}
           <button className="tx-restore" onClick={() => deadAbort.current?.abort()}>{t(lang, "stop")}</button>
@@ -443,16 +320,7 @@ export default function BookmarksView({
       {busy === "sdup" && !progress && <div className="bm-status">{t(lang, "bm.dupAnalyzing")}</div>}
       {(busy === "ai" || busy === "apply") && <div className="bm-status">{t(lang, "working")}</div>}
       {error && <div className="bm-status err">⚠ {error}</div>}
-      {note && (
-        <div className="bm-status">
-          {note}
-          {sharedOk && onOpenHive && (
-            <button className="tx-restore bm-view-feed" onClick={onOpenHive}>
-              {t(lang, "bm.viewInFeed")}
-            </button>
-          )}
-        </div>
-      )}
+      {note && <div className="bm-status">{note}</div>}
 
       {/* Gate on data so the lazy chart chunk is never fetched when nothing would render. */}
       {nodes.some((n) => n.url) && (
