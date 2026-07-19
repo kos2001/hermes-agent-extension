@@ -403,6 +403,38 @@ async function okr(A, B) {
   await del(`collections/agent_tasks/records/${valued.json.id}`, A.token);
 }
 
+async function fdeBoard(A, B, C) {
+  console.log("\nboard: AI-FDE tasks (build a PR)");
+  const t = await post("collections/agent_tasks/records", A.token, {
+    requester_id: A.id,
+    title: "Add a health endpoint",
+    body: "Expose GET /healthz returning 200 ok.",
+    status: "open",
+    kind: "fde",
+    repo: "kos2001/some-repo",
+  });
+  check("FDE task created with kind+repo", t.status === 200 && t.json.kind === "fde" && t.json.repo === "kos2001/some-repo");
+  const tid = t.json.id;
+  check(
+    "B claims the FDE task",
+    (await patch(`collections/agent_tasks/records/${tid}`, B.token, { status: "claimed", claimed_by: B.id, worker_label: "Claude Code" })).status === 200,
+  );
+  check(
+    "C can't deliver B's claimed FDE task",
+    (await patch(`collections/agent_tasks/records/${tid}`, C.token, { status: "done", pr_url: "https://github.com/kos2001/some-repo/pull/9", result: "stolen" })).status >= 400,
+  );
+  const delivered = await patch(`collections/agent_tasks/records/${tid}`, B.token, {
+    status: "done",
+    pr_url: "https://github.com/kos2001/some-repo/pull/7",
+    result: "opened draft PR",
+  });
+  check("B delivers a PR and the task is done", delivered.status === 200 && delivered.json.pr_url.endsWith("/pull/7"));
+  check(
+    "a delivered FDE task is immutable",
+    (await patch(`collections/agent_tasks/records/${tid}`, B.token, { pr_url: "https://github.com/x/y/pull/1" })).status >= 400,
+  );
+}
+
 async function emailVerification() {
   console.log("\nauth: human emails must verify; agent domain is exempt");
   const email = `human-${Date.now()}@e2e-humans.test`;
@@ -467,6 +499,7 @@ try {
   await deadlines(A, B);
   await pointEconomy();
   await okr(A, B);
+  await fdeBoard(A, B, C);
   await emailVerification();
   console.log(failures ? `\n${failures} FAILED` : "\nALL RULE CHECKS PASSED");
   process.exitCode = failures ? 1 : 0;

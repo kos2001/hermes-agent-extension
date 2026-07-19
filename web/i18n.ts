@@ -269,6 +269,9 @@ const en = {
   boardEmptyTitle: "No requests yet",
   boardEmptyHint: "Post the first request — agents are listening.",
   boardResult: "Answer",
+  fdeTag: "FDE",
+  fdeDelivered: "Delivered",
+  fdeViewPr: "View pull request",
 
   // profile
   back: "← Back",
@@ -535,6 +538,9 @@ const ko: typeof en = {
   boardEmptyTitle: "아직 요청이 없어요",
   boardEmptyHint: "첫 요청을 올려 보세요 — 에이전트들이 듣고 있어요.",
   boardResult: "답변",
+  fdeTag: "FDE",
+  fdeDelivered: "납품 완료",
+  fdeViewPr: "풀 리퀘스트 보기",
 
   back: "← 뒤로",
   upvotes: "추천",

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { mockPb } from "./pb-mock";
-import { buildTaskPrompt, claimTask, completeTask, listTasks, parseTaskAnswer, pickOpenTask, postTask } from "./board";
+import { buildTaskPrompt, claimTask, completeTask, deliverFde, isFdeTask, listTasks, normalizeRepo, parseTaskAnswer, pickOpenTask, postFdeTask, postTask } from "./board";
 import type { AgentTask } from "./board";
 
 const task = (over: Partial<AgentTask>): AgentTask => ({
@@ -14,6 +14,9 @@ const task = (over: Partial<AgentTask>): AgentTask => ({
   effort_mm: 0,
   impact: 0,
   status: "open",
+  kind: "question",
+  repo: "",
+  pr_url: "",
   claimed_by: "",
   worker_label: "",
   result: "",
@@ -149,5 +152,68 @@ describe("claimTask / completeTask", () => {
     const pb = mockPb({ agent_tasks: { update } });
     await completeTask(pb, "t1", "the answer");
     expect(update).toHaveBeenCalledWith("t1", { status: "done", result: "the answer" });
+  });
+});
+
+describe("normalizeRepo", () => {
+  it("accepts owner/name and strips a github URL or trailing junk", () => {
+    expect(normalizeRepo(" kos2001/hermes-agent-extension ")).toBe("kos2001/hermes-agent-extension");
+    expect(normalizeRepo("https://github.com/kos2001/hermes-agent-extension")).toBe("kos2001/hermes-agent-extension");
+    expect(normalizeRepo("https://github.com/kos2001/hermes-agent-extension.git")).toBe("kos2001/hermes-agent-extension");
+  });
+  it("rejects anything that isn't owner/name", () => {
+    expect(normalizeRepo("")).toBeNull();
+    expect(normalizeRepo("just-a-name")).toBeNull();
+    expect(normalizeRepo("a/b/c")).toBeNull();
+    expect(normalizeRepo("bad owner/name")).toBeNull();
+  });
+});
+
+describe("isFdeTask", () => {
+  it("is true only for kind=fde", () => {
+    expect(isFdeTask(task({ kind: "fde", repo: "o/n" }))).toBe(true);
+    expect(isFdeTask(task({ kind: "question" }))).toBe(false);
+    expect(isFdeTask(task({}))).toBe(false); // legacy rows default to question
+  });
+});
+
+describe("postFdeTask", () => {
+  it("creates a kind=fde task with a normalized repo", async () => {
+    const create = vi.fn(async (_d: Record<string, unknown>) => ({ id: "fde1" }));
+    const pb = mockPb({ agent_tasks: { create } });
+    const id = await postFdeTask(pb, "https://github.com/kos2001/repo", "Add X", "spec body");
+    expect(id).toBe("fde1");
+    expect(create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: "fde",
+        repo: "kos2001/repo",
+        title: "Add X",
+        body: "spec body",
+        category: "coding",
+        status: "open",
+      }),
+    );
+  });
+  it("rejects an invalid repo and an empty spec", async () => {
+    const pb = mockPb({ agent_tasks: { create: vi.fn() } });
+    await expect(postFdeTask(pb, "not-a-repo", "t", "b")).rejects.toThrow(/repo/i);
+    await expect(postFdeTask(pb, "o/n", "t", " ")).rejects.toThrow(/empty/i);
+  });
+});
+
+describe("deliverFde", () => {
+  it("records the PR url, summary, and marks done", async () => {
+    const update = vi.fn(async (_id: string, _d: Record<string, unknown>) => ({}));
+    const pb = mockPb({ agent_tasks: { update } });
+    await deliverFde(pb, "fde1", { pr_url: "https://github.com/o/n/pull/5", summary: "opened draft PR" });
+    expect(update).toHaveBeenCalledWith("fde1", {
+      status: "done",
+      pr_url: "https://github.com/o/n/pull/5",
+      result: "opened draft PR",
+    });
+  });
+  it("requires a PR url", async () => {
+    const pb = mockPb({ agent_tasks: { update: vi.fn() } });
+    await expect(deliverFde(pb, "fde1", { pr_url: "", summary: "x" })).rejects.toThrow(/PR/i);
   });
 });
