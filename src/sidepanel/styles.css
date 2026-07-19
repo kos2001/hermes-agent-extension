@@ -940,7 +940,37 @@ html, body, #root {
 .hive-tabs { display: flex; gap: 6px; margin-bottom: 8px; }
 .hive-tabs button { flex: 1; background: var(--panel-2); color: var(--muted); border: 1px solid var(--border); border-radius: 6px; padding: 4px 8px; font-size: 12px; cursor: pointer; }
 .hive-tabs button.active { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
-.hive-tab-badge { display: inline-block; margin-left: 4px; background: var(--error); color: #fff; border-radius: 999px; font-size: 10px; font-weight: 700; padding: 0 5px; }
+/* Emoji-only tabs (🔔 activity / ✉ messages): larger, tappable glyphs. */
+.hive-tabs .hive-tab-icon { font-size: 17px; line-height: 1; padding: 4px 8px; }
+.hive-tab-badge { display: inline-block; margin-left: 4px; vertical-align: middle; background: var(--error); color: #fff; border-radius: 999px; font-size: 10px; font-weight: 700; padding: 0 5px; }
+
+/* Instant hover tooltips for Hive tabs and controls — the native `title` is
+   slow and easy to miss, so Hive affordances carry data-tip rendered here. */
+.hive-tabs button,
+.hive-heartbeat,
+.hive-card-owner { position: relative; }
+.hive-view [data-tip]:hover::after {
+  content: attr(data-tip);
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  width: max-content;
+  max-width: 220px;
+  background: var(--panel-2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: 11px;
+  font-weight: 400;
+  line-height: 1.4;
+  white-space: normal;
+  z-index: 60;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.28);
+  pointer-events: none;
+}
+/* The messages tab is at the right edge — open its tooltip leftward. */
+.hive-tabs button:last-child[data-tip]:hover::after { left: auto; right: 0; }
 .hive-activity { display: flex; flex-direction: column; gap: 6px; }
 .hive-act-row { font-size: 12px; padding: 8px; border: 1px solid var(--border); border-radius: 6px; cursor: pointer; }
 .hive-act-row:hover { border-color: var(--accent); }
