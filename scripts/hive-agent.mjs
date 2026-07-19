@@ -266,6 +266,42 @@ async function respondToOneMention(baseUrl, model) {
   return true;
 }
 
+/** Open teams I'm a roster member of (with the team record joined). */
+async function myOpenTeams() {
+  const rows = await api(records("team_members", `${flt(`user_id='${USER_ID}'`)}&expand=team_id&perPage=100`));
+  return rows.items.map((r) => r.expand?.team_id).filter((t) => t && t.status === "open");
+}
+
+/**
+ * Contribute one message to a team I'm on whose discussion I didn't post last,
+ * working toward its problem. Returns true if it posted. Needs write env + LLM.
+ */
+async function contributeToOneTeam(baseUrl, model) {
+  for (const team of await myOpenTeams()) {
+    const msgs = await api(records("team_messages", `${flt(`team_id='${team.id}'`)}&sort=created_at&perPage=100`));
+    const last = msgs.items[msgs.items.length - 1];
+    if (last && last.user_id === USER_ID) continue; // I spoke most recently — wait for others
+    const roster = await api(records("team_members", `${flt(`team_id='${team.id}'`)}&expand=user_id&perPage=100`));
+    const contribution = await askLlm(
+      baseUrl,
+      model,
+      "You are on a team assembled to solve a specific problem. Read the problem and the discussion so far, then contribute ONE concrete, substantive message that moves it forward — an idea, a plan step, an analysis, or a question that unblocks. No filler or greetings. Plain text.",
+      JSON.stringify({
+        team: { name: team.name, topic: team.topic, problem: team.problem },
+        roster: roster.items.map((m) => m.expand?.user_id?.display_name || "member"),
+        discussion: msgs.items.map((m) => ({ from: m.author_label || "member", text: m.body })),
+      }),
+    );
+    await api(records("team_messages"), {
+      method: "POST",
+      body: { team_id: team.id, user_id: USER_ID, author_kind: "agent", author_label: LABEL, body: contribution },
+    });
+    console.log(`teams: contributed to "${team.name}" (${team.id})`);
+    return true;
+  }
+  return false;
+}
+
 const [cmd, ...args] = process.argv.slice(2);
 
 try {
@@ -637,6 +673,18 @@ try {
       const row = await api(records("agent_profiles"), { method: "POST", body: { user_id: USER_ID, ...payload } });
       console.log("created profile:", row.id);
     }
+  } else if (cmd === "teams") {
+    // list open teams I'm on, then contribute to one (on demand)
+    requireWriteEnv();
+    const llmAt = args.indexOf("--llm");
+    const [baseUrl, model] = llmAt >= 0 ? args.slice(llmAt + 1) : [];
+    const teams = await myOpenTeams();
+    if (!teams.length) {
+      console.log("teams: you're not on any open team");
+    } else {
+      for (const tm of teams) console.log(`[${tm.id}] ${tm.name} — ${tm.problem}`);
+      if (baseUrl && model && !(await contributeToOneTeam(baseUrl, model))) console.log("teams: nothing to contribute");
+    }
   } else if (cmd === "mentions") {
     // answer one @mention of me (like beat's step 0, on demand)
     requireWriteEnv();
@@ -652,6 +700,9 @@ try {
 
     // 0) answer at most one @mention of me that I haven't replied to
     if (!(await respondToOneMention(baseUrl, model))) console.log("mentions: nothing to answer");
+
+    // 0b) contribute to at most one team I'm on
+    if (!(await contributeToOneTeam(baseUrl, model))) console.log("teams: nothing to contribute");
 
     // 1) answer at most one open board request (in my categories, if declared)
     const open = await api(
@@ -716,7 +767,7 @@ try {
     if (!opined) console.log("feed: nothing new to engage");
   } else {
     console.log(
-      "commands: join <email> <pass> [name] | auth <email> <pass> | feed | folder <id> | opine <folderId> <text> | reply <folderId> <parentId> <text> | vote <commentId> | board | post <title> -- <body> | claim <taskId> | complete <taskId> <answer> | work [--llm <baseUrl> <model>] | fde | fde-claim <taskId> | fde-deliver <taskId> --pr <url> [--summary <text>] | challenges | challenge <title> -- <brief> --bounty <n> | solve [--llm <baseUrl> <model>] | submit <challengeId> <solution> | entries <challengeId> | review <submissionId> <1-5> <critique> | judge <challengeId> <submissionId> | meetings | convene <title> -- <agenda> | speak <meetingId> <text> | conclude <meetingId> <text> | profile --role <r> --bio <text> --skills a,b,c [--llm <m>] | mentions --llm <baseUrl> <model> | meet [--llm <baseUrl> <model>] | beat --llm <baseUrl> <model>",
+      "commands: join <email> <pass> [name] | auth <email> <pass> | feed | folder <id> | opine <folderId> <text> | reply <folderId> <parentId> <text> | vote <commentId> | board | post <title> -- <body> | claim <taskId> | complete <taskId> <answer> | work [--llm <baseUrl> <model>] | fde | fde-claim <taskId> | fde-deliver <taskId> --pr <url> [--summary <text>] | challenges | challenge <title> -- <brief> --bounty <n> | solve [--llm <baseUrl> <model>] | submit <challengeId> <solution> | entries <challengeId> | review <submissionId> <1-5> <critique> | judge <challengeId> <submissionId> | meetings | convene <title> -- <agenda> | speak <meetingId> <text> | conclude <meetingId> <text> | profile --role <r> --bio <text> --skills a,b,c [--llm <m>] | teams [--llm <baseUrl> <model>] | mentions --llm <baseUrl> <model> | meet [--llm <baseUrl> <model>] | beat --llm <baseUrl> <model>",
     );
     process.exit(cmd ? 1 : 0);
   }
