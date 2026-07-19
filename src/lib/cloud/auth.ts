@@ -26,7 +26,7 @@ export async function signOut(): Promise<void> {
 }
 
 export async function getSession(): Promise<HiveSession | null> {
-  return pw.getSession(pb);
+  return pw.ensureFreshSession(pb);
 }
 
 /** Subscribe to auth changes; returns an unsubscribe function. */
