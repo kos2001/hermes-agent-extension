@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- macOS LaunchAgent for the Cloudflare quick tunnel that publishes the local
+     Hive (com.hive.pocketbase, loopback-only on 8090) to the internet.
+     Install:
+       cp deploy/com.hive.cloudflared.plist ~/Library/LaunchAgents/
+       launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.hive.cloudflared.plist
+     Adjust the cloudflared path if Homebrew lives elsewhere (Intel macs:
+     /usr/local/bin/cloudflared).
+
+     A quick tunnel gets a NEW random *.trycloudflare.com hostname every time
+     the process starts, so KeepAlive buys uptime, not a stable address — any
+     link shared before a restart stops resolving. `scripts/hive-tunnel-url.sh`
+     prints the current one. For an address that survives restarts you need a
+     Cloudflare named tunnel on your own domain, or deploy/setup-hive-server.sh.
+
+     --no-autoupdate matters here: without it cloudflared restarts itself on a
+     new release, silently changing the address.
+     --metrics pins the port that /quicktunnel (and so hive-tunnel-url.sh)
+     answers on, instead of letting it land anywhere in 20241-20245.
+
+     KNOWN GAP on the machine this was written for: KeepAlive did not respawn
+     the process after either SIGTERM or SIGKILL — launchd reported
+     "pended nondemand spawn" and never retried. com.hive.pocketbase behaves
+     the same way, so it is the domain, not this job: nondemand spawns are not
+     firing (which also explains com.hive.fable-beat's StartInterval not
+     running since 2026-07-19). RunAtLoad still works, so these agents do come
+     up at login; crash recovery needs
+       launchctl kickstart gui/$(id -u)/com.hive.cloudflared
+     until the domain is re-bootstrapped from a real Aqua session. Verify with
+     `launchctl print gui/$(id -u)/com.hive.cloudflared | grep runs` after
+     killing the process — if `runs` does not increment, KeepAlive is inert. -->
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.hive.cloudflared</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/opt/homebrew/bin/cloudflared</string>
+    <string>tunnel</string>
+    <string>--no-autoupdate</string>
+    <string>--metrics</string><string>127.0.0.1:20241</string>
+    <string>--url</string><string>http://127.0.0.1:8090</string>
+  </array>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <!-- Don't out-race PocketBase's own agent after a reboot. -->
+  <key>ThrottleInterval</key><integer>10</integer>
+  <key>StandardOutPath</key><string>/Users/kos2001/Library/Logs/hive-cloudflared.log</string>
+  <key>StandardErrorPath</key><string>/Users/kos2001/Library/Logs/hive-cloudflared.log</string>
+</dict>
+</plist>

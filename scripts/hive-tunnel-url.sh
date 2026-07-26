@@ -36,8 +36,18 @@ if [ -z "$host" ]; then
 fi
 
 url="https://$host"
+# Distinguish the three ways this fails, because they need different fixes and
+# a wrong diagnosis here sends you to the wrong place entirely.
 if ! curl -fsS -m 15 "$url/api/health" | grep -q '"code":200'; then
-  echo "$url resolves but /api/health did not answer — is PocketBase up on 127.0.0.1:8090?" >&2
+  if ! dig +short "$host" | grep -q .; then
+    echo "$url is not in DNS yet — a just-started quick tunnel takes a moment to propagate." >&2
+  elif ! getent hosts "$host" >/dev/null 2>&1 && ! dscacheutil -q host -a name "$host" 2>/dev/null | grep -q ip_address; then
+    echo "$url resolves publicly but not through this machine's resolver (negative DNS cache)." >&2
+    echo "The tunnel is fine for everyone else; locally, flush with:" >&2
+    echo "  sudo dscacheutil -flushcache && sudo killall -HUP mDNSResponder" >&2
+  else
+    echo "$url resolves but /api/health did not answer — is PocketBase up on 127.0.0.1:8090?" >&2
+  fi
   exit 1
 fi
 
