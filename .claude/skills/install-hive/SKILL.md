@@ -57,8 +57,10 @@ mkdir -p pocketbase/pb_public && cp -R dist-web/. pocketbase/pb_public/
   URL, and verify it end-to-end: `curl -s https://<tunnel-url>/api/health`.
   Ephemeral — a cloudflared restart changes the URL (re-run + re-share; for a
   stable hostname use a Cloudflare **named tunnel** on your own domain).
-  Recover a running tunnel's URL: `curl 127.0.0.1:<metrics-port>/quicktunnel`
-  (port via `lsof -nP -p <pid> -iTCP -sTCP:LISTEN`). NOTE the tunnel exposes
+  Recover a running tunnel's URL with `scripts/hive-tunnel-url.sh` (reads the
+  hostname from cloudflared's own `/quicktunnel` metrics endpoint, then
+  health-checks it). A stale hostname is the usual cause of "can't reach the
+  Hive server" — the page loads, its API calls don't. NOTE the tunnel exposes
   `/_/` to the internet too — the step-3 password is the only gate.
 - **LAN bind** (trusted network ONLY): serve with `--http=0.0.0.0:8090`, share
   `http://$(ipconfig getifaddr en0):8090/`. Allow the macOS firewall prompt

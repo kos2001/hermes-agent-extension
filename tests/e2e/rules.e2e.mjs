@@ -301,6 +301,88 @@ async function deadlines(A, B) {
   );
 }
 
+/**
+ * Claim leases + the ranked queue (1752700017_board_control.js and
+ * pb_hooks/board_lease.pb.js). Neither is visible to unit tests: the takeover
+ * branch is an access rule, the lease is stamped server-side, and the score is
+ * SQL.
+ */
+async function boardLeases(A, B, C) {
+  console.log("\nboard: claim leases + ranked queue");
+  const mk = async (over = {}) =>
+    (await post("collections/agent_tasks/records", A.token, {
+      requester_id: A.id,
+      title: "lease",
+      body: "b",
+      status: "open",
+      ...over,
+    })).json;
+  const claim = (tid, who) =>
+    patch(`collections/agent_tasks/records/${tid}`, who.token, {
+      status: "claimed",
+      claimed_by: who.id,
+      worker_label: "e2e",
+    });
+
+  // --- the lease is stamped by the server, not the client ---
+  const t1 = await mk();
+  check("claim succeeds", (await claim(t1.id, B)).status === 200);
+  const claimed = (await get(`collections/agent_tasks/records/${t1.id}`, B.token)).json;
+  check("server stamped a lease on claim", Boolean(claimed.lease_until), `got ${JSON.stringify(claimed.lease_until)}`);
+  check("a live lease blocks takeover", (await claim(t1.id, C)).status >= 400);
+  check(
+    "a client cannot grant itself a longer lease",
+    (await patch(`collections/agent_tasks/records/${t1.id}`, B.token, { lease_until: FUTURE })).status !== 200 ||
+      (await get(`collections/agent_tasks/records/${t1.id}`, B.token)).json.lease_until !== FUTURE,
+  );
+
+  // --- a lapsed lease lets another agent take over (HIVE_LEASE_SECONDS=1) ---
+  const t4 = await mk();
+  await claim(t4.id, B);
+  await new Promise((r) => setTimeout(r, 1200));
+  check("a lapsed lease lets another agent take over", (await claim(t4.id, C)).status === 200);
+  const taken = (await get(`collections/agent_tasks/records/${t4.id}`, C.token)).json;
+  check("takeover reassigns the claim", taken.claimed_by === C.id, `claimed_by=${taken.claimed_by}`);
+  check("takeover re-stamps the lease", Boolean(taken.lease_until));
+  check("the agent that lost the task can no longer touch it", (await patch(`collections/agent_tasks/records/${t4.id}`, B.token, { status: "done", result: "late" })).status >= 400);
+
+  // --- a task with no lease at all (claimed before this migration) is stranded
+  //     unless takeover also accepts an empty lease ---
+  const t2 = await mk();
+  await claim(t2.id, B);
+  // clear the lease the way an un-leased legacy row looks
+  await patch(`collections/agent_tasks/records/${t2.id}`, B.token, { status: "open", claimed_by: null });
+  const reopened = (await get(`collections/agent_tasks/records/${t2.id}`, B.token)).json;
+  check("release clears the lease and reopens", reopened.status === "open" && !reopened.lease_until);
+  check("another agent can claim a released task", (await claim(t2.id, C)).status === 200);
+
+  // --- renewal: the claimer holds the task across leases ---
+  const t3 = await mk();
+  await claim(t3.id, B);
+  const before = (await get(`collections/agent_tasks/records/${t3.id}`, B.token)).json.lease_until;
+  await new Promise((r) => setTimeout(r, 1100));
+  check("claimer may renew", (await patch(`collections/agent_tasks/records/${t3.id}`, B.token, { status: "claimed" })).status === 200);
+  const after = (await get(`collections/agent_tasks/records/${t3.id}`, B.token)).json.lease_until;
+  check("renewal pushes the lease out", after > before, `${before} -> ${after}`);
+  check("renewal keeps others out", (await claim(t3.id, C)).status >= 400);
+
+  // --- the ranked view ---
+  const cheapOld = await mk({ title: "cheap" });
+  const urgent = await mk({ title: "urgent", deadline: FUTURE, impact: 8, effort_mm: 2 });
+  const q = await get(`collections/board_queue/records?sort=-queue_score&perPage=50`, B.token);
+  const ids = q.json.items.map((r) => r.id);
+  check("board_queue lists open tasks", ids.includes(cheapOld.id) && ids.includes(urgent.id));
+  check("board_queue excludes claimed tasks", !ids.includes(t3.id), `t3 is claimed by B`);
+  check(
+    "high value + deadline outranks an equally-aged plain task",
+    ids.indexOf(urgent.id) < ids.indexOf(cheapOld.id),
+    JSON.stringify(q.json.items.map((r) => [r.title, r.queue_score])),
+  );
+  const expired = await mk({ title: "expired", deadline: PAST });
+  const q2 = await get(`collections/board_queue/records?perPage=50`, B.token);
+  check("board_queue excludes past-deadline tasks", !q2.json.items.some((r) => r.id === expired.id));
+}
+
 async function pointEconomy() {
   console.log("\npoints: closed economy (100pt grant, escrowed bounties)");
   const D = await newUser("e2e-d");
@@ -520,7 +602,11 @@ const dataDir = mkdtempSync(path.join(tmpdir(), "hive-e2e-"));
 spawnSync(PB_BIN, ["superuser", "upsert", SUPERUSER_EMAIL, SUPERUSER_PW, `--dir=${dataDir}`, `--migrationsDir=${MIGRATIONS}`]);
 const args = ["serve", `--http=127.0.0.1:${PORT}`, `--dir=${dataDir}`, `--migrationsDir=${MIGRATIONS}`];
 if (existsSync(HOOKS)) args.push(`--hooksDir=${HOOKS}`);
-const pb = spawn(PB_BIN, args, { stdio: ["ignore", "pipe", "pipe"] });
+// A one-second claim lease so boardLeases() can watch one lapse (default 15m).
+const pb = spawn(PB_BIN, args, {
+  stdio: ["ignore", "pipe", "pipe"],
+  env: { ...process.env, HIVE_LEASE_SECONDS: "1" },
+});
 let pbLog = "";
 pb.stdout.on("data", (d) => (pbLog += d));
 pb.stderr.on("data", (d) => (pbLog += d));
@@ -546,6 +632,7 @@ try {
   await waitHealthy();
   const [A, B, C] = [await newUser("e2e-a"), await newUser("e2e-b"), await newUser("e2e-c")];
   await boardClaims(A, B, C);
+  await boardLeases(A, B, C);
   await meetings(A, B, C);
   const { winningSub } = await challenges(A, B, C);
   await reviews(A, B, C, winningSub);

@@ -196,6 +196,19 @@ async function solveOneChallenge(llmArgs) {
 }
 
 /** Atomically claim a task; false when another agent won the race (server 404s). */
+/**
+ * The best open board task for me, or undefined. Reads `board_queue`, the
+ * ranked view — the blackboard's control step lives in SQL so this CLI, the
+ * extension and the web app all pick the same task (the view already drops
+ * claimed, finished and past-deadline rows).
+ */
+async function nextQueuedTask() {
+  const out = await api(
+    records("board_queue", `${flt(`requester_id!='${USER_ID}'${myCategoriesClause()}`)}&sort=-queue_score&perPage=1`),
+  );
+  return out.items[0];
+}
+
 async function tryClaim(taskId) {
   try {
     await api(`collections/agent_tasks/records/${taskId}`, {
@@ -434,13 +447,13 @@ try {
     });
     console.log("completed", taskId);
   } else if (cmd === "fde") {
-    // list open FDE tasks (build-a-PR requests) — the coding-harness contract
+    // open FDE tasks (build-a-PR requests), best first — the coding-harness contract
     const out = await api(
-      records("agent_tasks", `${flt(`status='open' && kind='fde' && requester_id!='${USER_ID}'${notExpired}`)}&sort=created_at&perPage=20`),
+      records("board_queue", `${flt(`kind='fde' && requester_id!='${USER_ID}'`)}&sort=-queue_score&perPage=20`),
     );
     if (!out.items.length) console.log("no open FDE tasks");
     for (const t of out.items) {
-      console.log(`\n[${t.id}] ${t.title}  → ${t.repo}`);
+      console.log(`\n[${t.id}] ${t.title}  → ${t.repo}   (score ${t.queue_score})`);
       console.log(`  ${t.body}`);
     }
   } else if (cmd === "fde-claim") {
@@ -466,13 +479,7 @@ try {
     console.log(`delivered FDE task ${taskId}: ${pr}`);
   } else if (cmd === "work") {
     requireWriteEnv();
-    const out = await api(
-      records(
-        "agent_tasks",
-        `${flt(`status='open' && requester_id!='${USER_ID}'${myCategoriesClause()}${notExpired}`)}&sort=created_at&perPage=1`,
-      ),
-    );
-    const task = out.items[0];
+    const task = await nextQueuedTask();
     if (!task) {
       console.log("board is clear — nothing to work");
     } else if (!(await tryClaim(task.id))) {
@@ -704,13 +711,8 @@ try {
     // 0b) contribute to at most one team I'm on
     if (!(await contributeToOneTeam(baseUrl, model))) console.log("teams: nothing to contribute");
 
-    // 1) answer at most one open board request (in my categories, if declared)
-    const open = await api(
-      records(
-        "agent_tasks",
-        `${flt(`status='open' && requester_id!='${USER_ID}'${myCategoriesClause()}${notExpired}`)}&sort=created_at&perPage=1`,
-      ),
-    );
+    // 1) answer the best-ranked open board request (in my categories, if declared)
+    const open = { items: [await nextQueuedTask()].filter(Boolean) };
     if (open.items[0] && !(await tryClaim(open.items[0].id))) {
       console.log(`board: lost the claim race for "${open.items[0].title}"`);
       open.items.length = 0;
