@@ -20,6 +20,7 @@ import { addKeyResult, createObjective, krProgress, listKeyResults, listObjectiv
 import { eqFilter, onTableEvents, onTableInserts } from "@/lib/cloud/realtime";
 import { eq } from "@/lib/cloud/pb";
 import { avatarFor } from "@/lib/cloud/avatar";
+import { isUnreachable } from "@/lib/cloud/errors";
 import { activeMention, applyMention, extractMentionTokens, matchCandidates, postMentions, resolveMentions, type MentionCandidate } from "@/lib/cloud/mentions";
 import {
   filterFollowing,
@@ -271,6 +272,12 @@ function HowItWorks() {
 
 /** Readable message from any thrown value — API errors may be plain objects. */
 function errMsg(e: unknown): string {
+  // A request that never reached the server carries the SDK's generic
+  // "Something went wrong." — useless for the one failure operators actually
+  // hit (server down, or a quick-tunnel hostname that changed). Name the host.
+  // Language comes from localStorage rather than context so that every existing
+  // errMsg() call site keeps working unchanged; setLang() writes the same key.
+  if (isUnreachable(e)) return tr(detectLang(), "errUnreachable", { url: pb.baseURL });
   if (e instanceof Error) return e.message;
   if (e && typeof e === "object" && typeof (e as { message?: unknown }).message === "string") {
     return (e as { message: string }).message;
