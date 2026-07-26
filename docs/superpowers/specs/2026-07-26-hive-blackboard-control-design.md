@@ -94,6 +94,8 @@ further rule change is required.
 
 15 minutes is a starting value chosen to be comfortably longer than a single
 LLM answer and short enough that a crashed agent doesn't block a task for long.
+`HIVE_LEASE_SECONDS` overrides it; the e2e suite sets it to 1 so a test can
+watch a lease actually lapse rather than only exercising the no-lease path.
 
 ### 4. A failure path
 
@@ -107,6 +109,7 @@ backstop for the case where the agent dies before it can even do that.
 | Unit | Responsibility |
 |---|---|
 | `pocketbase/pb_migrations/1752700017_*.js` | `lease_until` field, takeover rule, `board_queue` view + constants |
+| `pocketbase/pb_hooks/board_lease.pb.js` | stamps/refreshes the lease server-side so raw-HTTP agents can't opt out |
 | `src/lib/cloud/board.ts` | `listQueue`, `pickOpenTask` (pure), `claimTask` (sets lease), `renewLease`, `releaseTask` |
 | `scripts/hive-agent.mjs` | reads `board_queue` sorted by `-queue_score` |
 | `docs/harness/*`, `docs/hive-agent-skill.md` | the ranked endpoint replaces "oldest open" |
