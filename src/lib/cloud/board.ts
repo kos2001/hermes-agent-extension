@@ -30,9 +30,36 @@ export interface AgentTask {
   claimed_by: string;
   worker_label: string;
   result: string;
+  /** While claimed, when the claim lapses and another agent may take over. */
+  lease_until: string;
   created_at: string;
   updated_at: string;
   requester?: { display_name: string | null };
+}
+
+/**
+ * One open task as ranked by the `board_queue` view. The score is
+ * `value density × urgency × aging`, computed server-side so the extension,
+ * the web app and `scripts/hive-agent.mjs` all rank identically — see
+ * pb_migrations/1752700017_board_control.js for the formula and its bounds.
+ */
+export interface QueuedTask
+  extends Pick<
+    AgentTask,
+    | "id"
+    | "requester_id"
+    | "title"
+    | "body"
+    | "category"
+    | "kind"
+    | "repo"
+    | "deadline"
+    | "objective_id"
+    | "effort_mm"
+    | "impact"
+    | "created_at"
+  > {
+  queue_score: number;
 }
 
 /** Work topics a request can belong to (stored English; UIs translate). */
@@ -50,20 +77,25 @@ export function isExpired(deadline: string, now: Date = new Date()): boolean {
 }
 
 /**
- * The oldest open task someone else posted, or null. Pure. When `categories`
- * is given, only tasks in those categories qualify — this is how an agent
- * participates per topic. Expired tasks never qualify.
+ * The best open task someone else posted, or null. Pure.
+ *
+ * "Best" is the highest `queue_score` — the blackboard's opportunistic control
+ * step. The score itself is the view's job; this only applies the parts that
+ * depend on *who is asking*: never your own request, never an expired one, and
+ * only your categories when you participate per topic. Ties (equal scores, or
+ * a caller that passed unranked rows) fall back to oldest-first, the FIFO
+ * behaviour this replaced.
  */
 export function pickOpenTask(
-  tasks: AgentTask[],
+  tasks: QueuedTask[],
   myId: string,
   categories?: TaskCategory[],
   now: Date = new Date(),
-): AgentTask | null {
+): QueuedTask | null {
   const open = tasks
-    .filter((t) => t.status === "open" && t.requester_id !== myId && !isExpired(t.deadline, now))
+    .filter((t) => t.requester_id !== myId && !isExpired(t.deadline, now))
     .filter((t) => !categories?.length || categories.includes(taskCategory(t)))
-    .sort((a, b) => (a.created_at < b.created_at ? -1 : 1));
+    .sort((a, b) => (b.queue_score ?? 0) - (a.queue_score ?? 0) || (a.created_at < b.created_at ? -1 : 1));
   return open[0] ?? null;
 }
 
@@ -117,6 +149,20 @@ export async function listTasks(pb: PocketBase, limit = 50, category?: TaskCateg
   });
 }
 
+/**
+ * The open tasks, best first, from the ranked `board_queue` view. Claimed and
+ * finished tasks are not in the view; use `listTasks` for the full board.
+ */
+export async function listQueue(pb: PocketBase, limit = 50, category?: TaskCategory): Promise<QueuedTask[]> {
+  const result = await pb.collection("board_queue").getList(1, limit, {
+    sort: "-queue_score",
+    ...(category
+      ? { filter: category === "general" ? `(${eq("category", "general")} || category = '')` : eq("category", category) }
+      : {}),
+  });
+  return result.items as unknown as QueuedTask[];
+}
+
 /** Post a request to the board; returns the new task id. */
 /** Optional OKR link + valuation carried by a work item at post time. */
 export interface WorkValue {
@@ -159,7 +205,11 @@ export async function postTask(
   return created.id;
 }
 
-/** Claim an open task for the current user's agent. */
+/**
+ * Claim an open task — or take over one whose lease lapsed — for the current
+ * user's agent. The server stamps `lease_until`; a throw means someone else
+ * holds a live claim.
+ */
 export async function claimTask(pb: PocketBase, taskId: string, workerLabel: string): Promise<void> {
   const userId = uid(pb);
   if (!userId) throw new Error("Must be signed in to claim");
@@ -168,6 +218,24 @@ export async function claimTask(pb: PocketBase, taskId: string, workerLabel: str
     claimed_by: userId,
     worker_label: workerLabel,
   });
+}
+
+/**
+ * Hold a claim that outlives one lease. Work longer than the lease — an FDE
+ * task building a pull request always is — has to touch the record on the way,
+ * or another agent may take the task over. The server re-stamps the lease on
+ * any update by the claimer, so the body only has to be valid.
+ */
+export async function renewLease(pb: PocketBase, taskId: string): Promise<void> {
+  await pb.collection("agent_tasks").update(taskId, { status: "claimed" });
+}
+
+/**
+ * Hand a claimed task back to the board. The counterpart to `completeTask` for
+ * work that failed: without it a task sits claimed until its lease runs out.
+ */
+export async function releaseTask(pb: PocketBase, taskId: string): Promise<void> {
+  await pb.collection("agent_tasks").update(taskId, { status: "open", claimed_by: null, worker_label: "" });
 }
 
 /** Post the result and mark the task done. */
@@ -236,8 +304,12 @@ export async function deliverFde(
 }
 
 /**
- * One autonomous pass for the extension's local agent: claim the oldest open
- * task and answer it with the member's own LLM. Returns what was worked.
+ * One autonomous pass for the extension's local agent: claim the best-ranked
+ * open task and answer it with the member's own LLM. Returns what was worked.
+ *
+ * A failed answer releases the claim rather than leaving the task parked until
+ * its lease runs out — the lease only has to cover the case where this agent
+ * dies outright.
  */
 export async function runBoardWork(
   pb: PocketBase,
@@ -246,19 +318,23 @@ export async function runBoardWork(
 ): Promise<{ worked: string | null }> {
   const myId = uid(pb);
   if (!myId) return { worked: null };
-  const tasks = await listTasks(pb);
-  const next = pickOpenTask(tasks, myId);
+  const next = pickOpenTask(await listQueue(pb), myId);
   if (!next) return { worked: null };
 
   await claimTask(pb, next.id, config.model);
-  const { messages } = buildTaskPrompt(next);
-  const text = await collectChat({
-    config,
-    messages,
-    model: config.model,
-    responseFormat: { type: "json_object" },
-    signal: opts.signal,
-  });
-  await completeTask(pb, next.id, parseTaskAnswer(text));
+  try {
+    const { messages } = buildTaskPrompt(next);
+    const text = await collectChat({
+      config,
+      messages,
+      model: config.model,
+      responseFormat: { type: "json_object" },
+      signal: opts.signal,
+    });
+    await completeTask(pb, next.id, parseTaskAnswer(text));
+  } catch (e) {
+    await releaseTask(pb, next.id).catch(() => {});
+    throw e;
+  }
   return { worked: next.id };
 }

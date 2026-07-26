@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { mockPb } from "./pb-mock";
-import { buildTaskPrompt, claimTask, completeTask, deliverFde, isFdeTask, listTasks, normalizeRepo, parseTaskAnswer, pickOpenTask, postFdeTask, postTask } from "./board";
-import type { AgentTask } from "./board";
+import { buildTaskPrompt, claimTask, completeTask, deliverFde, isFdeTask, listQueue, listTasks, normalizeRepo, parseTaskAnswer, pickOpenTask, postFdeTask, postTask, releaseTask, renewLease } from "./board";
+import type { AgentTask, QueuedTask } from "./board";
 
 const task = (over: Partial<AgentTask>): AgentTask => ({
   id: "t1",
@@ -20,48 +20,99 @@ const task = (over: Partial<AgentTask>): AgentTask => ({
   claimed_by: "",
   worker_label: "",
   result: "",
+  lease_until: "",
   created_at: "2026-07-17T00:00:00Z",
   updated_at: "2026-07-17T00:00:00Z",
   ...over,
 });
 
+/** A row as `board_queue` returns it: open, with the server's score. */
+const queued = (over: Partial<QueuedTask>): QueuedTask => ({
+  id: "t1",
+  requester_id: "u1",
+  title: "Summarize X",
+  body: "Please summarize X.",
+  category: "general",
+  kind: "question",
+  repo: "",
+  deadline: "",
+  objective_id: "",
+  effort_mm: 0,
+  impact: 0,
+  created_at: "2026-07-17T00:00:00Z",
+  queue_score: 1,
+  ...over,
+});
+
 describe("pickOpenTask", () => {
-  it("picks the oldest open task not requested by me", () => {
+  it("picks the best-ranked task, not the oldest", () => {
     const tasks = [
-      task({ id: "mine", requester_id: "me" }),
-      task({ id: "done1", status: "done" }),
-      task({ id: "newer", created_at: "2026-07-17T02:00:00Z" }),
-      task({ id: "oldest", created_at: "2026-07-16T00:00:00Z" }),
+      queued({ id: "oldest", created_at: "2026-07-16T00:00:00Z", queue_score: 2.5 }),
+      queued({ id: "urgent", created_at: "2026-07-17T02:00:00Z", queue_score: 37.3 }),
     ];
-    expect(pickOpenTask(tasks, "me")?.id).toBe("oldest");
+    expect(pickOpenTask(tasks, "me")?.id).toBe("urgent");
   });
 
-  it("returns null when nothing is claimable", () => {
-    expect(pickOpenTask([task({ status: "claimed" })], "me")).toBeNull();
-    expect(pickOpenTask([task({ requester_id: "me" })], "me")).toBeNull();
+  it("never works my own request, however well it scores", () => {
+    const tasks = [
+      queued({ id: "mine", requester_id: "me", queue_score: 99 }),
+      queued({ id: "theirs", queue_score: 1 }),
+    ];
+    expect(pickOpenTask(tasks, "me")?.id).toBe("theirs");
+    expect(pickOpenTask([queued({ requester_id: "me" })], "me")).toBeNull();
+    expect(pickOpenTask([], "me")).toBeNull();
   });
 
   it("never picks an expired task", () => {
     const now = new Date("2026-07-18T12:00:00Z");
     const tasks = [
-      task({ id: "expired", deadline: "2026-07-18T11:00:00Z", created_at: "2026-07-16T00:00:00Z" }),
-      task({ id: "live", deadline: "2026-07-18T13:00:00Z", created_at: "2026-07-17T00:00:00Z" }),
+      queued({ id: "expired", deadline: "2026-07-18T11:00:00Z", queue_score: 99 }),
+      queued({ id: "live", deadline: "2026-07-18T13:00:00Z", queue_score: 1 }),
     ];
     expect(pickOpenTask(tasks, "me", undefined, now)?.id).toBe("live");
   });
 
+  it("falls back to oldest-first on a tie", () => {
+    const tasks = [
+      queued({ id: "newer", created_at: "2026-07-17T02:00:00Z", queue_score: 3 }),
+      queued({ id: "older", created_at: "2026-07-16T00:00:00Z", queue_score: 3 }),
+    ];
+    expect(pickOpenTask(tasks, "me")?.id).toBe("older");
+  });
+
   it("participates per category when the agent declares some", () => {
     const tasks = [
-      task({ id: "code-old", category: "coding", created_at: "2026-07-16T00:00:00Z" }),
-      task({ id: "res", category: "research", created_at: "2026-07-15T00:00:00Z" }),
-      task({ id: "legacy", category: "", created_at: "2026-07-14T00:00:00Z" }),
+      queued({ id: "code", category: "coding", queue_score: 2 }),
+      queued({ id: "res", category: "research", queue_score: 5 }),
+      queued({ id: "legacy", category: "", queue_score: 1 }),
     ];
-    expect(pickOpenTask(tasks, "me", ["coding"])?.id).toBe("code-old");
+    expect(pickOpenTask(tasks, "me", ["coding"])?.id).toBe("code");
     // pre-category rows count as "general"
     expect(pickOpenTask(tasks, "me", ["general"])?.id).toBe("legacy");
     expect(pickOpenTask(tasks, "me", ["writing"])).toBeNull();
-    // no declared categories = work anything (oldest wins)
-    expect(pickOpenTask(tasks, "me")?.id).toBe("legacy");
+    // no declared categories = work anything (best score wins)
+    expect(pickOpenTask(tasks, "me")?.id).toBe("res");
+  });
+});
+
+describe("listQueue", () => {
+  it("reads the ranked view, best first", async () => {
+    const getList = vi.fn(async (_p: number, _l: number, opts: { sort: string; filter?: string }) => {
+      expect(opts.sort).toBe("-queue_score");
+      expect(opts.filter).toBeUndefined();
+      return { items: [{ id: "t1", queue_score: 9 }] };
+    });
+    const pb = mockPb({ board_queue: { getList } });
+    expect((await listQueue(pb))[0]).toMatchObject({ id: "t1", queue_score: 9 });
+  });
+
+  it("filters by category, folding legacy rows into general", async () => {
+    const getList = vi.fn(async (_p: number, _l: number, _opts: { sort: string; filter?: string }) => ({ items: [] }));
+    const pb = mockPb({ board_queue: { getList } });
+    await listQueue(pb, 50, "research");
+    expect(getList.mock.calls[0][2].filter).toBe("category = 'research'");
+    await listQueue(pb, 50, "general");
+    expect(getList.mock.calls[1][2].filter).toBe("(category = 'general' || category = '')");
   });
 });
 
@@ -152,6 +203,20 @@ describe("claimTask / completeTask", () => {
     const pb = mockPb({ agent_tasks: { update } });
     await completeTask(pb, "t1", "the answer");
     expect(update).toHaveBeenCalledWith("t1", { status: "done", result: "the answer" });
+  });
+
+  it("renew touches the record so the server re-stamps the lease", async () => {
+    const update = vi.fn(async (_id: string, _d: Record<string, unknown>) => ({}));
+    const pb = mockPb({ agent_tasks: { update } });
+    await renewLease(pb, "t1");
+    expect(update).toHaveBeenCalledWith("t1", { status: "claimed" });
+  });
+
+  it("release hands the task back and drops the claimer", async () => {
+    const update = vi.fn(async (_id: string, _d: Record<string, unknown>) => ({}));
+    const pb = mockPb({ agent_tasks: { update } });
+    await releaseTask(pb, "t1");
+    expect(update).toHaveBeenCalledWith("t1", { status: "open", claimed_by: null, worker_label: "" });
   });
 });
 
