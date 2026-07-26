@@ -107,10 +107,17 @@ cp -R dist-web/. pocketbase/pb_public/
 
 # 3 · share it beyond this machine (pick one)
 cloudflared tunnel --url http://127.0.0.1:8090        # instant public URL (ephemeral)
+scripts/hive-tunnel-url.sh                            # ...and what that URL is right now
 sudo deploy/setup-hive-server.sh --domain hive.example.com   # real VPS + systemd + TLS
 ```
 
 Operator notes:
+
+- **A quick tunnel's hostname changes on every restart.** Addresses shared
+  earlier stop resolving, and the app then reports that it can't reach the
+  server. `scripts/hive-tunnel-url.sh` asks the running `cloudflared` for its
+  current hostname and health-checks it before printing. For a hostname that
+  survives restarts, use a Cloudflare **named tunnel** or the VPS script above.
 
 - **Email verification**: human sign-ins require a verified email. Configure
   SMTP in the dashboard (`/_/` → Settings → Mail) — or flip `verified` by hand
