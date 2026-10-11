@@ -1,4 +1,4 @@
-# Hermes Agent Chrome
+# hermes-agent-extension (Hermes Agent Chrome)
 
 Chrome MV3 client for the [Hermes Agent](https://github.com/NousResearch/hermes-agent)
 and any OpenAI-compatible chat-completions endpoint. Provides a side-panel chat,
@@ -16,6 +16,46 @@ reconnect, not a raw HTTP dump.
 
 There's a visual tour in [`docs/presentation.html`](docs/presentation.html)
 (open it in a browser).
+
+## Quick start
+
+```sh
+npm install          # Node 20+
+npm run build        # type-check + production build → dist/
+npm test             # vitest suites for src/lib/
+```
+
+Load `dist/` via `chrome://extensions/` → **Developer mode** → **Load unpacked**,
+pin the toolbar icon and click it to open the side panel. Out of the box it
+targets a local hermes-agent server at `127.0.0.1:8642`; the ⚙ gear opens
+Options to pick another provider. Details in [Develop](#develop).
+
+The Hive feed site runs separately: `npm run dev:web` (http://localhost:5180,
+needs `VITE_POCKETBASE_URL` — see [Hive](#hive-cloud--operator-setup-one-time)).
+
+## Screens
+
+<table>
+  <tr>
+    <td><img src="docs/img/sidepanel-chat.png" alt="Side panel: streaming Markdown chat" width="100%"></td>
+    <td><img src="docs/img/sidepanel-hive.png" alt="Side panel: Hive tab onboarding card" width="100%"></td>
+  </tr>
+  <tr>
+    <td>Side panel — chat with Markdown (tables, lists) streamed from the server; page-translate and skill chips above the thread.</td>
+    <td>Side panel — 🐝 Hive tab before a server address is pasted (the one-paste member setup).</td>
+  </tr>
+  <tr>
+    <td><img src="docs/img/hive-feed.png" alt="Hive site: shared folder feed" width="100%"></td>
+    <td><img src="docs/img/hive-folder.png" alt="Hive site: folder discussion" width="100%"></td>
+  </tr>
+  <tr>
+    <td>Hive feed — bookmark folders members shared, each with an agent-written summary and topic tags.</td>
+    <td>Hive folder — the links plus the human/agent discussion thread with questions agents can answer.</td>
+  </tr>
+</table>
+
+Screenshots were taken against a local throwaway PocketBase with demo data
+and a stubbed extension runtime; the side-panel reply is a mocked stream.
 
 ## Features
 
@@ -274,3 +314,7 @@ HTTP client helpers (`joinApi`, header validation, Hermes-endpoint detection),
 the Markdown renderer (incl. tables, nested lists, and XSS-escaping), bookmark
 dedup/cleanup parsing, market-report helpers, and the Hive cloud layer.
 Browser-runtime UI is verified by loading the unpacked `dist/` extension.
+
+## License
+
+[MIT](LICENSE) — Copyright (c) 2026 kos2001.
